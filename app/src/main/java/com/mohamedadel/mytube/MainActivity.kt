@@ -1641,8 +1641,11 @@ fun PlayerArea(
     ) {
         Column {
             Box(
-                // tap toggles the control bar (professional show/hide); play/pause lives on the buttons
-                modifier = if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
+                // nativeOnly: NO tap interceptor — every touch must reach PlayerView so its controller shows.
+                // (the old custom-bar toggle stole taps and the controller never appeared)
+                modifier = if (isFullscreen) Modifier.fillMaxSize()
+                    else if (!nativeOnly) Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
+                    else Modifier.fillMaxWidth().height(220.dp)
             ) {
                 if (quality != "audio-only (default)" && player != null) {
                     AndroidView(
@@ -1690,6 +1693,8 @@ fun PlayerArea(
                         },
                         update = { v ->
                             v.setFullscreenButtonClickListener { onToggleFullscreen() }
+                            v.controllerShowTimeoutMs = 5000
+                            v.showController()
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -1697,7 +1702,10 @@ fun PlayerArea(
                     AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
                 }
-                // center state: error > loading > big play/pause button
+                // center state: error > loading > big play/pause button.
+                // nativeOnly video mode: NO overlay (not even loading) — anything drawn over
+                // PlayerView eats its taps; the native spinner + controller handle this state.
+                val videoNative = nativeOnly && quality != "audio-only (default)" && player != null
                 when {
                     errorMsg != null -> {
                         Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1710,7 +1718,7 @@ fun PlayerArea(
                             androidx.compose.material3.Button(onClick = onRetry) { Text("إعادة المحاولة") }
                         }
                     }
-                    playerLoading -> {
+                    playerLoading && !videoNative -> {
                         Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = Color.White, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
                             Spacer(Modifier.height(8.dp))
