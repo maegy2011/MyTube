@@ -75,7 +75,6 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -97,7 +96,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -650,33 +648,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     ) {
     val isInPip = pipMode.value
+    // No top app bar: logo + nav live INSIDE the search row (saves a full 64dp bar).
     Scaffold(
-        topBar = {
-            if (!isInPip && !isFullscreen) {
-            CenterAlignedTopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(28.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("MyTube", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-                    }
-                },
-                navigationIcon = {
-                    // smart back button: shown whenever back would do something smart; hamburger otherwise
-                    if (playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) {
-                        IconButton(onClick = { smartBack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
-                        }
-                    } else {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Rounded.Menu, contentDescription = "القائمة")
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-            }
-        },
+        topBar = { },
         bottomBar = {
             // Mini-player: visible whenever audio plays while the full player is collapsed (home, results, playlists). Never shown together with the full player.
             if (!isInPip && !isFullscreen && playing != null && !playerExpanded) {
@@ -751,6 +725,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // Search + suggestions are hidden in fullscreen: they stole vertical space and
             // squeezed the video to "app size" instead of true fullscreen.
             if (!isFullscreen) {
+            // Unified header row: nav + logo + search (the old 64dp top bar is gone).
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) {
+                    IconButton(onClick = { smartBack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                    }
+                } else {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(Icons.Rounded.Menu, contentDescription = "القائمة")
+                    }
+                }
+                Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(30.dp))
+                Spacer(Modifier.width(8.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
@@ -787,8 +777,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline
                 ),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                modifier = Modifier.weight(1f)
             )
+            }
 
             AnimatedVisibility(visible = showSuggestions && suggestions.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
                 Surface(
