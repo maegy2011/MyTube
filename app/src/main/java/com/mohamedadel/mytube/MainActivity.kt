@@ -22,6 +22,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -1342,8 +1343,6 @@ fun QueueDialog(
     )
 }
 
-// Pick a playlist for one video (or create a new one on the spot).
-@Composable
 // Long-press menu for a video row.
 @Composable
 fun VideoOptionsDialog(
@@ -1390,6 +1389,7 @@ fun VideoOptionsDialog(
     )
 }
 
+// Pick a playlist for one video (or create a new one on the spot).
 @Composable
 fun PlaylistPickerDialog(
     video: VideoItem,
@@ -1503,6 +1503,7 @@ fun MiniPlayer(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}, onLongClick: (VideoItem) -> Unit = {}) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) }),
