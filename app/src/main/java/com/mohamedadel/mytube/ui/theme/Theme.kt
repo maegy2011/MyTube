@@ -2,9 +2,12 @@ package com.mohamedadel.mytube.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -47,6 +50,15 @@ private val LightColorScheme = lightColorScheme(
     outline = LightOutline
 )
 
+// One shape scale for the whole app (M3 Expressive-style): cards 16, player 20/24, search 28.
+val MyTubeShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
 @Composable
 fun MyTubeTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
@@ -61,6 +73,6 @@ fun MyTubeTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
     }
     // Arabic-first app: force RTL layout direction on every device language (full RTL).
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        MaterialTheme(colorScheme = colorScheme, typography = MyTubeTypography, content = content)
+        MaterialTheme(colorScheme = colorScheme, typography = MyTubeTypography, shapes = MyTubeShapes, content = content)
     }
 }

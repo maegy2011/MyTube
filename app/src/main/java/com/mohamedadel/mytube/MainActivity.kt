@@ -44,19 +44,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.PictureInPicture
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.activity.compose.BackHandler
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -66,6 +66,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -76,7 +77,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -123,6 +123,7 @@ import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.playback.PlaybackService
+import com.mohamedadel.mytube.ui.icons.myTubeLogo
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
 import kotlinx.coroutines.launch
@@ -488,7 +489,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ModalDrawerSheet {
                 Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                NavigationDrawerItem(label = { Text("Home") }, selected = true, onClick = { scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = true, onClick = { scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
             }
         }
     ) {
@@ -496,19 +497,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     Scaffold(
         topBar = {
             if (!isInPip) {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
-                    Text("MyTube", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("MyTube", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                    }
                 },
                 navigationIcon = {
                     // smart back button: shown whenever back would do something smart; hamburger otherwise
                     if (playing != null || results.isNotEmpty()) {
                         IconButton(onClick = { smartBack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                         }
                     } else {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                            Icon(Icons.Rounded.Menu, contentDescription = "القائمة")
                         }
                     }
                 },
@@ -588,7 +593,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
-                placeholder = { Text("Search videos, channels…") },
+                placeholder = { Text("ابحث عن فيديو أو قناة…") },
                 leadingIcon = {
                     if (loading) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
@@ -598,11 +603,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (!loading && query.isNotEmpty()) {
                             IconButton(onClick = { query = ""; svm.onQueryChange(""); showSuggestions = false }) {
-                                Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                                Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
                             }
                         }
                         IconButton(onClick = { doSearch(query) }) {
-                            Icon(Icons.Filled.Search, contentDescription = "Search")
+                            Icon(Icons.Rounded.Search, contentDescription = "بحث")
                         }
                     }
                 },
@@ -639,7 +644,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 }.padding(horizontal = 16.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(12.dp))
                                 Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                             }
@@ -695,11 +700,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 results.isEmpty() && !loading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Filled.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(64.dp))
+                            Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
                             Spacer(Modifier.height(12.dp))
-                            Text("No results found", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                            Text("لا توجد نتائج", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                             Spacer(Modifier.height(4.dp))
-                            Text("Try a different search term", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("جرّب كلمة مختلفة أو تحقق من الاتصال بالإنترنت", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -713,7 +718,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         // queue entry point (suggestion #3): play the whole result list sequentially, audio-only, no autoplay until tapped
                         item {
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("${results.size} نتيجة", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("وجدنا ${results.size} نتيجة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.weight(1f))
                                 androidx.compose.material3.Button(onClick = {
                                     if (results.isNotEmpty()) playVideo(results[0], queue = true)
@@ -755,7 +760,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                                 loadingMore = false
                                             }
                                         }
-                                    }) { Text("Load more") }
+                                    }) { Text("عرض المزيد") }
                                 }
                             }
                         }
@@ -824,14 +829,14 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (recentSearches.isNotEmpty()) {
-            item { Text("Recent searches", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface) }
+            item { Text("عمليات بحث سابقة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(recentSearches) { q -> FilterChip(selected = false, onClick = { onSearch(q) }, label = { Text(q) }) }
                 }
             }
         }
-        item { Text("Trending", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface) }
+        item { Text("رائج الآن", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(trending) { q ->
@@ -842,11 +847,11 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
         item {
             Spacer(Modifier.height(24.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Filled.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(72.dp))
+                Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(72.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("Discover videos", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                Text("اكتشف الفيديوهات", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(4.dp))
-                Text("Search above to find anything on YouTube", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("ابحث أعلاه عن أي فيديو أو قناة على يوتيوب", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -885,7 +890,8 @@ fun MiniPlayer(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 3.dp
     ) {
         Column {
@@ -902,7 +908,7 @@ fun MiniPlayer(
                 EqualizerBars(playing = isPlaying)
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onToggle) {
-                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل", tint = MaterialTheme.colorScheme.primary)
                 }
             }
             if (durationMs > 0) {
@@ -917,11 +923,10 @@ fun MiniPlayer(
 
 @Composable
 fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit) {
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.elevatedCardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(132.dp, 74.dp)) {
@@ -935,8 +940,8 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                         EqualizerBars(playing = isPlaying)
                     } else {
                         Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = "Play",
+                            Icons.Rounded.PlayArrow,
+                            contentDescription = "تشغيل",
                             tint = Color.White,
                             modifier = Modifier.size(32.dp)
                         )
@@ -959,7 +964,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 }
             }
             IconButton(onClick = onClick) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Play", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -988,11 +993,10 @@ fun PlayerArea(
     onEnterPip: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
     ) {
         Column {
             Box(
@@ -1017,9 +1021,11 @@ fun PlayerArea(
                 when {
                     errorMsg != null -> {
                         Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Filled.Clear, contentDescription = "Error", tint = Color.White, modifier = Modifier.size(48.dp))
+                            Icon(Icons.Rounded.Clear, contentDescription = "خطأ", tint = Color.White, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("تعذر التشغيل", style = MaterialTheme.typography.titleSmall, color = Color.White)
+                            Text("تعذّر التشغيل", style = MaterialTheme.typography.titleSmall, color = Color.White)
+                            Spacer(Modifier.height(2.dp))
+                            Text("تحقق من الاتصال ثم حاول مجددًا", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
                             Spacer(Modifier.height(8.dp))
                             androidx.compose.material3.Button(onClick = onRetry) { Text("إعادة المحاولة") }
                         }
@@ -1043,8 +1049,8 @@ fun PlayerArea(
                                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(38.dp))
                         ) {
                             Icon(
-                                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل",
                                 tint = Color.White,
                                 modifier = Modifier.size(44.dp)
                             )
@@ -1089,7 +1095,7 @@ fun PlayerArea(
                 Spacer(Modifier.height(12.dp))
                 if (queueOn) {
                     Spacer(Modifier.height(8.dp))
-                    Text("▶ تشغيل بالتتابع من نتائج البحث", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text("▶ تشغيل بالتتابع من نتائج البحث", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box {
@@ -1100,17 +1106,17 @@ fun PlayerArea(
                     }
                     Spacer(Modifier.width(8.dp))
                     IconButton(onClick = onPrev) {
-                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.SkipPrevious, contentDescription = "السابق", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = onNext) {
-                        Icon(Icons.Filled.SkipNext, contentDescription = "Next", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.SkipNext, contentDescription = "التالي", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = onEnterPip) {
-                        Icon(Icons.Filled.PictureInPicture, contentDescription = "PiP", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.PictureInPicture, contentDescription = "صورة داخل صورة", tint = MaterialTheme.colorScheme.primary)
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onFallbackYoutube) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open in YouTube", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "فتح في يوتيوب", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -1139,9 +1145,9 @@ private fun formatDuration(sec: Long): String {
 
 private fun formatViews(n: Long): String {
     return when {
-        n >= 1_000_000 -> String.format("%.1fM views", n / 1_000_000.0)
-        n >= 1_000 -> String.format("%.1fK views", n / 1_000.0)
-        else -> "$n views"
+        n >= 1_000_000 -> String.format("%.1f مليون مشاهدة", n / 1_000_000.0)
+        n >= 1_000 -> String.format("%.1f ألف مشاهدة", n / 1_000.0)
+        else -> "$n مشاهدة"
     }
 }
 
