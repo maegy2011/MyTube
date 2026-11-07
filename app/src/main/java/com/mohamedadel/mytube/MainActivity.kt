@@ -17,6 +17,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +63,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -486,6 +492,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             )
             }
         },
+        bottomBar = {
+            // Mini-player: always-visible answer to "which video is playing now" + quick control from anywhere in the list
+            if (!isInPip && playing != null) {
+                MiniPlayer(
+                    video = playing!!,
+                    isPlaying = isPlaying,
+                    positionMs = playerPositionMs,
+                    durationMs = playerDurationMs,
+                    onToggle = {
+                        playerError = null
+                        if (player?.isPlaying == true) player?.pause() else player?.play()
+                    },
+                    onTap = {
+                        // jump the list to the currently playing row
+                        scope.launch {
+                            val cur = playing ?: return@launch
+                            val idx = results.indexOfFirst { it.id == cur.id || (it.url != null && it.url == cur.url) }
+                            if (idx >= 0) try { listState.scrollToItem(idx) } catch (_: Exception) { }
+                        }
+                    }
+                )
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background
     ) { pad ->
         if (isInPip) {
@@ -788,6 +817,69 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
 }
 
 @Composable
+fun EqualizerBars(playing: Boolean) {
+    // animated sound bars while playing, frozen mid-height while paused
+    if (!playing) {
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            repeat(3) {
+                Box(modifier = Modifier.width(3.dp).height(8.dp).background(Color.White, RoundedCornerShape(1.dp)))
+            }
+        }
+        return
+    }
+    val t = rememberInfiniteTransition(label = "eq")
+    val h1 by t.animateFloat(4f, 16f, infiniteRepeatable(tween(380), RepeatMode.Reverse), label = "eq1")
+    val h2 by t.animateFloat(14f, 5f, infiniteRepeatable(tween(520), RepeatMode.Reverse), label = "eq2")
+    val h3 by t.animateFloat(6f, 13f, infiniteRepeatable(tween(450), RepeatMode.Reverse), label = "eq3")
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        listOf(h1, h2, h3).forEach { h ->
+            Box(modifier = Modifier.width(3.dp).height(h.dp).background(Color.White, RoundedCornerShape(1.dp)))
+        }
+    }
+}
+
+@Composable
+fun MiniPlayer(
+    video: VideoItem,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    onToggle: () -> Unit,
+    onTap: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 3.dp
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onTap).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.size(48.dp, 32.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = video.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = video.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                EqualizerBars(playing = isPlaying)
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onToggle) {
+                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            if (durationMs > 0) {
+                LinearProgressIndicator(
+                    progress = { (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun SearchRow(v: VideoItem, isCurrent: Boolean, isLoading: Boolean, isPlaying: Boolean, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
@@ -798,17 +890,21 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isLoading: Boolean, isPlaying: B
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(132.dp, 74.dp)) {
                 AsyncImage(model = v.thumbnail, contentDescription = v.title, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-                // play icon overlay on thumbnail (no spinner on list)
+                // current row: animated equalizer (dances while playing, frozen while paused); others: plain play icon
                 Box(
                     modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.18f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
+                    if (isCurrent) {
+                        EqualizerBars(playing = isPlaying)
+                    } else {
+                        Icon(
+                            Icons.Filled.PlayArrow,
+                            contentDescription = "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
                 v.durationSec?.let { dur ->
                     Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.75f)) {
