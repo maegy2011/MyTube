@@ -585,7 +585,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     // Explicit close: stops audio and clears the player (X button only).
     fun closePlayer() {
-        try { player?.pause() } catch (_: Exception) { }
+        // stop + drop the loaded item: otherwise the MediaSession notification keeps
+        // showing the last video's data after close (stale notification bug).
+        try { player?.stop() } catch (_: Exception) { }
+        try { player?.clearMediaItems() } catch (_: Exception) { }
         playing = null
         streamData = null
         playerExpanded = false
@@ -1762,6 +1765,12 @@ fun PlayerArea(
                 } else {
                     AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
+                }
+                // Thumbnail while the stream loads (video mode): the PlayerView surface is black
+                // until the first frame decodes — show the cover instead of a black box.
+                // Drawn only during loading (transient; taps do nothing useful yet anyway).
+                if (playerLoading && quality != "audio-only (default)" && errorMsg == null && video.thumbnail != null) {
+                    AsyncImage(model = video.thumbnail, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
                 // center state: error > loading > big play/pause button.
                 // nativeOnly: NO overlay (not even loading) — anything drawn over
