@@ -63,7 +63,6 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.media3.common.ForwardingPlayer
-import androidx.media3.common.Player
 import androidx.media3.common.util.RepeatModeUtil
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
@@ -833,6 +832,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onClose = { closePlayer() },
                     isFullscreen = isFullscreen,
                     onToggleFullscreen = { setFullscreen(!isFullscreen) },
+                    onSetMode = { setMode(it) },
+                    onSetShuffle = { setShuffle(it) },
                     audioTracks = streamData?.audioTracks ?: emptyList(),
                     audioIdx = audioTrackIdx,
                     onAudioTrack = { i ->
@@ -1599,6 +1600,8 @@ fun PlayerArea(
     playMode: String = "order",
     playModeLabel: String = "بالترتيب",
     shuffleOn: Boolean = false,
+    onSetMode: (String) -> Unit = {},
+    onSetShuffle: (Boolean) -> Unit = {},
     onCycleMode: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
     onQueue: () -> Unit = {},
@@ -1651,10 +1654,10 @@ fun PlayerArea(
                                 // Wrapped player: native prev/next/shuffle/repeat drive OUR queue/modes
                                 // (single-item timeline would leave them dead otherwise).
                                 val wrapped = object : ForwardingPlayer(player!!) {
-                                    override fun seekToNext() { playNextInQueue() }
-                                    override fun seekToPrevious() { playPrevInQueue() }
+                                    override fun seekToNext() { onNext() }
+                                    override fun seekToPrevious() { onPrev() }
                                     override fun setRepeatMode(m: Int) {
-                                        setMode(when (m) {
+                                        onSetMode(when (m) {
                                             Player.REPEAT_MODE_ONE -> "repeatOne"
                                             Player.REPEAT_MODE_ALL -> "repeatAll"
                                             else -> "order"
@@ -1665,7 +1668,7 @@ fun PlayerArea(
                                         "repeatAll" -> Player.REPEAT_MODE_ALL
                                         else -> Player.REPEAT_MODE_OFF
                                     }
-                                    override fun setShuffleModeEnabled(b: Boolean) { setShuffle(b) }
+                                    override fun setShuffleModeEnabled(b: Boolean) { onSetShuffle(b) }
                                     override fun getShuffleModeEnabled(): Boolean = shuffleOn
                                     override fun getAvailableCommands(): Player.Commands =
                                         super.getAvailableCommands().buildUpon()
