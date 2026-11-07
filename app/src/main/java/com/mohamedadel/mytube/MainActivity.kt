@@ -337,7 +337,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityRank(it) }
             quals.addAll(sorted)
             qualityList = quals
-            val defaultQ = if (quals.contains("auto")) "auto" else quals.getOrElse(2) { "audio-only (default)" }
+            val defaultQ = quals.getOrElse(2) { "audio-only (default)" }
             quality = defaultQ
             applyQuality(defaultQ, s, player)
         }
@@ -356,9 +356,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     if (showSplash) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                androidx.compose.ui.res.painterResource(id = com.mohamedadel.mytube.R.drawable.ic_launcher_foreground)?.let { p ->
+                    Icon(painter = p, contentDescription = "MyTube", tint = Color.White, modifier = Modifier.size(96.dp))
+                    Spacer(Modifier.height(12.dp))
+                }
                 Text("MyTube", style = MaterialTheme.typography.displayMedium, color = Color.White)
                 Spacer(Modifier.height(8.dp))
-                Text("v0.1.2", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
+                Text("v0.1.3", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
                 Spacer(Modifier.height(24.dp))
                 Text("© MyTube. All rights reserved.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
                 Spacer(Modifier.height(4.dp))
