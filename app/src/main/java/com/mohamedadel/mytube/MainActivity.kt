@@ -659,6 +659,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (openPlaylistId != null) openPlaylistId = null else showPlaylists = false
             return true
         }
+        if (showQueue) {
+            showQueue = false
+            return true
+        }
         if (showSettings) {
             showSettings = false
             return true
@@ -673,7 +677,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showSettings || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showQueue || showSettings || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -960,6 +964,34 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
             if (!isFullscreen) {
             when {
+                // queue button opens this panel INSTEAD of the suggestions/results below the video
+                showQueue -> {
+                    QueuePanel(
+                        items = queue,
+                        onMove = { idx, dir ->
+                            val j = idx + dir
+                            if (idx in queue.indices && j in queue.indices) {
+                                val m = queue.toMutableList()
+                                val t = m[idx]; m[idx] = m[j]; m[j] = t
+                                queue = m
+                                queueIndex = m.indexOfFirst { it.id == playing?.id || (it.url != null && it.url == playing?.url) }
+                            }
+                        },
+                        onRemove = { idx ->
+                            if (idx in queue.indices) {
+                                queue = queue.toMutableList().also { it.removeAt(idx) }
+                            }
+                        },
+                        onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
+                        onSave = { name ->
+                            scope.launch {
+                                val pid = dao.insertPlaylist(PlaylistEntity(name = name))
+                                dao.insertItems(queue.mapIndexed { i, v -> v.toEntity(pid, i) })
+                            }
+                        },
+                        onDismiss = { showQueue = false }
+                    )
+                }
                 showSettings -> {
                     SettingsScreen(
                         subLang = prefSubLang,
@@ -1110,34 +1142,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 }
             }
-            }
-            // queue manager dialog: reorder / remove items of the current list + save it as a playlist
-            if (showQueue) {
-                QueueDialog(
-                    items = queue,
-                    onMove = { idx, dir ->
-                        val j = idx + dir
-                        if (idx in queue.indices && j in queue.indices) {
-                            val m = queue.toMutableList()
-                            val t = m[idx]; m[idx] = m[j]; m[j] = t
-                            queue = m
-                            queueIndex = m.indexOfFirst { it.id == playing?.id || (it.url != null && it.url == playing?.url) }
-                        }
-                    },
-                    onRemove = { idx ->
-                        if (idx in queue.indices) {
-                            queue = queue.toMutableList().also { it.removeAt(idx) }
-                        }
-                    },
-                    onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
-                    onSave = { name ->
-                        scope.launch {
-                            val pid = dao.insertPlaylist(PlaylistEntity(name = name))
-                            dao.insertItems(queue.mapIndexed { i, v -> v.toEntity(pid, i) })
-                        }
-                    },
-                    onDismiss = { showQueue = false }
-                )
             }
             // add-to-playlist picker for a single video
             pickFor?.let { v ->
@@ -1514,7 +1518,9 @@ fun PlaylistsScreen(
 
 // Current-queue manager: reorder / remove / play-from / save-as-playlist.
 @Composable
-fun QueueDialog(
+// Inline queue panel: rendered IN PLACE of the suggestions/results below the video
+// (no popup dialog). Same powers: reorder, remove, play-from, save as playlist, close.
+fun QueuePanel(
     items: List<VideoItem>,
     onMove: (Int, Int) -> Unit,
     onRemove: (Int) -> Unit,
@@ -1523,44 +1529,50 @@ fun QueueDialog(
     onDismiss: () -> Unit
 ) {
     var nameDraft by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("القائمة الحالية (${items.size})") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (items.isEmpty()) {
-                    Text("لا توجد عناصر في القائمة الحالية", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        itemsIndexed(items, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { idx, v ->
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
-                                Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
-                                IconButton(onClick = { onMove(idx, -1) }, enabled = idx > 0, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Rounded.ArrowUpward, contentDescription = "لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                }
-                                IconButton(onClick = { onMove(idx, 1) }, enabled = idx < items.size - 1, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Rounded.ArrowDownward, contentDescription = "لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                }
-                                IconButton(onClick = { onRemove(idx) }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Rounded.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                }
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 2.dp
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("القائمة الحالية (${items.size})", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") }
+            }
+            Spacer(Modifier.height(4.dp))
+            if (items.isEmpty()) {
+                Text("لا توجد عناصر في القائمة الحالية", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    itemsIndexed(items, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { idx, v ->
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
+                            Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
+                            IconButton(onClick = { onMove(idx, -1) }, enabled = idx > 0, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Rounded.ArrowUpward, contentDescription = "لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            }
+                            IconButton(onClick = { onMove(idx, 1) }, enabled = idx < items.size - 1, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Rounded.ArrowDownward, contentDescription = "لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            }
+                            IconButton(onClick = { onRemove(idx) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("احفظ القائمة باسم…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
-        },
-        confirmButton = {
-            androidx.compose.material3.TextButton(onClick = {
-                val n = nameDraft.trim()
-                if (n.isNotEmpty() && items.isNotEmpty()) { onSave(n); nameDraft = "" }
-            }) { Text("حفظ القائمة") }
-        },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") } }
-    )
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("احفظ القائمة باسم…") }, singleLine = true, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.material3.Button(onClick = {
+                    val n = nameDraft.trim()
+                    if (n.isNotEmpty() && items.isNotEmpty()) { onSave(n); nameDraft = "" }
+                }) { Text("حفظ") }
+            }
+        }
+    }
 }
 
 // Long-press menu for a video row.
