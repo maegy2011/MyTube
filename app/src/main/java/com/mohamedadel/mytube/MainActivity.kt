@@ -230,7 +230,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
         derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = listState.layoutInfo.totalItemsCount
-            last >= total - 2 && total > 0
+            total > 0 && last >= total - 3
         }
     }
     LaunchedEffect(shouldLoadMore) {
@@ -286,6 +286,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
         val meta = MediaMetadata.Builder()
             .setTitle(playing?.title ?: s.title)
             .setArtist(playing?.channel)
+            .setAlbumTitle("MyTube")
+            .setDescription("© MyTube")
             .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
             .build()
         val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).build()
@@ -357,8 +359,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
             }
         }
     ) {
+    val isInPip = (ctx as? android.app.Activity)?.isInPictureInPictureMode == true
     Scaffold(
         topBar = {
+            if (!isInPip) {
             TopAppBar(
                 title = {
                     Text("MyTube", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
@@ -370,28 +374,51 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
+            }
         },
         bottomBar = {
+            if (!isInPip) {
             NavigationBar {
                 NavigationBarItem(selected = selectedTab == 0, onClick = { selectedTab = 0 }, icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Home") })
                 NavigationBarItem(selected = selectedTab == 1, onClick = { selectedTab = 1 }, icon = { Icon(Icons.Filled.Search, null) }, label = { Text("Search") })
                 NavigationBarItem(selected = selectedTab == 2, onClick = { selectedTab = 2 }, icon = { Icon(Icons.Filled.VideoLibrary, null) }, label = { Text("Library") })
             }
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { pad ->
+        if (isInPip) {
+            Box(Modifier.padding(pad).fillMaxSize()) {
+                val cur = playing
+                if (cur != null && quality != "audio-only (default)" && player != null) {
+                    AndroidView(
+                        factory = { c ->
+                            PlayerView(c).apply {
+                                this.player = player
+                                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                                useController = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AsyncImage(model = cur?.thumbnail, contentDescription = cur?.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+            }
+        } else {
         Column(Modifier.padding(pad).fillMaxSize()) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
                 placeholder = { Text("Search videos, channels…") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                leadingIcon = {
+                    if (loading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    }
+                },
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (loading) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(4.dp))
-                        } else if (query.isNotEmpty()) {
+                        if (!loading && query.isNotEmpty()) {
                             IconButton(onClick = { query = ""; svm.onQueryChange(""); showSuggestions = false }) {
                                 Icon(Icons.Filled.Clear, contentDescription = "Clear")
                             }
@@ -506,10 +533,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
                                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                                 }
                             }
+                        } else if (hasMore) {
+                            item {
+                                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    androidx.compose.material3.Button(onClick = {
+                                        loadingMore = true
+                                        scope.launch {
+                                            val page = YouTubeRepo.search(currentQuery, nextPage)
+                                            results = results + page.items
+                                            nextPage = page.nextPage
+                                            hasMore = page.hasNext
+                                            loadingMore = false
+                                        }
+                                    }) { Text("Load more") }
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
         }
     }
     }
