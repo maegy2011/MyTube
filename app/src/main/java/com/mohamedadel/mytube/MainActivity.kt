@@ -23,6 +23,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -230,6 +231,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val ctx = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    // explicit queue: ONLY what the user queued (play-single => one item; play-all => results copy; long-press => insert/append).
+    // Search results are display-only; nothing joins the queue implicitly.
+    var queue by remember { mutableStateOf(emptyList<VideoItem>()) }
     // playlists (Room) + playback modes. Modes persist in prefs; playlists persist in Room.
     val db = remember {
         Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
@@ -244,6 +248,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }.collectAsState(initial = emptyList())
     var showQueue by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
+    var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
     var playMode by remember { mutableStateOf(prefs.getString("play_mode", "order") ?: "order") } // order | repeatAll | repeatOne
     var shuffleOn by remember { mutableStateOf(prefs.getBoolean("shuffle", false)) }
@@ -341,11 +346,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Open video WITHOUT auto-play: default quality audio-only, prepared paused. User taps play explicitly.
     // queue=true means this playback belongs to the user-started queue ("play all" / next / prev).
     // expand=false keeps the current collapsed/expanded state (queue advancing while browsing).
-    fun playVideo(v: VideoItem, queue: Boolean = false, expand: Boolean = true) {
+    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true) {
         playing = v
         if (expand) playerExpanded = true
-        autoAdvance = queue
-        queueIndex = results.indexOfFirst { it.id == v.id || (it.url != null && it.url == v.url) }
+        if (!inQueue) {
+            // single tap: this video alone is the queue (no implicit follow-up)
+            queue = listOf(v)
+            autoAdvance = false
+        } else {
+            autoAdvance = true
+        }
+        queueIndex = queue.indexOfFirst { it.id == v.id || (it.url != null && it.url == v.url) }
         playerLoading = true
         playerError = null
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
@@ -372,23 +383,36 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Queue navigation (suggestion #3): next/previous within the result list.
     fun playNextInQueue() {
         val i = queueIndex
-        val next = if (i >= 0) results.getOrNull(i + 1) else null
+        val next = if (i >= 0) queue.getOrNull(i + 1) else null
         // expand=playerExpanded: advancing from notification/lock while browsing must not yank the full player open
-        if (next != null) playVideo(next, queue = true, expand = playerExpanded) else autoAdvance = false
+        if (next != null) playVideo(next, inQueue = true, expand = playerExpanded) else autoAdvance = false
     }
     fun playPrevInQueue() {
-        val prev = if (queueIndex > 0) results.getOrNull(queueIndex - 1) else null
-        if (prev != null) playVideo(prev, queue = true, expand = playerExpanded)
+        val prev = if (queueIndex > 0) queue.getOrNull(queueIndex - 1) else null
+        if (prev != null) playVideo(prev, inQueue = true, expand = playerExpanded)
     }
     // playback modes: random pick (shuffle) + wrap-around (repeat all)
     fun playRandomInQueue() {
-        if (results.size < 2) { if (results.isNotEmpty()) playVideo(results[0], queue = true, expand = playerExpanded); return }
+        if (queue.size < 2) { if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded); return }
         var n = queueIndex
-        while (n == queueIndex) n = (0 until results.size).random()
-        playVideo(results[n], queue = true, expand = playerExpanded)
+        while (n == queueIndex) n = (0 until queue.size).random()
+        playVideo(queue[n], inQueue = true, expand = playerExpanded)
     }
     fun playFirstInQueue() {
-        if (results.isNotEmpty()) playVideo(results[0], queue = true, expand = playerExpanded) else autoAdvance = false
+        if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded) else autoAdvance = false
+    }
+    // explicit queue building (long-press menu)
+    fun playNowAlone(v: VideoItem) { playVideo(v, inQueue = false, expand = true) }
+    fun enqueueNext(v: VideoItem) {
+        val q = queue.toMutableList()
+        val at = if (queueIndex >= 0) queueIndex + 1 else q.size
+        q.add(at.coerceIn(0, q.size), v)
+        queue = q
+        if (playing == null) { queueIndex = 0; playVideo(v, inQueue = true, expand = true) }
+    }
+    fun enqueueLast(v: VideoItem) {
+        queue = queue + v
+        if (playing == null) playVideo(v, inQueue = true, expand = true)
     }
     fun modeLabel(m: String): String = when (m) {
         "repeatAll" -> "تكرار الكل"
@@ -464,8 +488,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         playMode == "repeatOne" -> try { player?.seekTo(0L); player?.play() } catch (_: Exception) { }
                         shuffleOn -> playRandomInQueue()
                         playMode == "repeatAll" -> {
-                            val nxt = if (queueIndex >= 0) results.getOrNull(queueIndex + 1) else null
-                            if (nxt != null) playVideo(nxt, queue = true) else playFirstInQueue()
+                            val nxt = if (queueIndex >= 0) queue.getOrNull(queueIndex + 1) else null
+                            if (nxt != null) playVideo(nxt, inQueue = true) else playFirstInQueue()
                         }
                         else -> playNextInQueue()
                     }
@@ -623,11 +647,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     },
                     onClose = { closePlayer() },
                     onTap = {
-                        // reopen the full player + jump the list to the currently playing row
+                        // reopen the full player + jump the queue to the currently playing row
                         playerExpanded = true
                         scope.launch {
                             val cur = playing ?: return@launch
-                            val idx = results.indexOfFirst { it.id == cur.id || (it.url != null && it.url == cur.url) }
+                            val idx = queue.indexOfFirst { it.id == cur.id || (it.url != null && it.url == cur.url) }
                             if (idx >= 0) try { listState.scrollToItem(idx) } catch (_: Exception) { }
                         }
                     }
@@ -799,9 +823,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 if (rows.isNotEmpty()) {
                                     showPlaylists = false
                                     openPlaylistId = null
-                                    results = rows.map { it.toVideoItem() }
+                                    val list = rows.map { it.toVideoItem() }
+                                    results = list
+                                    queue = list
                                     currentQuery = ""
-                                    playVideo(results[0], queue = true)
+                                    playVideo(list[0], inQueue = true)
                                 }
                             }
                         },
@@ -810,8 +836,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             if (idx in list.indices) {
                                 showPlaylists = false
                                 results = list
+                                queue = list
                                 currentQuery = ""
-                                playVideo(list[idx], queue = true)
+                                playVideo(list[idx], inQueue = true)
                             }
                         },
                         onCreate = { name ->
@@ -867,8 +894,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 Text("وجدنا ${results.size} نتيجة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.weight(1f))
                                 androidx.compose.material3.Button(onClick = {
-                                    if (results.isNotEmpty()) playVideo(results[0], queue = true)
-                                }) { Text(if (autoAdvance) "القائمة تعمل" else "تشغيل الكل") }
+                                    // explicit choice: the whole result list becomes the queue
+                                    if (results.isNotEmpty()) { queue = results; playVideo(results[0], inQueue = true) }
+                                }) { Text(if (autoAdvance) "القائمة تعمل (${queue.size})" else "تشغيل الكل") }
                             }
                         }
                         itemsIndexed(items = results, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
@@ -877,6 +905,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 isCurrent = playing?.id == v.id || playing?.url == v.url,
                                 isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
                                 onClick = { playVideo(v) },
+                                onLongClick = { optionsFor = it },
                                 onAdd = { pickFor = v }
                             )
                         }
@@ -917,26 +946,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // queue manager dialog: reorder / remove items of the current list + save it as a playlist
             if (showQueue) {
                 QueueDialog(
-                    items = results,
+                    items = queue,
                     onMove = { idx, dir ->
                         val j = idx + dir
-                        if (idx in results.indices && j in results.indices) {
-                            val m = results.toMutableList()
+                        if (idx in queue.indices && j in queue.indices) {
+                            val m = queue.toMutableList()
                             val t = m[idx]; m[idx] = m[j]; m[j] = t
-                            results = m
+                            queue = m
                             queueIndex = m.indexOfFirst { it.id == playing?.id || (it.url != null && it.url == playing?.url) }
                         }
                     },
                     onRemove = { idx ->
-                        if (idx in results.indices) {
-                            results = results.toMutableList().also { it.removeAt(idx) }
+                        if (idx in queue.indices) {
+                            queue = queue.toMutableList().also { it.removeAt(idx) }
                         }
                     },
-                    onPlayFrom = { idx -> if (idx in results.indices) playVideo(results[idx], queue = true) },
+                    onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
                     onSave = { name ->
                         scope.launch {
                             val pid = dao.insertPlaylist(PlaylistEntity(name = name))
-                            dao.insertItems(results.mapIndexed { i, v -> v.toEntity(pid, i) })
+                            dao.insertItems(queue.mapIndexed { i, v -> v.toEntity(pid, i) })
                         }
                     },
                     onDismiss = { showQueue = false }
@@ -962,6 +991,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     },
                     onDismiss = { pickFor = null }
+                )
+            }
+            // long-press video options: play now / play next / queue end / add to playlist
+            optionsFor?.let { v ->
+                VideoOptionsDialog(
+                    video = v,
+                    onPlayNow = { playNowAlone(v); optionsFor = null },
+                    onPlayNext = { enqueueNext(v); optionsFor = null },
+                    onQueueEnd = { enqueueLast(v); optionsFor = null },
+                    onAddToPlaylist = { pickFor = v; optionsFor = null },
+                    onDismiss = { optionsFor = null }
                 )
             }
         }
@@ -1286,6 +1326,53 @@ fun QueueDialog(
 
 // Pick a playlist for one video (or create a new one on the spot).
 @Composable
+// Long-press menu for a video row.
+@Composable
+fun VideoOptionsDialog(
+    video: VideoItem,
+    onPlayNow: () -> Unit,
+    onPlayNext: () -> Unit,
+    onQueueEnd: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("خيارات الفيديو", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                val items = listOf(
+                    "تشغيل الآن" to onPlayNow,
+                    "تشغيل التالي" to onPlayNext,
+                    "إضافة لآخر القائمة الحالية" to onQueueEnd,
+                    "إضافة إلى قائمة تشغيل…" to onAddToPlaylist
+                )
+                items.forEach { (label, action) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = action).padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val icon = when (label) {
+                            "تشغيل الآن" -> Icons.Rounded.PlayArrow
+                            "تشغيل التالي" -> Icons.Rounded.SkipNext
+                            "إضافة لآخر القائمة الحالية" -> Icons.Rounded.QueueMusic
+                            else -> Icons.Rounded.PlaylistAdd
+                        }
+                        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
+        },
+        confirmButton = { },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") } }
+    )
+}
+
+@Composable
 fun PlaylistPickerDialog(
     video: VideoItem,
     playlists: List<PlaylistWithCount>,
@@ -1398,9 +1485,9 @@ fun MiniPlayer(
 }
 
 @Composable
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}, onLongClick: (VideoItem) -> Unit = {}) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) }),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.elevatedCardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
