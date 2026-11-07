@@ -1030,7 +1030,6 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
     }
 }
 
-@Composable
 // ============ Playlists (Room) UI ============
 
 @Composable
@@ -1306,6 +1305,7 @@ fun PlaylistPickerDialog(
     )
 }
 
+@Composable
 fun EqualizerBars(playing: Boolean) {
     // animated sound bars while playing, frozen mid-height while paused
     if (!playing) {
