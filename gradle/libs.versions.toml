@@ -1,0 +1,30 @@
+[versions]
+agp = "8.5.2"
+kotlin = "2.0.20"
+coreKtx = "1.13.1"
+lifecycle = "2.8.6"
+activityCompose = "1.9.2"
+composeBom = "2024.10.00"
+media3 = "1.4.1"
+coil = "2.6.0"
+paging = "3.3.5"
+coroutines = "1.8.1"
+okhttp = "4.12.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
+media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
+paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
+coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+newpipe-extractor = { group = "com.github.TeamNewPipe", name = "NewPipeExtractor", version = "+" }
