@@ -1306,7 +1306,6 @@ fun PlaylistPickerDialog(
     )
 }
 
-@Composable
 fun EqualizerBars(playing: Boolean) {
     // animated sound bars while playing, frozen mid-height while paused
     if (!playing) {
