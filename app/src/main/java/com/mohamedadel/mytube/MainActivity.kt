@@ -490,7 +490,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // explicit queue building (long-press menu)
     fun playNowAlone(v: VideoItem) { playVideo(v, inQueue = false, expand = true) }
+    // explicit queue building only: duplicates are refused silently (no dupes in the working queue)
+    fun isQueued(v: VideoItem): Boolean =
+        queue.any { it.id == v.id || (it.url != null && it.url == v.url) }
     fun enqueueNext(v: VideoItem) {
+        if (isQueued(v)) return
         val q = queue.toMutableList()
         val at = if (queueIndex >= 0) queueIndex + 1 else q.size
         q.add(at.coerceIn(0, q.size), v)
@@ -498,6 +502,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (playing == null) { queueIndex = 0; playVideo(v, inQueue = true, expand = true) }
     }
     fun enqueueLast(v: VideoItem) {
+        if (isQueued(v)) return
         queue = queue + v
         if (playing == null) playVideo(v, inQueue = true, expand = true)
     }
@@ -1087,16 +1092,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        // queue entry point (suggestion #3): play the whole result list sequentially, audio-only, no autoplay until tapped
+                        // results header: count only — "play all" is gone. The working queue is built
+                        // explicitly (row + button, long-press) and started from the queue panel.
                         item {
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("وجدنا ${results.size} نتيجة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.weight(1f))
-                                androidx.compose.material3.Button(onClick = {
-                                    // explicit choice: the whole result list becomes the queue
-                                    if (results.isNotEmpty()) { queue = results; playVideo(results[0], inQueue = true) }
-                                }) { Text(if (autoAdvance) "القائمة تعمل (${queue.size})" else "تشغيل الكل") }
-                            }
+                            Text("وجدنا ${results.size} نتيجة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         itemsIndexed(items = results, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
                             SearchRow(
@@ -1105,7 +1104,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
                                 onClick = { playVideo(v) },
                                 onLongClick = { optionsFor = it },
-                                onAdd = { pickFor = v }
+                                onAdd = { enqueueLast(it) }
                             )
                         }
                         if (loadingMore) {
@@ -1549,6 +1548,10 @@ fun QueuePanel(
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
                             Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
+                            // explicit "play from here": sequential playback starts ONLY from this button
+                            IconButton(onClick = { onPlayFrom(idx) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل من هنا", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            }
                             IconButton(onClick = { onMove(idx, -1) }, enabled = idx > 0, modifier = Modifier.size(32.dp)) {
                                 Icon(Icons.Rounded.ArrowUpward, contentDescription = "لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
@@ -1782,7 +1785,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = { onAdd(v) }) {
-                    Icon(Icons.Rounded.PlaylistAdd, contentDescription = "إضافة إلى قائمة تشغيل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.Add, contentDescription = "إضافة لآخر القائمة الحالية", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
             }
         }
