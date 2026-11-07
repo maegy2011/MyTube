@@ -2,22 +2,49 @@ package com.mohamedadel.mytube.data.youtube
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import java.net.URLEncoder
 
 data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null)
 data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val title: String? = null)
 data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false)
 
 object YouTubeRepo {
+    private val client = OkHttpClient()
     private fun service() = NewPipe.getService("YouTube")
     init { runCatching { NewPipe.init(NewPipeDownloaderImpl()) } }
 
     suspend fun suggestions(query: String): List<String> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList<String>()
+        // Try NewPipe first
         try {
-            service().suggestionExtractor.suggestionList(query)
+            val list = service().suggestionExtractor.suggestionList(query)
+            if (list.isNotEmpty()) return@withContext list.take(8)
+        } catch (_: Exception) { }
+        // Fallback: Google YouTube suggest (works for Arabic and other scripts)
+        try {
+            val url = "https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=" +
+                URLEncoder.encode(query, "UTF-8")
+            val req = Request.Builder().url(url)
+                .header("Accept-Language", "ar,en;q=0.9")
+                .header("User-Agent", "Mozilla/5.0").build()
+            client.newCall(req).execute().use { r ->
+                val body = r.body?.string() ?: ""
+                val arr = JSONArray(body)
+                val sugg = arr.optJSONArray(1) ?: return@withContext emptyList()
+                val out = mutableListOf<String>()
+                for (i in 0 until sugg.length()) {
+                    val item = sugg.get(i)
+                    val text = if (item is JSONArray) item.optString(0) else item.toString()
+                    if (text.isNotBlank()) out.add(text)
+                }
+                out.take(8)
+            }
         } catch (_: Exception) { emptyList() }
     }
 

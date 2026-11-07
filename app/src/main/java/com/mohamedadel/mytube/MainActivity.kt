@@ -209,7 +209,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
             val s = YouTubeRepo.stream(v.url ?: return@launch)
             streamData = s
             val quals = mutableListOf("audio-only (default)", "auto")
-            val sorted = s.videoUrlByQuality.keys.sortedByDescending { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+            val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityRank(it) }
             quals.addAll(sorted)
             qualityList = quals
             quality = "audio-only (default)"
@@ -235,11 +235,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                 placeholder = { Text("Search videos, channels…") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
-                    if (loading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                    } else if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = ""; svm.onQueryChange(""); showSuggestions = false }) {
-                            Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(4.dp))
+                        } else if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = ""; svm.onQueryChange(""); showSuggestions = false }) {
+                                Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                            }
+                        }
+                        IconButton(onClick = { doSearch(query) }) {
+                            Icon(Icons.Filled.Search, contentDescription = "Search")
                         }
                     }
                 },
@@ -259,20 +265,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                 ),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.End
-            ) {
-                androidx.compose.material3.Button(
-                    onClick = { doSearch(query) },
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Search")
-                }
-            }
 
             AnimatedVisibility(visible = showSuggestions && suggestions.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
                 Surface(
@@ -347,7 +339,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         items(items = results, key = { it.id ?: it.url ?: it.title ?: "" }) { v ->
-                            SearchRow(v = v, onClick = { playVideo(v) })
+                            SearchRow(
+                                v = v,
+                                isCurrent = playing?.id == v.id || playing?.url == v.url,
+                                isLoading = playerLoading && (playing?.id == v.id || playing?.url == v.url),
+                                isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
+                                onClick = { playVideo(v) }
+                            )
                         }
                         if (loadingMore) {
                             item {
@@ -361,6 +359,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
             }
         }
     }
+}
+
+private fun qualityRank(q: String): Int {
+    val lower = q.lowercase()
+    if (lower.contains("4k") || lower.contains("2160")) return 2160
+    if (lower.contains("1440")) return 1440
+    if (lower.contains("1080")) return 1080
+    if (lower.contains("720")) return 720
+    if (lower.contains("480")) return 480
+    if (lower.contains("360")) return 360
+    if (lower.contains("240")) return 240
+    if (lower.contains("144")) return 144
+    return q.filter { it.isDigit() }.toIntOrNull() ?: 0
 }
 
 fun autoUrl(s: StreamData): String? {
@@ -409,16 +420,32 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
 }
 
 @Composable
-fun SearchRow(v: VideoItem, onClick: () -> Unit) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isLoading: Boolean, isPlaying: Boolean, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(132.dp, 74.dp)) {
                 AsyncImage(model = v.thumbnail, contentDescription = v.title, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                // play/pause/spinner overlay on thumbnail
+                Box(
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.25f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            if (isCurrent && isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isCurrent && isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
                 v.durationSec?.let { dur ->
                     Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.75f)) {
                         Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
