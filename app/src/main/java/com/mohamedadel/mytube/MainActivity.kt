@@ -25,6 +25,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1915,16 +1917,20 @@ fun PlayerArea(
                 if (queueOn) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "▶ القائمة تعمل • $playModeLabel" + if (shuffleOn) " • عشوائي" else "",
+                        "▶ تعمل • $playModeLabel" + if (shuffleOn) " • عشوائي" else "",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
                 // outer row is always visible: quality, working queue nav, queue manager, volume, PiP, close.
                 // Repeat/shuffle live ONLY on the native controller (single source of truth via the wrapped player).
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Horizontally scrollable + compact: NOTHING goes off-screen on narrow devices.
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box {
-                        FilterChip(selected = false, onClick = { expanded = true }, label = { Text(quality) })
+                        FilterChip(selected = false, onClick = { expanded = true }, label = { Text(shortQuality(quality)) })
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             qualities.forEach { q -> DropdownMenuItem(text = { Text(q) }, onClick = { onQuality(q); expanded = false }) }
                         }
@@ -1985,6 +1991,16 @@ fun PlayerArea(
             }
             }
         }
+    }
+}
+
+// Short chip labels: the raw quality strings are long ("audio-only (default)", "auto • 720p")
+// and pushed buttons off-screen. Display stays compact; the dropdown keeps full names.
+private fun shortQuality(q: String): String {
+    return when {
+        q.startsWith("audio-only") -> "🔊 صوت"
+        q.startsWith("auto") -> "⚡ تلقائي"
+        else -> q.substringBefore(" • ").ifBlank { q }
     }
 }
 
