@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -45,4 +46,6 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.okhttp)
     implementation(libs.newpipe.extractor)
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)
 }

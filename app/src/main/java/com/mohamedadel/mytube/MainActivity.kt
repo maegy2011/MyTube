@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,6 +52,17 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.PictureInPicture
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.PlaylistPlay
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -65,6 +77,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -123,7 +136,15 @@ import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.playback.PlaybackService
+import androidx.room.Room
+import com.mohamedadel.mytube.data.local.MyTubeDb
+import com.mohamedadel.mytube.data.local.PlaylistEntity
+import com.mohamedadel.mytube.data.local.PlaylistItemEntity
+import com.mohamedadel.mytube.data.local.PlaylistWithCount
+import com.mohamedadel.mytube.data.local.toEntity
+import com.mohamedadel.mytube.data.local.toVideoItem
 import com.mohamedadel.mytube.ui.icons.myTubeLogo
+import kotlinx.coroutines.flow.flowOf
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
 import kotlinx.coroutines.launch
@@ -195,6 +216,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // queue (suggestion #3): sequential playback of the result list, started only by explicit user action
     var autoAdvance by remember { mutableStateOf(false) }
     var queueIndex by remember { mutableStateOf(-1) }
+    // playlists (Room) + playback modes. Modes persist in prefs; playlists persist in Room.
+    val db = remember {
+        Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
+            .fallbackToDestructiveMigration().build()
+    }
+    val dao = remember { db.playlists() }
+    val playlists by dao.observePlaylists().collectAsState(initial = emptyList())
+    var showPlaylists by remember { mutableStateOf(false) }
+    var openPlaylistId by remember { mutableStateOf<Long?>(null) }
+    val openItems by remember(openPlaylistId) {
+        openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
+    }.collectAsState(initial = emptyList())
+    var showQueue by remember { mutableStateOf(false) }
+    var pickFor by remember { mutableStateOf<VideoItem?>(null) }
+    val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
+    var playMode by remember { mutableStateOf(prefs.getString("play_mode", "order") ?: "order") } // order | repeatAll | repeatOne
+    var shuffleOn by remember { mutableStateOf(prefs.getBoolean("shuffle", false)) }
+    fun setMode(m: String) { playMode = m; try { prefs.edit().putString("play_mode", m).apply() } catch (_: Exception) { } }
+    fun setShuffle(b: Boolean) { shuffleOn = b; try { prefs.edit().putBoolean("shuffle", b).apply() } catch (_: Exception) { } }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -331,6 +371,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val prev = if (queueIndex > 0) results.getOrNull(queueIndex - 1) else null
         if (prev != null) playVideo(prev, queue = true)
     }
+    // playback modes: random pick (shuffle) + wrap-around (repeat all)
+    fun playRandomInQueue() {
+        if (results.size < 2) { if (results.isNotEmpty()) playVideo(results[0], queue = true); return }
+        var n = queueIndex
+        while (n == queueIndex) n = (0 until results.size).random()
+        playVideo(results[n], queue = true)
+    }
+    fun playFirstInQueue() {
+        if (results.isNotEmpty()) playVideo(results[0], queue = true) else autoAdvance = false
+    }
+    fun modeLabel(m: String): String = when (m) {
+        "repeatAll" -> "تكرار الكل"
+        "repeatOne" -> "تكرار واحد"
+        else -> "بالترتيب"
+    }
+    fun cycleMode() = setMode(when (playMode) { "order" -> "repeatAll"; "repeatAll" -> "repeatOne"; else -> "order" })
 
     // Connect to PlaybackService for notification/lock-screen controls
     LaunchedEffect(Unit) {
@@ -393,8 +449,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 playerLoading = state == Player.STATE_BUFFERING
                 isPlaying = player?.isPlaying == true
                 if (state == Player.STATE_READY) playerError = null
-                // queue: when a queued track ends, advance to the next result (user started the queue explicitly)
-                if (state == Player.STATE_ENDED && autoAdvance) playNextInQueue()
+                // queue end: repeat one -> replay; shuffle -> random; repeat all -> wrap; order -> next (stops at end)
+                if (state == Player.STATE_ENDED && autoAdvance) {
+                    when {
+                        playMode == "repeatOne" -> try { player?.seekTo(0L); player?.play() } catch (_: Exception) { }
+                        shuffleOn -> playRandomInQueue()
+                        playMode == "repeatAll" -> {
+                            val nxt = if (queueIndex >= 0) results.getOrNull(queueIndex + 1) else null
+                            if (nxt != null) playVideo(nxt, queue = true) else playFirstInQueue()
+                        }
+                        else -> playNextInQueue()
+                    }
+                }
             }
             override fun onIsPlayingChanged(playingFlag: Boolean) {
                 isPlaying = playingFlag
@@ -489,7 +555,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ModalDrawerSheet {
                 Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = true, onClick = { scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
+                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = !showPlaylists, onClick = { showPlaylists = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
+                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { showPlaylists = true; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
             }
         }
     ) {
@@ -681,6 +748,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         streamData?.let { applyQuality(quality, it, player, forceStart = true) }
                     },
                     queueOn = autoAdvance,
+                    playMode = playMode,
+                    playModeLabel = modeLabel(playMode),
+                    shuffleOn = shuffleOn,
+                    onCycleMode = { cycleMode() },
+                    onToggleShuffle = { setShuffle(!shuffleOn) },
+                    onQueue = { showQueue = true },
                     onNext = { playNextInQueue() },
                     onPrev = { playPrevInQueue() },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
@@ -689,6 +762,55 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
 
             when {
+                showPlaylists -> {
+                    PlaylistsScreen(
+                        playlists = playlists,
+                        openId = openPlaylistId,
+                        items = openItems,
+                        onOpen = { openPlaylistId = it },
+                        onCloseItems = { openPlaylistId = null },
+                        onPlayAll = { pid ->
+                            scope.launch {
+                                val rows = dao.itemsOnce(pid)
+                                if (rows.isNotEmpty()) {
+                                    showPlaylists = false
+                                    openPlaylistId = null
+                                    results = rows.map { it.toVideoItem() }
+                                    currentQuery = ""
+                                    playVideo(results[0], queue = true)
+                                }
+                            }
+                        },
+                        onPlayFrom = { idx ->
+                            val list = openItems.map { it.toVideoItem() }
+                            if (idx in list.indices) {
+                                showPlaylists = false
+                                results = list
+                                currentQuery = ""
+                                playVideo(list[idx], queue = true)
+                            }
+                        },
+                        onCreate = { name ->
+                            scope.launch { dao.insertPlaylist(PlaylistEntity(name = name)) }
+                        },
+                        onRename = { pid, name -> scope.launch { dao.rename(pid, name) } },
+                        onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
+                        onMoveItem = { pid, iid, dir ->
+                            scope.launch {
+                                val rows = dao.itemsOnce(pid).toMutableList()
+                                val i = rows.indexOfFirst { it.id == iid }
+                                val j = i + dir
+                                if (i >= 0 && j in rows.indices) {
+                                    val tmp = rows[i]; rows[i] = rows[j]; rows[j] = tmp
+                                    dao.updateItems(rows.mapIndexed { k, r -> r.copy(position = k) })
+                                }
+                            }
+                        },
+                        onDeleteItem = { pid, iid -> scope.launch { dao.deleteItem(pid, iid) } },
+                        onClearItems = { pid -> scope.launch { dao.clearPlaylist(pid) } },
+                        onBack = { showPlaylists = false; openPlaylistId = null }
+                    )
+                }
                 loading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -730,7 +852,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 v = v,
                                 isCurrent = playing?.id == v.id || playing?.url == v.url,
                                 isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
-                                onClick = { playVideo(v) }
+                                onClick = { playVideo(v) },
+                                onAdd = { pickFor = v }
                             )
                         }
                         if (loadingMore) {
@@ -766,6 +889,56 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     }
                 }
+            }
+            // queue manager dialog: reorder / remove items of the current list + save it as a playlist
+            if (showQueue) {
+                QueueDialog(
+                    items = results,
+                    onMove = { idx, dir ->
+                        val j = idx + dir
+                        if (idx in results.indices && j in results.indices) {
+                            val m = results.toMutableList()
+                            val t = m[idx]; m[idx] = m[j]; m[j] = t
+                            results = m
+                            queueIndex = m.indexOfFirst { it.id == playing?.id || (it.url != null && it.url == playing?.url) }
+                        }
+                    },
+                    onRemove = { idx ->
+                        if (idx in results.indices) {
+                            results = results.toMutableList().also { it.removeAt(idx) }
+                        }
+                    },
+                    onPlayFrom = { idx -> if (idx in results.indices) playVideo(results[idx], queue = true) },
+                    onSave = { name ->
+                        scope.launch {
+                            val pid = dao.insertPlaylist(PlaylistEntity(name = name))
+                            dao.insertItems(results.mapIndexed { i, v -> v.toEntity(pid, i) })
+                        }
+                    },
+                    onDismiss = { showQueue = false }
+                )
+            }
+            // add-to-playlist picker for a single video
+            pickFor?.let { v ->
+                PlaylistPickerDialog(
+                    video = v,
+                    playlists = playlists,
+                    onCreateAndAdd = { name ->
+                        scope.launch {
+                            val pid = dao.insertPlaylist(PlaylistEntity(name = name))
+                            dao.insertItems(listOf(v.toEntity(pid, 0)))
+                            pickFor = null
+                        }
+                    },
+                    onAddTo = { pid ->
+                        scope.launch {
+                            val pos = dao.itemCount(pid)
+                            dao.insertItems(listOf(v.toEntity(pid, pos)))
+                            pickFor = null
+                        }
+                    },
+                    onDismiss = { pickFor = null }
+                )
             }
         }
         }
@@ -858,6 +1031,282 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
 }
 
 @Composable
+// ============ Playlists (Room) UI ============
+
+@Composable
+fun PlaylistsScreen(
+    playlists: List<PlaylistWithCount>,
+    openId: Long?,
+    items: List<PlaylistItemEntity>,
+    onOpen: (Long) -> Unit,
+    onCloseItems: () -> Unit,
+    onPlayAll: (Long) -> Unit,
+    onPlayFrom: (Int) -> Unit,
+    onCreate: (String) -> Unit,
+    onRename: (Long, String) -> Unit,
+    onDelete: (Long) -> Unit,
+    onMoveItem: (Long, Long, Int) -> Unit,
+    onDeleteItem: (Long, Long) -> Unit,
+    onClearItems: (Long) -> Unit,
+    onBack: () -> Unit
+) {
+    var nameDraft by remember { mutableStateOf("") }
+    var showCreate by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    var deleteTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    val openName = playlists.firstOrNull { it.id == openId }?.name ?: ""
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { if (openId != null) onCloseItems() else onBack() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                }
+                Text(
+                    if (openId != null) "بنود: $openName" else "قوائم التشغيل",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.weight(1f))
+                if (openId == null) {
+                    IconButton(onClick = { showCreate = true }) {
+                        Icon(Icons.Rounded.Add, contentDescription = "قائمة جديدة", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+        if (openId == null) {
+            if (playlists.isEmpty()) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Rounded.QueueMusic, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("لا توجد قوائم بعد", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(Modifier.height(4.dp))
+                        Text("احفظ نتائج البحث أو أي فيديو في قائمة تشغيل", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            items(playlists, key = { it.id }) { p ->
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.PlaylistPlay, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f).clickable { onOpen(p.id) }) {
+                            Text(p.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${p.count} عنصر", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { onPlayAll(p.id) }) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل القائمة", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { renameTarget = p }) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "إعادة تسمية", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { deleteTarget = p }) {
+                            Icon(Icons.Rounded.Delete, contentDescription = "حذف القائمة", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        } else {
+            if (items.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                        Text("القائمة فارغة — أضف فيديوهات من نتائج البحث", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            itemsIndexed(items, key = { _, r -> r.id }) { idx, r ->
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.small,
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(model = r.thumbnail, contentDescription = r.title, modifier = Modifier.size(72.dp, 42.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) }) {
+                            Text(r.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(r.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        IconButton(onClick = { openId?.let { onMoveItem(it, r.id, -1) } }, enabled = idx > 0) {
+                            Icon(Icons.Rounded.ArrowUpward, contentDescription = "تحريك لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { openId?.let { onMoveItem(it, r.id, 1) } }, enabled = idx < items.size - 1) {
+                            Icon(Icons.Rounded.ArrowDownward, contentDescription = "تحريك لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { openId?.let { onDeleteItem(it, r.id) } }) {
+                            Icon(Icons.Rounded.Delete, contentDescription = "حذف البند", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            if (items.isNotEmpty()) {
+                item {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${items.size} عنصر", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.weight(1f))
+                        androidx.compose.material3.TextButton(onClick = { openId?.let { onPlayAll(it) } }) { Text("تشغيل الكل") }
+                        androidx.compose.material3.TextButton(onClick = { openId?.let { onClearItems(it) } }) { Text("تفريغ") }
+                    }
+                }
+            }
+        }
+    }
+    // create dialog
+    if (showCreate) {
+        AlertDialog(
+            onDismissRequest = { showCreate = false },
+            title = { Text("قائمة تشغيل جديدة") },
+            text = {
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("اسم القائمة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val n = nameDraft.trim()
+                    if (n.isNotEmpty()) { onCreate(n); nameDraft = ""; showCreate = false }
+                }) { Text("إنشاء") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showCreate = false }) { Text("إلغاء") } }
+        )
+    }
+    // rename dialog
+    renameTarget?.let { p ->
+        var draft by remember(p.id) { mutableStateOf(p.name) }
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("إعادة تسمية القائمة") },
+            text = {
+                OutlinedTextField(value = draft, onValueChange = { draft = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val n = draft.trim()
+                    if (n.isNotEmpty()) onRename(p.id, n)
+                    renameTarget = null
+                }) { Text("حفظ") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { renameTarget = null }) { Text("إلغاء") } }
+        )
+    }
+    // delete confirm
+    deleteTarget?.let { p ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("حذف القائمة؟") },
+            text = { Text("سيتم حذف \"${p.name}\" نهائيًا مع كل بنودها.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { onDelete(p.id); deleteTarget = null }) { Text("حذف") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteTarget = null }) { Text("إلغاء") } }
+        )
+    }
+}
+
+// Current-queue manager: reorder / remove / play-from / save-as-playlist.
+@Composable
+fun QueueDialog(
+    items: List<VideoItem>,
+    onMove: (Int, Int) -> Unit,
+    onRemove: (Int) -> Unit,
+    onPlayFrom: (Int) -> Unit,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameDraft by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("القائمة الحالية (${items.size})") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (items.isEmpty()) {
+                    Text("لا توجد عناصر في القائمة الحالية", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        itemsIndexed(items, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { idx, v ->
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
+                                Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
+                                IconButton(onClick = { onMove(idx, -1) }, enabled = idx > 0, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Rounded.ArrowUpward, contentDescription = "لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { onMove(idx, 1) }, enabled = idx < items.size - 1, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Rounded.ArrowDownward, contentDescription = "لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { onRemove(idx) }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Rounded.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("احفظ القائمة باسم…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                val n = nameDraft.trim()
+                if (n.isNotEmpty() && items.isNotEmpty()) { onSave(n); nameDraft = "" }
+            }) { Text("حفظ القائمة") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") } }
+    )
+}
+
+// Pick a playlist for one video (or create a new one on the spot).
+@Composable
+fun PlaylistPickerDialog(
+    video: VideoItem,
+    playlists: List<PlaylistWithCount>,
+    onCreateAndAdd: (String) -> Unit,
+    onAddTo: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameDraft by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("إضافة إلى قائمة تشغيل", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                if (playlists.isEmpty()) {
+                    Text("لا توجد قوائم بعد — أنشئ واحدة بالاسم أدناه", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(playlists, key = { it.id }) { p ->
+                            Row(modifier = Modifier.fillMaxWidth().clickable { onAddTo(p.id) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.PlaylistPlay, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text(p.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${p.count}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("أو قائمة جديدة باسم…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                val n = nameDraft.trim()
+                if (n.isNotEmpty()) { onCreateAndAdd(n); nameDraft = "" }
+            }) { Text("إنشاء وإضافة") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+@Composable
 fun EqualizerBars(playing: Boolean) {
     // animated sound bars while playing, frozen mid-height while paused
     if (!playing) {
@@ -922,7 +1371,7 @@ fun MiniPlayer(
 }
 
 @Composable
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
@@ -963,8 +1412,13 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     Text(text = formatViews(v.viewCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            IconButton(onClick = onClick) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onClick = onClick) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = { onAdd(v) }) {
+                    Icon(Icons.Rounded.PlaylistAdd, contentDescription = "إضافة إلى قائمة تشغيل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
             }
         }
     }
@@ -989,6 +1443,12 @@ fun PlayerArea(
     queueOn: Boolean = false,
     onNext: () -> Unit = {},
     onPrev: () -> Unit = {},
+    playMode: String = "order",
+    playModeLabel: String = "بالترتيب",
+    shuffleOn: Boolean = false,
+    onCycleMode: () -> Unit = {},
+    onToggleShuffle: () -> Unit = {},
+    onQueue: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit
 ) {
@@ -1095,7 +1555,11 @@ fun PlayerArea(
                 Spacer(Modifier.height(12.dp))
                 if (queueOn) {
                     Spacer(Modifier.height(8.dp))
-                    Text("▶ تشغيل بالتتابع من نتائج البحث", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        "▶ القائمة تعمل • $playModeLabel" + if (shuffleOn) " • عشوائي" else "",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box {
@@ -1110,6 +1574,22 @@ fun PlayerArea(
                     }
                     IconButton(onClick = onNext) {
                         Icon(Icons.Rounded.SkipNext, contentDescription = "التالي", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    // playback mode: order -> repeat all -> repeat one (cycles)
+                    IconButton(onClick = onCycleMode) {
+                        Icon(
+                            when (playMode) { "repeatOne" -> Icons.Rounded.RepeatOne; else -> Icons.Rounded.Repeat },
+                            contentDescription = "وضع التشغيل: $playModeLabel",
+                            tint = if (playMode == "order") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    // shuffle toggle
+                    IconButton(onClick = onToggleShuffle) {
+                        Icon(Icons.Rounded.Shuffle, contentDescription = if (shuffleOn) "إيقاف العشوائي" else "تشغيل عشوائي", tint = if (shuffleOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    // current queue: manage / reorder / save
+                    IconButton(onClick = onQueue) {
+                        Icon(Icons.Rounded.QueueMusic, contentDescription = "إدارة القائمة الحالية", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = onEnterPip) {
                         Icon(Icons.Rounded.PictureInPicture, contentDescription = "صورة داخل صورة", tint = MaterialTheme.colorScheme.primary)
