@@ -257,12 +257,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
+    // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
+    // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
     fun setFullscreen(full: Boolean) {
         isFullscreen = full
         try {
-            (ctx as? android.app.Activity)?.requestedOrientation = if (full)
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            val act = ctx as? android.app.Activity ?: return
+            val win = act.window
+            if (full) {
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(win, false)
+                val ctl = androidx.core.view.WindowInsetsControllerCompat(win, win.decorView)
+                ctl.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                ctl.systemBarsBehavior =
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                act.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            } else {
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(win, true)
+                androidx.core.view.WindowInsetsControllerCompat(win, win.decorView)
+                    .show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                act.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
         } catch (_: Exception) { }
     }
     var playMode by remember { mutableStateOf(prefs.getString("play_mode", "order") ?: "order") } // order | repeatAll | repeatOne
