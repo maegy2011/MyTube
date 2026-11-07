@@ -1698,14 +1698,64 @@ fun PlayerArea(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
+                } else if (nativeOnly && player != null) {
+                    // audio-only WITH native controls: PlayerView shows the artwork (from MediaMetadata)
+                    // + full controller (play/pause, seek bar, CC, speed) over it. No video surface needed.
+                    AndroidView(
+                        factory = { c ->
+                            PlayerView(c).apply {
+                                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                                val wrapped = object : ForwardingPlayer(player!!) {
+                                    override fun seekToNext() { onNext() }
+                                    override fun seekToPrevious() { onPrev() }
+                                    override fun setRepeatMode(m: Int) {
+                                        onSetMode(when (m) {
+                                            Player.REPEAT_MODE_ONE -> "repeatOne"
+                                            Player.REPEAT_MODE_ALL -> "repeatAll"
+                                            else -> "order"
+                                        })
+                                    }
+                                    override fun getRepeatMode(): Int = when (playMode) {
+                                        "repeatOne" -> Player.REPEAT_MODE_ONE
+                                        "repeatAll" -> Player.REPEAT_MODE_ALL
+                                        else -> Player.REPEAT_MODE_OFF
+                                    }
+                                    override fun setShuffleModeEnabled(b: Boolean) { onSetShuffle(b) }
+                                    override fun getShuffleModeEnabled(): Boolean = shuffleOn
+                                    override fun getAvailableCommands(): Player.Commands =
+                                        super.getAvailableCommands().buildUpon()
+                                            .add(Player.COMMAND_SEEK_TO_NEXT)
+                                            .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                                            .build()
+                                }
+                                this.player = wrapped
+                                useController = true
+                                setUseArtwork(true)
+                                setArtworkDisplayMode(PlayerView.ARTWORK_DISPLAY_MODE_FILL)
+                                setShowPreviousButton(true)
+                                setShowNextButton(true)
+                                setShowRewindButton(true)
+                                setShowFastForwardButton(true)
+                                setRepeatToggleModes(RepeatModeUtil.REPEAT_TOGGLE_MODE_ONE or RepeatModeUtil.REPEAT_TOGGLE_MODE_ALL)
+                                setShowShuffleButton(true)
+                                setShowSubtitleButton(true)
+                            }
+                        },
+                        update = { v ->
+                            v.setFullscreenButtonClickListener { onToggleFullscreen() }
+                            v.controllerShowTimeoutMs = 5000
+                            v.showController()
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
                     AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
                 }
                 // center state: error > loading > big play/pause button.
-                // nativeOnly video mode: NO overlay (not even loading) — anything drawn over
+                // nativeOnly: NO overlay (not even loading) — anything drawn over
                 // PlayerView eats its taps; the native spinner + controller handle this state.
-                val videoNative = nativeOnly && quality != "audio-only (default)" && player != null
+                val videoNative = nativeOnly && player != null
                 when {
                     errorMsg != null -> {
                         Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1729,7 +1779,7 @@ fun PlayerArea(
                             )
                         }
                     }
-                    quality == "audio-only (default)" || player == null -> {
+                    !nativeOnly && (quality == "audio-only (default)" || player == null) -> {
                         IconButton(
                             onClick = onTogglePlay,
                             modifier = Modifier.align(Alignment.Center)
