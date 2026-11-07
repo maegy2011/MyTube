@@ -13,37 +13,52 @@ object YouTubeRepo {
     init { runCatching { NewPipe.init(NewPipeDownloaderImpl()) } }
 
     suspend fun suggestions(query: String): List<String> = withContext(Dispatchers.IO) {
-        if (query.isBlank()) return@withContext emptyList()
-        runCatching {
-            val ext = service().suggestionExtractor
-            ext.fetchPage()
-            ext.getSuggestions(query).getList()
-        }.getOrDefault(emptyList())
+        if (query.isBlank()) return@withContext emptyList<String>()
+        try {
+            service().suggestionExtractor.suggestionList(query)
+        } catch (_: Exception) { emptyList() }
     }
 
     suspend fun search(query: String): Pair<List<VideoItem>, String?> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val ext = service().getSearchExtractor(query)
             ext.fetchPage()
-            val page = ext.initialPage
-            val items = page.items.filterIsInstance<StreamInfoItem>().map { it ->
-                val url = it.url
-                val id = url?.substringAfter("v=", missingDelimiterValue = "")?.substringBefore("&")?.takeIf { s -> s.isNotEmpty() }
-                VideoItem(id, it.name, it.uploaderName, it.thumbnailUrl, it.duration, it.viewCount, url)
+            val items = ext.initialPage.items
+            val out = mutableListOf<VideoItem>()
+            for (info in items) {
+                if (info is StreamInfoItem) {
+                    val url: String? = try { info.url } catch (_: Exception) { null }
+                    val name: String? = try { info.name } catch (_: Exception) { null }
+                    val up: String? = try { info.uploaderName } catch (_: Exception) { null }
+                    var thumb: String? = null
+                    try { thumb = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    var dur: Long? = null
+                    try { dur = info.duration } catch (_: Exception) {}
+                    var views: Long? = null
+                    try { views = info.viewCount } catch (_: Exception) {}
+                    val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                    out.add(VideoItem(id, name, up, thumb, dur, views, url))
+                }
             }
-            Pair(items, null)
-        }.getOrDefault(Pair(emptyList(), null))
+            Pair(out, null)
+        } catch (_: Exception) { Pair(emptyList(), null) }
     }
 
     suspend fun stream(url: String): StreamData = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val ext = service().getStreamExtractor(url)
             ext.fetchPage()
-            val audios = try { ext.audioStreams?.sortedBy { a -> a.averageBitrate } } catch (_: Exception) { emptyList() } ?: emptyList()
-            val videos = try { ext.videoStreams?.associate { v -> (v.resolution ?: "auto") to v.content } } catch (_: Exception) { emptyMap() } ?: emptyMap()
+            val audios = try { ext.audioStreams } catch (_: Exception) { null } ?: emptyList()
+            val lowest = audios.sortedBy { a -> try { a.averageBitrate } catch (_: Exception) { Int.MAX_VALUE } }.firstOrNull()
+            val audioUrl: String? = try { lowest?.content } catch (_: Exception) { null }
+            val vids = try { ext.videoStreams } catch (_: Exception) { null } ?: emptyList()
+            val map = mutableMapOf<String, String>()
+            for (v in vids) {
+                try { map[v.resolution ?: "auto"] = v.content } catch (_: Exception) {}
+            }
             var title: String? = null
             try { title = ext.name } catch (_: Exception) {}
-            StreamData(audios.firstOrNull()?.content, videos, title)
-        }.getOrDefault(StreamData())
+            StreamData(audioUrl, map, title)
+        } catch (_: Exception) { StreamData() }
     }
 }
