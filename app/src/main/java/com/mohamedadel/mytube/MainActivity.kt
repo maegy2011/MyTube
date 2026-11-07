@@ -44,7 +44,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
@@ -56,8 +55,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CircularProgressIndicator
@@ -195,7 +192,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
-    var selectedTab by remember { mutableStateOf(0) }
     var showSplash by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1800); showSplash = false }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -411,7 +407,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 if (h != null && h != Int.MAX_VALUE) "auto \u2022 ${h}p" else "auto"
             } ?: "auto"
             val quals = mutableListOf("audio-only (default)", autoKey)
-            val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityRank(it) }
+            val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
             quals.addAll(sorted)
             qualityList = quals
             quality = "audio-only (default)"
@@ -462,8 +458,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ModalDrawerSheet {
                 Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                NavigationDrawerItem(label = { Text("Home") }, selected = selectedTab == 0, onClick = { selectedTab = 0; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
-                NavigationDrawerItem(label = { Text("Settings") }, selected = false, onClick = { scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
+                NavigationDrawerItem(label = { Text("Home") }, selected = true, onClick = { scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
             }
         }
     ) {
@@ -489,15 +484,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
-            }
-        },
-        bottomBar = {
-            if (!isInPip) {
-            NavigationBar {
-                NavigationBarItem(selected = selectedTab == 0, onClick = { selectedTab = 0 }, icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Home") })
-                NavigationBarItem(selected = selectedTab == 1, onClick = { selectedTab = 1 }, icon = { Icon(Icons.Filled.Search, null) }, label = { Text("Search") })
-                NavigationBarItem(selected = selectedTab == 2, onClick = { selectedTab = 2 }, icon = { Icon(Icons.Filled.VideoLibrary, null) }, label = { Text("Library") })
-            }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -715,19 +701,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     }
-}
-
-private fun qualityRank(q: String): Int {
-    val lower = q.lowercase()
-    if (lower.contains("4k") || lower.contains("2160")) return 2160
-    if (lower.contains("1440")) return 1440
-    if (lower.contains("1080")) return 1080
-    if (lower.contains("720")) return 720
-    if (lower.contains("480")) return 480
-    if (lower.contains("360")) return 360
-    if (lower.contains("240")) return 240
-    if (lower.contains("144")) return 144
-    return q.filter { it.isDigit() }.toIntOrNull() ?: 0
 }
 
 // Estimated downstream bandwidth in Kbps from the active network (0 = unknown).
@@ -987,9 +960,6 @@ fun PlayerArea(
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    IconButton(onClick = onTogglePlay) {
-                        Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = MaterialTheme.colorScheme.primary)
-                    }
                     IconButton(onClick = onEnterPip) {
                         Icon(Icons.Filled.PictureInPicture, contentDescription = "PiP", tint = MaterialTheme.colorScheme.primary)
                     }
