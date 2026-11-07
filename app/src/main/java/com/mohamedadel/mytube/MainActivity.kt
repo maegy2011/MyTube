@@ -69,7 +69,6 @@ import androidx.media3.common.util.RepeatModeUtil
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -143,6 +142,7 @@ import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.playback.PlaybackService
 import androidx.room.Room
+import com.mohamedadel.mytube.data.local.MIGRATION_1_2
 import com.mohamedadel.mytube.data.local.MyTubeDb
 import com.mohamedadel.mytube.data.local.PlaylistEntity
 import com.mohamedadel.mytube.data.local.PlaylistItemEntity
@@ -267,7 +267,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // playlists (Room) + playback modes. Modes persist in prefs; playlists persist in Room.
     val db = remember {
         Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .fallbackToDestructiveMigration().build()
+            .addMigrations(MIGRATION_1_2).fallbackToDestructiveMigration().build()
     }
     val dao = remember { db.playlists() }
     val playlists by dao.observePlaylists().collectAsState(initial = emptyList())
@@ -715,7 +715,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
                 NavigationDrawerItem(label = { Text("الرئيسية") }, selected = !showPlaylists && !showSettings, onClick = { showPlaylists = false; showSettings = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
-                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { showPlaylists = true; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
+                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { playerExpanded = false; showPlaylists = true; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
                 NavigationDrawerItem(label = { Text("الإعدادات") }, selected = showSettings, onClick = { showSettings = true; showPlaylists = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Settings, null) })
             }
         }
@@ -990,8 +990,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
                         onSave = { name ->
                             scope.launch {
+                                // new playlist: dedupe the working queue before saving
+                                val seen = mutableSetOf<String>()
+                                val fresh = queue.filter { w -> seen.add(w.id ?: w.url ?: w.title ?: ("#" + w.hashCode())) }
                                 val pid = dao.insertPlaylist(PlaylistEntity(name = name))
-                                dao.insertItems(queue.mapIndexed { i, v -> v.toEntity(pid, i) })
+                                dao.insertItems(fresh.mapIndexed { i, w -> w.toEntity(pid, i) })
+                                showQueue = false
                             }
                         },
                         onDismiss = { showQueue = false }
@@ -1045,10 +1049,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 playVideo(list[idx], inQueue = true)
                             }
                         },
-                        onCreate = { name ->
-                            scope.launch { dao.insertPlaylist(PlaylistEntity(name = name)) }
+                        onCreate = { name, emoji ->
+                            scope.launch { dao.insertPlaylist(PlaylistEntity(name = name, emoji = emoji)) }
                         },
-                        onRename = { pid, name -> scope.launch { dao.rename(pid, name) } },
+                        onSaveEdits = { pid, name, emoji, orderedIds ->
+                            scope.launch {
+                                if (name.isNotBlank()) dao.rename(pid, name)
+                                dao.setEmoji(pid, emoji.ifBlank { "🎵" })
+                                val rows = dao.itemsOnce(pid)
+                                rows.filter { it.id !in orderedIds }.forEach { dao.deleteItem(pid, it.id) }
+                                val keep = orderedIds.mapNotNull { id -> rows.firstOrNull { it.id == id } }
+                                dao.updateItems(keep.mapIndexed { k, r -> r.copy(position = k) })
+                            }
+                        },
                         onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
                         onMoveItem = { pid, iid, dir ->
                             scope.launch {
@@ -1156,8 +1169,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     },
                     onAddTo = { pid ->
                         scope.launch {
-                            val pos = dao.itemCount(pid)
-                            dao.insertItems(listOf(v.toEntity(pid, pos)))
+                            // no duplicates: skip when the video is already in this playlist
+                            val key = v.id ?: v.url ?: ""
+                            val exists = dao.itemsOnce(pid).any { (it.videoId ?: it.url ?: "") == key }
+                            if (!exists) {
+                                val pos = dao.itemCount(pid)
+                                dao.insertItems(listOf(v.toEntity(pid, pos)))
+                            }
                             pickFor = null
                         }
                     },
@@ -1339,6 +1357,10 @@ fun SettingsScreen(
 // ============ Playlists (Room) UI ============
 
 @Composable
+private val PLAYLIST_EMOJIS = listOf("🎵", "🎬", "🔥", "❤️", "📚", "🎮", "🎧", "⭐", "🌙", "⚽", "🚗", "🍳")
+
+// View mode by default (tap = play). Edit mode stages changes in memory;
+// Save writes name + emoji + order + deletions in one transaction, Cancel discards.
 fun PlaylistsScreen(
     playlists: List<PlaylistWithCount>,
     openId: Long?,
@@ -1347,8 +1369,8 @@ fun PlaylistsScreen(
     onCloseItems: () -> Unit,
     onPlayAll: (Long) -> Unit,
     onPlayFrom: (Int) -> Unit,
-    onCreate: (String) -> Unit,
-    onRename: (Long, String) -> Unit,
+    onCreate: (String, String) -> Unit,
+    onSaveEdits: (Long, String, String, List<Long>) -> Unit,
     onDelete: (Long) -> Unit,
     onMoveItem: (Long, Long, Int) -> Unit,
     onDeleteItem: (Long, Long) -> Unit,
@@ -1357,9 +1379,15 @@ fun PlaylistsScreen(
 ) {
     var nameDraft by remember { mutableStateOf("") }
     var showCreate by remember { mutableStateOf(false) }
-    var renameTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    var createEmoji by remember { mutableStateOf("🎵") }
     var deleteTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
-    val openName = playlists.firstOrNull { it.id == openId }?.name ?: ""
+    val openPl = playlists.firstOrNull { it.id == openId }
+    val openName = openPl?.name ?: ""
+    var editMode by remember(openId) { mutableStateOf(false) }
+    var editName by remember(openId) { mutableStateOf(openName) }
+    var editEmoji by remember(openId) { mutableStateOf(openPl?.emoji ?: "🎵") }
+    var staged by remember(openId) { mutableStateOf<List<PlaylistItemEntity>?>(null) }
+    val rows = if (editMode) staged ?: items else items
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -1371,15 +1399,32 @@ fun PlaylistsScreen(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                 }
                 Text(
-                    if (openId != null) "بنود: $openName" else "قوائم التشغيل",
+                    if (openId != null) "بنود: ${if (editMode) editName else openName}" else "قوائم التشغيل",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(Modifier.weight(1f))
                 if (openId == null) {
-                    IconButton(onClick = { showCreate = true }) {
+                    IconButton(onClick = { showCreate = true; createEmoji = "🎵" }) {
                         Icon(Icons.Rounded.Add, contentDescription = "قائمة جديدة", tint = MaterialTheme.colorScheme.primary)
                     }
+                } else if (editMode) {
+                    androidx.compose.material3.TextButton(onClick = {
+                        val pid = openId
+                        val stagedRows = staged ?: items
+                        onSaveEdits(pid, editName.trim().ifBlank { openName }, editEmoji, stagedRows.map { it.id })
+                        editMode = false
+                    }) { Text("حفظ") }
+                    androidx.compose.material3.TextButton(onClick = { staged = null; editMode = false }) { Text("إلغاء") }
+                } else {
+                    androidx.compose.material3.TextButton(onClick = {
+                        editName = openName
+                        editEmoji = openPl?.emoji ?: "🎵"
+                        staged = items
+                        editMode = true
+                    }) { Text("تعديل") }
                 }
             }
         }
@@ -1402,17 +1447,14 @@ fun PlaylistsScreen(
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.PlaylistPlay, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
-                        Spacer(Modifier.width(12.dp))
+                        Text(p.emoji.ifBlank { "🎵" }, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.width(44.dp))
+                        Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f).clickable { onOpen(p.id) }) {
                             Text(p.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${p.count} عنصر", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { onPlayAll(p.id) }) {
                             Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل القائمة", tint = MaterialTheme.colorScheme.primary)
-                        }
-                        IconButton(onClick = { renameTarget = p }) {
-                            Icon(Icons.Rounded.MoreVert, contentDescription = "إعادة تسمية", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { deleteTarget = p }) {
                             Icon(Icons.Rounded.Delete, contentDescription = "حذف القائمة", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1421,14 +1463,33 @@ fun PlaylistsScreen(
                 }
             }
         } else {
-            if (items.isEmpty()) {
+            if (editMode) {
+                item {
+                    OutlinedTextField(value = editName, onValueChange = { editName = it }, placeholder = { Text("اسم القائمة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        items(PLAYLIST_EMOJIS) { e ->
+                            val sel = e == editEmoji
+                            Surface(
+                                onClick = { editEmoji = e },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (sel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
+                            ) {
+                                Text(e, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(8.dp))
+                            }
+                        }
+                    }
+                }
+            }
+            if (rows.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                         Text("القائمة فارغة — أضف فيديوهات من نتائج البحث", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
-            itemsIndexed(items, key = { _, r -> r.id }) { idx, r ->
+            itemsIndexed(rows, key = { _, r -> r.id }) { idx, r ->
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.small,
@@ -1437,26 +1498,38 @@ fun PlaylistsScreen(
                     Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(model = r.thumbnail, contentDescription = r.title, modifier = Modifier.size(72.dp, 42.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                         Spacer(Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) }) {
+                        Column(modifier = Modifier.weight(1f).clickable { if (!editMode) onPlayFrom(idx) }) {
                             Text(r.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(r.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        IconButton(onClick = { openId?.let { onMoveItem(it, r.id, -1) } }, enabled = idx > 0) {
-                            Icon(Icons.Rounded.ArrowUpward, contentDescription = "تحريك لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { openId?.let { onMoveItem(it, r.id, 1) } }, enabled = idx < items.size - 1) {
-                            Icon(Icons.Rounded.ArrowDownward, contentDescription = "تحريك لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { openId?.let { onDeleteItem(it, r.id) } }) {
-                            Icon(Icons.Rounded.Delete, contentDescription = "حذف البند", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (editMode) {
+                            IconButton(onClick = {
+                                staged = staged?.toMutableList()?.also { l ->
+                                    val j = idx - 1
+                                    if (idx in l.indices && j in l.indices) { val t = l[idx]; l[idx] = l[j]; l[j] = t }
+                                }
+                            }, enabled = idx > 0) {
+                                Icon(Icons.Rounded.ArrowUpward, contentDescription = "تحريك لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = {
+                                staged = staged?.toMutableList()?.also { l ->
+                                    val j = idx + 1
+                                    if (idx in l.indices && j in l.indices) { val t = l[idx]; l[idx] = l[j]; l[j] = t }
+                                }
+                            }, enabled = idx < rows.size - 1) {
+                                Icon(Icons.Rounded.ArrowDownward, contentDescription = "تحريك لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { staged = staged?.filter { it.id != r.id } }) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "حذف البند", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
             }
-            if (items.isNotEmpty()) {
+            if (!editMode && rows.isNotEmpty()) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${items.size} عنصر", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${rows.size} عنصر", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.weight(1f))
                         androidx.compose.material3.TextButton(onClick = { openId?.let { onPlayAll(it) } }) { Text("تشغيل الكل") }
                         androidx.compose.material3.TextButton(onClick = { openId?.let { onClearItems(it) } }) { Text("تفريغ") }
@@ -1465,40 +1538,35 @@ fun PlaylistsScreen(
             }
         }
     }
-    // create dialog
+    // create dialog (name + cover emoji)
     if (showCreate) {
         AlertDialog(
             onDismissRequest = { showCreate = false },
             title = { Text("قائمة تشغيل جديدة") },
             text = {
-                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("اسم القائمة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Column {
+                    OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("اسم القائمة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(12.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        items(PLAYLIST_EMOJIS) { e ->
+                            Surface(
+                                onClick = { createEmoji = e },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (e == createEmoji) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
+                            ) {
+                                Text(e, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(8.dp))
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     val n = nameDraft.trim()
-                    if (n.isNotEmpty()) { onCreate(n); nameDraft = ""; showCreate = false }
+                    if (n.isNotEmpty()) { onCreate(n, createEmoji); nameDraft = ""; showCreate = false }
                 }) { Text("إنشاء") }
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { showCreate = false }) { Text("إلغاء") } }
-        )
-    }
-    // rename dialog
-    renameTarget?.let { p ->
-        var draft by remember(p.id) { mutableStateOf(p.name) }
-        AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text("إعادة تسمية القائمة") },
-            text = {
-                OutlinedTextField(value = draft, onValueChange = { draft = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    val n = draft.trim()
-                    if (n.isNotEmpty()) onRename(p.id, n)
-                    renameTarget = null
-                }) { Text("حفظ") }
-            },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { renameTarget = null }) { Text("إلغاء") } }
         )
     }
     // delete confirm

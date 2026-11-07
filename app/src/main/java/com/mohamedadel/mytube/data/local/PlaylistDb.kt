@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import kotlinx.coroutines.flow.Flow
 
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 data class PlaylistEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
+    val emoji: String = "🎵",
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -49,13 +52,14 @@ data class PlaylistItemEntity(
 data class PlaylistWithCount(
     val id: Long,
     val name: String,
+    val emoji: String,
     val createdAt: Long,
     val count: Int
 )
 
 @Dao
 interface PlaylistDao {
-    @Query("SELECT p.id AS id, p.name AS name, p.createdAt AS createdAt, COUNT(i.id) AS count FROM playlists p LEFT JOIN playlist_items i ON i.playlistId = p.id GROUP BY p.id ORDER BY p.createdAt DESC")
+    @Query("SELECT p.id AS id, p.name AS name, p.emoji AS emoji, p.createdAt AS createdAt, COUNT(i.id) AS count FROM playlists p LEFT JOIN playlist_items i ON i.playlistId = p.id GROUP BY p.id ORDER BY p.createdAt DESC")
     fun observePlaylists(): Flow<List<PlaylistWithCount>>
 
     @Query("SELECT * FROM playlist_items WHERE playlistId = :pid ORDER BY position ASC")
@@ -76,6 +80,9 @@ interface PlaylistDao {
     @Query("UPDATE playlists SET name = :name WHERE id = :pid")
     suspend fun rename(pid: Long, name: String)
 
+    @Query("UPDATE playlists SET emoji = :emoji WHERE id = :pid")
+    suspend fun setEmoji(pid: Long, emoji: String)
+
     @Query("DELETE FROM playlists WHERE id = :pid")
     suspend fun deletePlaylist(pid: Long)
 
@@ -89,9 +96,16 @@ interface PlaylistDao {
     suspend fun updateItems(items: List<PlaylistItemEntity>)
 }
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class], version = 2, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
+}
+
+// v1 -> v2: playlist cover emoji (non-destructive: existing user data is preserved).
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE playlists ADD COLUMN emoji TEXT NOT NULL DEFAULT '🎵'")
+    }
 }
 
 // ---- Mapping between player items and stored rows ----
