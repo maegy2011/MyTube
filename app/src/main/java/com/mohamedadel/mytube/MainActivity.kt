@@ -28,15 +28,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,7 +58,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,23 +73,31 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
 import kotlinx.coroutines.launch
+import org.schabi.newpipe.extractor.Page
 
 class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         player = ExoPlayer.Builder(this).build()
         val p = player
@@ -108,24 +120,70 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
     var query by remember { mutableStateOf("") }
+    var currentQuery by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<VideoItem>()) }
     var loading by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var hasMore by remember { mutableStateOf(false) }
+    var nextPage by remember { mutableStateOf<Page?>(null) }
     var playing by remember { mutableStateOf<VideoItem?>(null) }
+    var streamData by remember { mutableStateOf<StreamData?>(null) }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
     var quality by remember { mutableStateOf("audio-only (default)") }
+    var playerLoading by remember { mutableStateOf(false) }
+    var isPlaying by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
+    var showSuggestions by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val svm: SearchViewModel = viewModel()
     val suggestions by svm.suggestions.collectAsState()
+    val listState = rememberLazyListState()
 
     val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
 
+    // auto-load more when scrolled to bottom
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = listState.layoutInfo.totalItemsCount
+            last >= total - 2 && total > 0
+        }
+    }
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore && hasMore && !loadingMore && !loading && currentQuery.isNotBlank()) {
+            loadingMore = true
+            val page = YouTubeRepo.search(currentQuery, nextPage)
+            results = results + page.items
+            nextPage = page.nextPage
+            hasMore = page.hasNext
+            loadingMore = false
+        }
+    }
+
+    // player listener for buffering state
+    LaunchedEffect(player) {
+        player?.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                playerLoading = state == Player.STATE_BUFFERING
+                isPlaying = player?.isPlaying == true
+            }
+            override fun onIsPlayingChanged(playingFlag: Boolean) {
+                isPlaying = playingFlag
+            }
+        })
+    }
+
     fun doSearch(q: String) {
         if (q.isBlank()) return
+        currentQuery = q
         loading = true
+        showSuggestions = false
         scope.launch {
-            results = YouTubeRepo.search(q).first
+            val page = YouTubeRepo.search(q, null)
+            results = page.items
+            nextPage = page.nextPage
+            hasMore = page.hasNext
             loading = false
             if (!recentSearches.contains(q)) {
                 recentSearches = (listOf(q) + recentSearches).take(6)
@@ -133,17 +191,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
         }
     }
 
+    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?) {
+        val url = when (q) {
+            "audio-only (default)" -> s.audioLowestUrl
+            "auto" -> autoUrl(s)
+            else -> s.videoUrlByQuality[q]
+        } ?: return
+        p?.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+        p?.prepare()
+        p?.play()
+    }
+
     fun playVideo(v: VideoItem) {
         playing = v
+        playerLoading = true
         scope.launch {
             val s = YouTubeRepo.stream(v.url ?: return@launch)
+            streamData = s
             val quals = mutableListOf("audio-only (default)", "auto")
-            quals.addAll(s.videoUrlByQuality.keys)
+            val sorted = s.videoUrlByQuality.keys.sortedByDescending { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+            quals.addAll(sorted)
             qualityList = quals
-            val audioUrl = s.audioLowestUrl ?: return@launch
-            player?.setMediaItem(MediaItem.fromUri(Uri.parse(audioUrl)))
-            player?.prepare()
-            player?.play()
+            quality = "audio-only (default)"
+            applyQuality("audio-only (default)", s, player)
         }
     }
 
@@ -151,50 +221,62 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "MyTube",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Text("MyTube", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            // Search field
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it; svm.onQueryChange(it) },
+                onValueChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
                 placeholder = { Text("Search videos, channels…") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = ""; svm.onQueryChange("") }) {
+                    if (loading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    } else if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = ""; svm.onQueryChange(""); showSuggestions = false }) {
                             Icon(Icons.Filled.Clear, contentDescription = "Clear")
                         }
                     }
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(28.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Search
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { doSearch(query) }
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline
                 ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            // Suggestions dropdown
-            AnimatedVisibility(visible = suggestions.isNotEmpty() && query.isNotBlank(), enter = fadeIn(), exit = fadeOut()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                androidx.compose.material3.Button(
+                    onClick = { doSearch(query) },
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Search")
+                }
+            }
+
+            AnimatedVisibility(visible = showSuggestions && suggestions.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
                 Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     tonalElevation = 2.dp
@@ -202,18 +284,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                     Column {
                         suggestions.take(8).forEach { s ->
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { query = s; svm.onQueryChange(s); doSearch(s) }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    query = s; svm.onQueryChange(s); doSearch(s)
+                                }.padding(horizontal = 16.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Filled.Search,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(12.dp))
                                 Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                             }
@@ -222,7 +298,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                 }
             }
 
-            // Player area
             val cur = playing
             if (cur != null) {
                 PlayerArea(
@@ -230,13 +305,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                     player = player,
                     quality = quality,
                     qualities = qualityList,
-                    onQuality = { quality = it },
+                    isPlaying = isPlaying,
+                    playerLoading = playerLoading,
+                    onQuality = { q ->
+                        quality = q
+                        streamData?.let { applyQuality(q, it, player) }
+                    },
+                    onTogglePlay = {
+                        if (player?.isPlaying == true) player?.pause() else player?.play()
+                    },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
                     onEnterPip = onEnterPip
                 )
             }
 
-            // Content area
             when {
                 loading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -244,21 +326,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                     }
                 }
                 results.isEmpty() && query.isBlank() -> {
-                    HomeEmptyState(
-                        recentSearches = recentSearches,
-                        trending = trending,
-                        onSearch = { q -> query = q; doSearch(q) }
-                    )
+                    HomeEmptyState(recentSearches = recentSearches, trending = trending, onSearch = { q -> query = q; doSearch(q) })
                 }
                 results.isEmpty() && !loading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Filled.VideoLibrary,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(64.dp)
-                            )
+                            Icon(Icons.Filled.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(64.dp))
                             Spacer(Modifier.height(12.dp))
                             Text("No results found", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                             Spacer(Modifier.height(4.dp))
@@ -268,6 +341,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                 }
                 else -> {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
@@ -275,11 +349,27 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                         items(items = results, key = { it.id ?: it.url ?: it.title ?: "" }) { v ->
                             SearchRow(v = v, onClick = { playVideo(v) })
                         }
+                        if (loadingMore) {
+                            item {
+                                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+fun autoUrl(s: StreamData): String? {
+    // pick a mid resolution
+    val keys = s.videoUrlByQuality.keys.toList()
+    val target = keys.filter { it.contains("720") }.firstOrNull()
+        ?: keys.filter { it.contains("480") }.firstOrNull()
+        ?: keys.maxByOrNull { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+    return target?.let { s.videoUrlByQuality[it] } ?: s.videoUrlByQuality.values.firstOrNull()
 }
 
 @Composable
@@ -290,53 +380,29 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (recentSearches.isNotEmpty()) {
-            item {
-                Text("Recent searches", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
+            item { Text("Recent searches", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface) }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(recentSearches) { q ->
-                        FilterChip(
-                            selected = false,
-                            onClick = { onSearch(q) },
-                            label = { Text(q) }
-                        )
-                    }
+                    items(recentSearches) { q -> FilterChip(selected = false, onClick = { onSearch(q) }, label = { Text(q) }) }
                 }
             }
         }
-        item {
-            Text("Trending", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-        }
+        item { Text("Trending", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface) }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(trending) { q ->
-                    FilterChip(
-                        selected = false,
-                        onClick = { onSearch(q) },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        label = { Text(q) }
-                    )
+                    FilterChip(selected = false, onClick = { onSearch(q) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) }, label = { Text(q) })
                 }
             }
         }
         item {
             Spacer(Modifier.height(24.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Icon(
-                    Icons.Filled.VideoLibrary,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(72.dp)
-                )
+                Icon(Icons.Filled.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(72.dp))
                 Spacer(Modifier.height(12.dp))
                 Text("Discover videos", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    "Search above to find anything on YouTube",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("Search above to find anything on YouTube", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -345,65 +411,28 @@ fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearc
 @Composable
 fun SearchRow(v: VideoItem, onClick: () -> Unit) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(132.dp, 74.dp)) {
-                AsyncImage(
-                    model = v.thumbnail,
-                    contentDescription = v.title,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Crop
-                )
-                // duration badge
+                AsyncImage(model = v.thumbnail, contentDescription = v.title, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
                 v.durationSec?.let { dur ->
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(6.dp),
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color.Black.copy(alpha = 0.75f)
-                    ) {
-                        Text(
-                            text = formatDuration(dur),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.75f)) {
+                        Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = v.title ?: "",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(text = v.title ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = v.channel ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(text = v.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (v.viewCount != null && v.viewCount > 0) {
                     Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = formatViews(v.viewCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text(text = formatViews(v.viewCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             IconButton(onClick = onClick) {
@@ -419,15 +448,16 @@ fun PlayerArea(
     player: ExoPlayer?,
     quality: String,
     qualities: List<String>,
+    isPlaying: Boolean,
+    playerLoading: Boolean,
     onQuality: (String) -> Unit,
+    onTogglePlay: () -> Unit,
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -439,76 +469,39 @@ fun PlayerArea(
                         factory = { c ->
                             PlayerView(c).apply {
                                 this.player = player
-                                layoutParams = ViewGroup.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.MATCH_PARENT
-                                )
+                                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                                 useController = true
                             }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    AsyncImage(
-                        model = video.thumbnail,
-                        contentDescription = video.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                    // play overlay gradient
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))
-                                )
-                            )
-                    )
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = "Playing audio",
-                        tint = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(56.dp)
-                            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(28.dp))
-                            .padding(8.dp)
-                    )
+                    AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)))))
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Playing audio", tint = Color.White, modifier = Modifier.align(Alignment.Center).size(56.dp).background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(28.dp)).padding(8.dp))
+                }
+                if (playerLoading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color.White)
+                    }
                 }
             }
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = video.title ?: "",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(text = video.title ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = video.channel ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(text = video.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box {
-                        FilterChip(
-                            selected = false,
-                            onClick = { expanded = true },
-                            label = { Text(quality) }
-                        )
+                        FilterChip(selected = false, onClick = { expanded = true }, label = { Text(quality) })
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            qualities.forEach { q ->
-                                DropdownMenuItem(
-                                    text = { Text(q) },
-                                    onClick = { onQuality(q); expanded = false }
-                                )
-                            }
+                            qualities.forEach { q -> DropdownMenuItem(text = { Text(q) }, onClick = { onQuality(q); expanded = false }) }
                         }
                     }
                     Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = onTogglePlay) {
+                        Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = MaterialTheme.colorScheme.primary)
+                    }
                     IconButton(onClick = onEnterPip) {
                         Icon(Icons.Filled.PictureInPicture, contentDescription = "PiP", tint = MaterialTheme.colorScheme.primary)
                     }
