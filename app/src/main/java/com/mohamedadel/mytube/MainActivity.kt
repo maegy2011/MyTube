@@ -109,7 +109,9 @@ import androidx.media3.session.SessionToken
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.compose.material3.Slider
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.datasource.DefaultDataSource
@@ -185,6 +187,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var quality by remember { mutableStateOf("audio-only (default)") }
     var playerLoading by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
+    var playerPositionMs by remember { mutableStateOf(0L) }
+    var playerDurationMs by remember { mutableStateOf(0L) }
+    var playerBufferedPct by remember { mutableStateOf(0) }
+    var playerError by remember { mutableStateOf<String?>(null) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -275,17 +281,39 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
-    // player listener for buffering state
+    // player listener for buffering state + errors
     LaunchedEffect(player) {
         player?.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 playerLoading = state == Player.STATE_BUFFERING
                 isPlaying = player?.isPlaying == true
+                if (state == Player.STATE_READY) playerError = null
             }
             override fun onIsPlayingChanged(playingFlag: Boolean) {
                 isPlaying = playingFlag
             }
+            override fun onPlayerError(error: PlaybackException) {
+                playerError = error.message ?: "Playback error"
+                playerLoading = false
+                isPlaying = false
+            }
         })
+    }
+    // position / duration / buffer polling for the upgraded player UI
+    LaunchedEffect(player, playing) {
+        while (true) {
+            val p = player
+            if (p != null) {
+                try {
+                    playerPositionMs = p.currentPosition.coerceAtLeast(0L)
+                    playerDurationMs = p.duration.takeIf { it > 0 } ?: 0L
+                    playerBufferedPct = p.bufferedPercentage
+                } catch (_: Exception) { }
+            } else {
+                playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
+            }
+            kotlinx.coroutines.delay(500)
+        }
     }
 
     fun doSearch(q: String) {
@@ -306,12 +334,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
 
     // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
-    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false) {
+    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false) {
         if (p == null) return
         val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
-        val url = when (q) {
-            "audio-only (default)" -> s.audioLowestUrl
-            "auto" -> autoUrl(s)
+        val url = when {
+            q == "audio-only (default)" -> s.audioLowestUrl
+            q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
             else -> s.videoUrlByQuality[q]
         } ?: return
         val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
@@ -324,8 +352,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
             .build()
         val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).build()
-        // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch).
-        val resume = autoplay && wasPlaying
+        // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
+        val resume = (autoplay && wasPlaying) || forceStart
         p.playWhenReady = false
         if (q == "audio-only (default)" || isMuxed || s.audioLowestUrl == null) {
             p.setMediaItem(mediaItem)
@@ -362,11 +390,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun playVideo(v: VideoItem) {
         playing = v
         playerLoading = true
+        playerError = null
+        playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
         try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
         scope.launch {
             val s = YouTubeRepo.stream(v.url ?: return@launch)
             streamData = s
-            val quals = mutableListOf("audio-only (default)", "auto")
+            // label the auto entry with the speed-based target so the user sees what auto will pick
+            val kbps = ctx.estimatedDownstreamKbps()
+            val autoKey = autoUrl(s, kbps)?.let { u ->
+                val h = s.videoUrlByQuality.entries.firstOrNull { it.value == u }?.key
+                    ?.let { qualityHeight(it) }
+                if (h != null && h != Int.MAX_VALUE) "auto \u2022 ${h}p" else "auto"
+            } ?: "auto"
+            val quals = mutableListOf("audio-only (default)", autoKey)
             val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityRank(it) }
             quals.addAll(sorted)
             qualityList = quals
@@ -558,13 +595,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     qualities = qualityList,
                     isPlaying = isPlaying,
                     playerLoading = playerLoading,
+                    positionMs = playerPositionMs,
+                    durationMs = playerDurationMs,
+                    bufferedPct = playerBufferedPct,
+                    errorMsg = playerError,
                     onQuality = { q ->
                         quality = q
                         // user explicitly picked quality: resume only if it was already playing
                         streamData?.let { applyQuality(q, it, player, autoplay = true) }
                     },
                     onTogglePlay = {
+                        playerError = null
                         if (player?.isPlaying == true) player?.pause() else player?.play()
+                    },
+                    onSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
+                    onRetry = {
+                        playerError = null
+                        streamData?.let { applyQuality(quality, it, player, forceStart = true) }
                     },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
                     onEnterPip = onEnterPip
@@ -660,13 +707,52 @@ private fun qualityRank(q: String): Int {
     return q.filter { it.isDigit() }.toIntOrNull() ?: 0
 }
 
-fun autoUrl(s: StreamData): String? {
-    // pick a mid resolution
-    val keys = s.videoUrlByQuality.keys.toList()
-    val target = keys.filter { it.contains("720") }.firstOrNull()
-        ?: keys.filter { it.contains("480") }.firstOrNull()
-        ?: keys.maxByOrNull { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
-    return target?.let { s.videoUrlByQuality[it] } ?: s.videoUrlByQuality.values.firstOrNull()
+// Estimated downstream bandwidth in Kbps from the active network (0 = unknown).
+fun Context.estimatedDownstreamKbps(): Int {
+    return try {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return 0
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return 0
+        caps.linkDownstreamBandwidthKbps
+    } catch (_: Exception) { 0 }
+}
+
+// Auto quality mapped to the user's actual connection speed:
+// <1Mbps→144p, <2.5Mbps→360p, <5Mbps→480p, <10Mbps→720p, <20Mbps→1080p, else highest. Unknown speed → old mid default (720/480).
+fun autoUrl(s: StreamData, kbps: Int = 0): String? {
+    val heights = s.videoUrlByQuality.keys.mapNotNull { k ->
+        qualityHeight(k)?.let { h -> h to k }
+    }
+    if (heights.isEmpty()) return s.videoUrlByQuality.values.firstOrNull()
+    if (kbps <= 0) {
+        val target = heights.filter { it.first == 720 }.firstOrNull()
+            ?: heights.filter { it.first == 480 }.firstOrNull()
+            ?: heights.maxByOrNull { it.first }
+        return target?.let { s.videoUrlByQuality[it.second] }
+    }
+    val targetH = when {
+        kbps < 1000 -> 144
+        kbps < 2500 -> 360
+        kbps < 5000 -> 480
+        kbps < 10000 -> 720
+        kbps < 20000 -> 1080
+        else -> Int.MAX_VALUE
+    }
+    val atOrBelow = heights.filter { it.first <= targetH }.maxByOrNull { it.first }
+    val best = atOrBelow ?: heights.minByOrNull { it.first }
+    return best?.let { s.videoUrlByQuality[it.second] }
+}
+
+fun qualityHeight(label: String): Int? {
+    val l = label.lowercase()
+    if (l.contains("2160") || l.contains("4k")) return 2160
+    if (l.contains("1440")) return 1440
+    if (l.contains("1080")) return 1080
+    if (l.contains("720")) return 720
+    if (l.contains("480")) return 480
+    if (l.contains("360")) return 360
+    if (l.contains("240")) return 240
+    if (l.contains("144")) return 144
+    return l.filter { it.isDigit() }.toIntOrNull()
 }
 
 @Composable
@@ -759,8 +845,14 @@ fun PlayerArea(
     qualities: List<String>,
     isPlaying: Boolean,
     playerLoading: Boolean,
+    positionMs: Long = 0L,
+    durationMs: Long = 0L,
+    bufferedPct: Int = 0,
+    errorMsg: String? = null,
     onQuality: (String) -> Unit,
     onTogglePlay: () -> Unit,
+    onSeek: (Long) -> Unit = {},
+    onRetry: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit
 ) {
@@ -772,7 +864,9 @@ fun PlayerArea(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
-            Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { onTogglePlay() }
+            ) {
                 if (quality != "audio-only (default)" && player != null) {
                     AndroidView(
                         factory = { c ->
@@ -786,19 +880,81 @@ fun PlayerArea(
                     )
                 } else {
                     AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)))))
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "Playing audio", tint = Color.White, modifier = Modifier.align(Alignment.Center).size(56.dp).background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(28.dp)).padding(8.dp))
+                    Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
                 }
-                if (playerLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color.White)
+                // center state: error > loading > big play/pause button
+                when {
+                    errorMsg != null -> {
+                        Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Filled.Clear, contentDescription = "Error", tint = Color.White, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Text("تعذر التشغيل", style = MaterialTheme.typography.titleSmall, color = Color.White)
+                            Spacer(Modifier.height(8.dp))
+                            androidx.compose.material3.Button(onClick = onRetry) { Text("إعادة المحاولة") }
+                        }
+                    }
+                    playerLoading -> {
+                        Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color.White, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                if (bufferedPct > 0) "تحميل… $bufferedPct%" else "تحميل…",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White
+                            )
+                        }
+                    }
+                    quality == "audio-only (default)" || player == null -> {
+                        IconButton(
+                            onClick = onTogglePlay,
+                            modifier = Modifier.align(Alignment.Center)
+                                .size(76.dp)
+                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(38.dp))
+                        ) {
+                            Icon(
+                                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(44.dp)
+                            )
+                        }
+                    }
+                }
+                // live badge while playing audio-only
+                if (isPlaying && quality == "audio-only (default)" && errorMsg == null && !playerLoading) {
+                    Surface(modifier = Modifier.align(Alignment.TopStart).padding(10.dp), shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.65f)) {
+                        Text("▶ يعمل الآن", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
             }
-            Column(modifier = Modifier.padding(16.dp)) {
+            // seek + time row (when duration known)
+            if (durationMs > 0) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Slider(
+                        value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
+                        onValueChange = { onSeek(it.toLong()) },
+                        valueRange = 0f..durationMs.toFloat(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(formatMs(positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.weight(1f))
+                        Text(formatMs(durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp)) {
                 Text(text = video.title ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(2.dp))
-                Text(text = video.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = video.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val meta = buildString {
+                    video.viewCount?.takeIf { it > 0 }?.let { append(formatViews(it)) }
+                    video.durationSec?.let { if (isNotEmpty()) append(" • "); append(formatDuration(it)) }
+                }
+                if (meta.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(text = meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box {
@@ -822,6 +978,14 @@ fun PlayerArea(
             }
         }
     }
+}
+
+private fun formatMs(ms: Long): String {
+    val totalSec = (ms / 1000).coerceAtLeast(0)
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%d:%02d", m, s)
 }
 
 private fun formatDuration(sec: Long): String {
