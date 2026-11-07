@@ -60,6 +60,9 @@ import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.MoreVert
@@ -144,6 +147,7 @@ import com.mohamedadel.mytube.data.local.PlaylistWithCount
 import com.mohamedadel.mytube.data.local.toEntity
 import com.mohamedadel.mytube.data.local.toVideoItem
 import com.mohamedadel.mytube.ui.icons.myTubeLogo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
@@ -1477,6 +1481,20 @@ fun PlayerArea(
     onEnterPip: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // professional controls: visible on tap, auto-hide after 3s while playing
+    var controlsVisible by remember { mutableStateOf(true) }
+    // in-player volume (0..1) + mute; applied to ExoPlayer, remembered per session
+    var volume by remember { mutableStateOf(1f) }
+    var muted by remember { mutableStateOf(false) }
+    LaunchedEffect(volume, muted, player) {
+        try { player?.volume = if (muted) 0f else volume.coerceIn(0f, 1f) } catch (_: Exception) { }
+    }
+    LaunchedEffect(controlsVisible, isPlaying, playerLoading, errorMsg) {
+        if (controlsVisible && isPlaying && !playerLoading && errorMsg == null) {
+            delay(3000)
+            controlsVisible = false
+        }
+    }
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
         shape = MaterialTheme.shapes.large,
@@ -1484,7 +1502,8 @@ fun PlayerArea(
     ) {
         Column {
             Box(
-                modifier = Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { onTogglePlay() }
+                // tap toggles the control bar (professional show/hide); play/pause lives on the buttons
+                modifier = Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
             ) {
                 if (quality != "audio-only (default)" && player != null) {
                     AndroidView(
@@ -1545,6 +1564,65 @@ fun PlayerArea(
                 if (isPlaying && quality == "audio-only (default)" && errorMsg == null && !playerLoading) {
                     Surface(modifier = Modifier.align(Alignment.TopStart).padding(10.dp), shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.65f)) {
                         Text("▶ يعمل الآن", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                }
+                // bottom control bar: play/pause + time + volume/mute — fades in on tap, auto-hides while playing
+                AnimatedVisibility(
+                    visible = controlsVisible && errorMsg == null && !playerLoading,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.Black.copy(alpha = 0.55f)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { controlsVisible = true; onTogglePlay() },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            if (durationMs > 0) {
+                                Text(
+                                    "${formatMs(positionMs)} / ${formatMs(durationMs)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            // mute toggle
+                            IconButton(
+                                onClick = { controlsVisible = true; muted = !muted },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
+                                    else if (volume < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown
+                                    else Icons.AutoMirrored.Rounded.VolumeUp,
+                                    contentDescription = if (muted) "إلغاء الكتم" else "كتم الصوت",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            // volume slider
+                            Slider(
+                                value = if (muted) 0f else volume,
+                                onValueChange = { volume = it; if (it > 0f) muted = false; controlsVisible = true },
+                                valueRange = 0f..1f,
+                                modifier = Modifier.width(110.dp)
+                            )
+                        }
                     }
                 }
             }
