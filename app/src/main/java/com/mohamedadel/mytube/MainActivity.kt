@@ -216,6 +216,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // queue (suggestion #3): sequential playback of the result list, started only by explicit user action
     var autoAdvance by remember { mutableStateOf(false) }
     var queueIndex by remember { mutableStateOf(-1) }
+    var recentSearches by remember { mutableStateOf(listOf<String>()) }
+    var showSuggestions by remember { mutableStateOf(false) }
+    var player by remember { mutableStateOf<ExoPlayer?>(null) }
+    var showSplash by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(1800); showSplash = false }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val ctx = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     // playlists (Room) + playback modes. Modes persist in prefs; playlists persist in Room.
     val db = remember {
         Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
@@ -235,14 +243,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var shuffleOn by remember { mutableStateOf(prefs.getBoolean("shuffle", false)) }
     fun setMode(m: String) { playMode = m; try { prefs.edit().putString("play_mode", m).apply() } catch (_: Exception) { } }
     fun setShuffle(b: Boolean) { shuffleOn = b; try { prefs.edit().putBoolean("shuffle", b).apply() } catch (_: Exception) { } }
-    var recentSearches by remember { mutableStateOf(listOf<String>()) }
-    var showSuggestions by remember { mutableStateOf(false) }
-    var player by remember { mutableStateOf<ExoPlayer?>(null) }
-    var showSplash by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(1800); showSplash = false }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val ctx = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var batteryExempt by remember { mutableStateOf(true) }
     // result of battery-exemption request: re-check right after user returns
