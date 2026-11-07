@@ -216,6 +216,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // queue (suggestion #3): sequential playback of the result list, started only by explicit user action
     var autoAdvance by remember { mutableStateOf(false) }
     var queueIndex by remember { mutableStateOf(-1) }
+    // full player vs mini player: back collapses (keeps audio), X closes (stops audio)
+    var playerExpanded by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -334,8 +336,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     // Open video WITHOUT auto-play: default quality audio-only, prepared paused. User taps play explicitly.
     // queue=true means this playback belongs to the user-started queue ("play all" / next / prev).
-    fun playVideo(v: VideoItem, queue: Boolean = false) {
+    // expand=false keeps the current collapsed/expanded state (queue advancing while browsing).
+    fun playVideo(v: VideoItem, queue: Boolean = false, expand: Boolean = true) {
         playing = v
+        if (expand) playerExpanded = true
         autoAdvance = queue
         queueIndex = results.indexOfFirst { it.id == v.id || (it.url != null && it.url == v.url) }
         playerLoading = true
@@ -365,21 +369,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun playNextInQueue() {
         val i = queueIndex
         val next = if (i >= 0) results.getOrNull(i + 1) else null
-        if (next != null) playVideo(next, queue = true) else autoAdvance = false
+        // expand=playerExpanded: advancing from notification/lock while browsing must not yank the full player open
+        if (next != null) playVideo(next, queue = true, expand = playerExpanded) else autoAdvance = false
     }
     fun playPrevInQueue() {
         val prev = if (queueIndex > 0) results.getOrNull(queueIndex - 1) else null
-        if (prev != null) playVideo(prev, queue = true)
+        if (prev != null) playVideo(prev, queue = true, expand = playerExpanded)
     }
     // playback modes: random pick (shuffle) + wrap-around (repeat all)
     fun playRandomInQueue() {
-        if (results.size < 2) { if (results.isNotEmpty()) playVideo(results[0], queue = true); return }
+        if (results.size < 2) { if (results.isNotEmpty()) playVideo(results[0], queue = true, expand = playerExpanded); return }
         var n = queueIndex
         while (n == queueIndex) n = (0 until results.size).random()
-        playVideo(results[n], queue = true)
+        playVideo(results[n], queue = true, expand = playerExpanded)
     }
     fun playFirstInQueue() {
-        if (results.isNotEmpty()) playVideo(results[0], queue = true) else autoAdvance = false
+        if (results.isNotEmpty()) playVideo(results[0], queue = true, expand = playerExpanded) else autoAdvance = false
     }
     fun modeLabel(m: String): String = when (m) {
         "repeatAll" -> "تكرار الكل"
@@ -512,11 +517,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
-    // Smart back: player open -> close player (results + scroll kept); results shown -> save scroll, back home. Returns true if consumed.
+    // Explicit close: stops audio and clears the player (X button only).
+    fun closePlayer() {
+        try { player?.pause() } catch (_: Exception) { }
+        playing = null
+        streamData = null
+        playerExpanded = false
+        autoAdvance = false
+        queueIndex = -1
+    }
+    // Smart back: collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
     fun smartBack(): Boolean {
-        if (playing != null) {
-            playing = null
-            streamData = null
+        if (playerExpanded) {
+            playerExpanded = false
+            return true
+        }
+        if (showPlaylists) {
+            if (openPlaylistId != null) openPlaylistId = null else showPlaylists = false
             return true
         }
         if (results.isNotEmpty()) {
@@ -529,7 +546,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = playing != null || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
@@ -574,7 +591,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 },
                 navigationIcon = {
                     // smart back button: shown whenever back would do something smart; hamburger otherwise
-                    if (playing != null || results.isNotEmpty()) {
+                    if (playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) {
                         IconButton(onClick = { smartBack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                         }
@@ -589,8 +606,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         },
         bottomBar = {
-            // Mini-player: always-visible answer to "which video is playing now" + quick control from anywhere in the list
-            if (!isInPip && playing != null) {
+            // Mini-player: visible whenever audio plays while the full player is collapsed (home, results, playlists). Never shown together with the full player.
+            if (!isInPip && playing != null && !playerExpanded) {
                 MiniPlayer(
                     video = playing!!,
                     isPlaying = isPlaying,
@@ -600,8 +617,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         playerError = null
                         if (player?.isPlaying == true) player?.pause() else player?.play()
                     },
+                    onClose = { closePlayer() },
                     onTap = {
-                        // jump the list to the currently playing row
+                        // reopen the full player + jump the list to the currently playing row
+                        playerExpanded = true
                         scope.launch {
                             val cur = playing ?: return@launch
                             val idx = results.indexOfFirst { it.id == cur.id || (it.url != null && it.url == cur.url) }
@@ -721,7 +740,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
 
             val cur = playing
-            if (cur != null) {
+            if (cur != null && playerExpanded) {
                 PlayerArea(
                     video = cur,
                     player = player,
@@ -754,6 +773,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onCycleMode = { cycleMode() },
                     onToggleShuffle = { setShuffle(!shuffleOn) },
                     onQueue = { showQueue = true },
+                    onClose = { closePlayer() },
                     onNext = { playNextInQueue() },
                     onPrev = { playPrevInQueue() },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
@@ -1334,7 +1354,8 @@ fun MiniPlayer(
     positionMs: Long,
     durationMs: Long,
     onToggle: () -> Unit,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    onClose: () -> Unit = {}
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1357,6 +1378,9 @@ fun MiniPlayer(
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onToggle) {
                     Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Rounded.Clear, contentDescription = "إغلاق المشغل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
             }
             if (durationMs > 0) {
@@ -1448,6 +1472,7 @@ fun PlayerArea(
     onCycleMode: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
     onQueue: () -> Unit = {},
+    onClose: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit
 ) {
@@ -1596,6 +1621,9 @@ fun PlayerArea(
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onFallbackYoutube) {
                         Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "فتح في يوتيوب", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Rounded.Clear, contentDescription = "إغلاق المشغل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
