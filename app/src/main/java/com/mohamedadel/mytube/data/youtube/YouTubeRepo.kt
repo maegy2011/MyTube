@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.data.youtube
 
+import android.text.Html
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -16,6 +17,9 @@ data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Pa
 
 object YouTubeRepo {
     private val client = OkHttpClient()
+    private fun decodeHtml(s: String): String {
+        return try { Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString() } catch (_: Exception) { s }
+    }
     private fun service() = NewPipe.getService("YouTube")
     init { runCatching { NewPipe.init(NewPipeDownloaderImpl()) } }
 
@@ -24,7 +28,7 @@ object YouTubeRepo {
         // Try NewPipe first
         try {
             val list = service().suggestionExtractor.suggestionList(query)
-            if (list.isNotEmpty()) return@withContext list.take(8)
+            if (list.isNotEmpty()) return@withContext list.map { decodeHtml(it) }.take(8)
         } catch (_: Exception) { }
         // Fallback: Google YouTube suggest (works for Arabic and other scripts)
         try {
@@ -41,7 +45,7 @@ object YouTubeRepo {
                 for (i in 0 until sugg.length()) {
                     val item = sugg.get(i)
                     val text = if (item is JSONArray) item.optString(0) else item.toString()
-                    if (text.isNotBlank()) out.add(text)
+                    if (text.isNotBlank()) out.add(decodeHtml(text))
                 }
                 out.take(8)
             }
@@ -57,8 +61,8 @@ object YouTubeRepo {
             for (info in items) {
                 if (info is StreamInfoItem) {
                     val url: String? = try { info.url } catch (_: Exception) { null }
-                    val name: String? = try { info.name } catch (_: Exception) { null }
-                    val up: String? = try { info.uploaderName } catch (_: Exception) { null }
+                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                    val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
                     var thumb: String? = null
                     try { thumb = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
                     var dur: Long? = null
