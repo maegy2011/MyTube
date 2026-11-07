@@ -138,6 +138,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.mohamedadel.mytube.data.youtube.AudioTrackItem
 import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
@@ -212,6 +213,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var nextPage by remember { mutableStateOf<Page?>(null) }
     var playing by remember { mutableStateOf<VideoItem?>(null) }
     var streamData by remember { mutableStateOf<StreamData?>(null) }
+    // selected dubbed/original audio track (resets per video); index into streamData.audioTracks
+    var audioTrackIdx by remember { mutableStateOf(0) }
+    LaunchedEffect(streamData) { audioTrackIdx = 0 }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
     var quality by remember { mutableStateOf("audio-only (default)") }
     var playerLoading by remember { mutableStateOf(false) }
@@ -306,8 +310,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false) {
         if (p == null) return
         val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
+        // user-selected dubbed/original audio track, falling back to lowest
+        val selAudio = s.audioTracks.getOrNull(audioTrackIdx)?.url ?: s.audioLowestUrl
         val url = when {
-            q == "audio-only (default)" -> s.audioLowestUrl
+            q == "audio-only (default)" -> selAudio
             q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
             else -> s.videoUrlByQuality[q]
         } ?: return
@@ -320,18 +326,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             .setDescription("© MyTube")
             .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
             .build()
-        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).build()
+        // side-loaded captions: the native CC button lists them, user switches language there
+        val subConfigs = s.subtitles.mapNotNull { cap ->
+            try {
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(cap.url))
+                    .setMimeType(cap.mime).setLanguage(cap.langTag).setLabel(cap.label).build()
+            } catch (_: Exception) { null }
+        }
+        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).setSubtitleConfigurations(subConfigs).build()
         // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
         val resume = (autoplay && wasPlaying) || forceStart
         p.playWhenReady = false
-        if (q == "audio-only (default)" || isMuxed || s.audioLowestUrl == null) {
+        if (q == "audio-only (default)" || isMuxed || selAudio == null) {
             p.setMediaItem(mediaItem)
             p.prepare()
         } else {
             val httpFactory = DefaultHttpDataSource.Factory()
             val dataSourceFactory = DefaultDataSource.Factory(ctx, httpFactory)
             val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
-            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(s.audioLowestUrl)))
+            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(selAudio)))
             val merged = MergingMediaSource(videoSource, audioSource)
             p.setMediaSource(merged)
             p.prepare()
@@ -820,6 +833,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onClose = { closePlayer() },
                     isFullscreen = isFullscreen,
                     onToggleFullscreen = { setFullscreen(!isFullscreen) },
+                    audioTracks = streamData?.audioTracks ?: emptyList(),
+                    audioIdx = audioTrackIdx,
+                    onAudioTrack = { i ->
+                        audioTrackIdx = i
+                        streamData?.let { sd -> applyQuality(quality, sd, player, autoplay = true) }
+                    },
                     onNext = { playNextInQueue() },
                     onPrev = { playPrevInQueue() },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
@@ -1584,12 +1603,16 @@ fun PlayerArea(
     onToggleShuffle: () -> Unit = {},
     onQueue: () -> Unit = {},
     onClose: () -> Unit = {},
+    audioTracks: List<AudioTrackItem> = emptyList(),
+    audioIdx: Int = 0,
+    onAudioTrack: (Int) -> Unit = {},
     isFullscreen: Boolean = false,
     onToggleFullscreen: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var langExpanded by remember { mutableStateOf(false) }
     // TEMPORARY EXPERIMENT (native-controls test): hide all our custom bars, use the full native ExoPlayer controller.
     // Media3 ships Arabic strings (values-ar), so the native buttons appear Arabic on an Arabic device.
     // To revert: set nativeOnly = false.
@@ -1825,6 +1848,20 @@ fun PlayerArea(
                         FilterChip(selected = false, onClick = { expanded = true }, label = { Text(quality) })
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             qualities.forEach { q -> DropdownMenuItem(text = { Text(q) }, onClick = { onQuality(q); expanded = false }) }
+                        }
+                    }
+                    // dubbed/original audio language (only when the video offers several)
+                    if (audioTracks.size > 1) {
+                        Spacer(Modifier.width(8.dp))
+                        Box {
+                            val cur = audioTracks.getOrNull(audioIdx)
+                            FilterChip(selected = false, onClick = { langExpanded = true }, label = { Text(cur?.name?.takeIf { it.isNotBlank() } ?: cur?.localeTag ?: "الصوت") })
+                            DropdownMenu(expanded = langExpanded, onDismissRequest = { langExpanded = false }) {
+                                audioTracks.forEachIndexed { i, t ->
+                                    val lbl = listOfNotNull(t.name?.takeIf { it.isNotBlank() }, t.localeTag, t.type?.let { if (it == "DUBBED") "مدبلج" else if (it == "ORIGINAL") "أصلي" else it }, t.bitrate.takeIf { it > 0 }?.let { "${it / 1000}k" }).joinToString(" • ")
+                                    DropdownMenuItem(text = { Text(if (i == audioIdx) "✓ $lbl" else lbl) }, onClick = { onAudioTrack(i); langExpanded = false })
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.width(8.dp))
