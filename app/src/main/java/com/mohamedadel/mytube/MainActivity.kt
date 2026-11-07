@@ -34,14 +34,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -74,6 +85,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +95,10 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
@@ -134,6 +150,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
     var isPlaying by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val svm: SearchViewModel = viewModel()
@@ -192,14 +210,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
     }
 
     fun applyQuality(q: String, s: StreamData, p: ExoPlayer?) {
+        if (p == null) return
         val url = when (q) {
             "audio-only (default)" -> s.audioLowestUrl
             "auto" -> autoUrl(s)
             else -> s.videoUrlByQuality[q]
         } ?: return
-        p?.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
-        p?.prepare()
-        p?.play()
+        val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
+        val isMuxed = url in muxedUrls
+        if (q == "audio-only (default)" || isMuxed || s.audioLowestUrl == null) {
+            p.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+            p.prepare()
+            p.play()
+        } else {
+            val httpFactory = DefaultHttpDataSource.Factory()
+            val dataSourceFactory = DefaultDataSource.Factory(ctx, httpFactory)
+            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(url)))
+            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(s.audioLowestUrl)))
+            val merged = MergingMediaSource(videoSource, audioSource)
+            p.setMediaSource(merged)
+            p.prepare()
+            p.play()
+        }
     }
 
     fun playVideo(v: VideoItem) {
@@ -212,19 +244,53 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
             val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityRank(it) }
             quals.addAll(sorted)
             qualityList = quals
-            quality = "audio-only (default)"
-            applyQuality("audio-only (default)", s, player)
+            val defaultQ = if (quals.contains("auto")) "auto" else quals.getOrElse(2) { "audio-only (default)" }
+            quality = defaultQ
+            applyQuality(defaultQ, s, player)
         }
     }
 
+    BackHandler(enabled = playing != null || results.isNotEmpty()) {
+        if (playing != null) {
+            playing = null
+            streamData = null
+        } else if (results.isNotEmpty()) {
+            results = emptyList()
+            query = ""
+        }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(8.dp))
+                NavigationDrawerItem(label = { Text("Home") }, selected = selectedTab == 0, onClick = { selectedTab = 0; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                NavigationDrawerItem(label = { Text("Settings") }, selected = false, onClick = { scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
+            }
+        }
+    ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text("MyTube", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 },
+                navigationIcon = {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(selected = selectedTab == 0, onClick = { selectedTab = 0 }, icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Home") })
+                NavigationBarItem(selected = selectedTab == 1, onClick = { selectedTab = 1 }, icon = { Icon(Icons.Filled.Search, null) }, label = { Text("Search") })
+                NavigationBarItem(selected = selectedTab == 2, onClick = { selectedTab = 2 }, icon = { Icon(Icons.Filled.VideoLibrary, null) }, label = { Text("Library") })
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { pad ->
@@ -250,6 +316,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
                     }
                 },
                 singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
                 shape = RoundedCornerShape(28.dp),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
@@ -359,6 +426,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
             }
         }
     }
+    }
 }
 
 private fun qualityRank(q: String): Int {
@@ -430,21 +498,17 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isLoading: Boolean, isPlaying: B
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(132.dp, 74.dp)) {
                 AsyncImage(model = v.thumbnail, contentDescription = v.title, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-                // play/pause/spinner overlay on thumbnail
+                // play icon overlay on thumbnail (no spinner on list)
                 Box(
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.18f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            if (isCurrent && isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isCurrent && isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
                 v.durationSec?.let { dur ->
                     Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.75f)) {

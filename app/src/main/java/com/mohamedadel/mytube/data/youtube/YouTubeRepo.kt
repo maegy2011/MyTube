@@ -11,7 +11,7 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 
 data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val title: String? = null)
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null)
 data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false)
 
 object YouTubeRepo {
@@ -82,14 +82,35 @@ object YouTubeRepo {
             val audios = try { ext.audioStreams } catch (_: Exception) { null } ?: emptyList()
             val lowest = audios.sortedBy { a -> try { a.averageBitrate } catch (_: Exception) { Int.MAX_VALUE } }.firstOrNull()
             val audioUrl: String? = try { lowest?.content } catch (_: Exception) { null }
-            val vids = try { ext.videoStreams } catch (_: Exception) { null } ?: emptyList()
             val map = mutableMapOf<String, String>()
-            for (v in vids) {
-                try { map[v.resolution ?: "auto"] = v.content } catch (_: Exception) {}
+            val muxed = mutableSetOf<String>()
+            // Combined (audio+video) streams
+            val combined = try { ext.videoStreams } catch (_: Exception) { null } ?: emptyList()
+            for (v in combined) {
+                try {
+                    val key = (v.resolution ?: "").ifBlank { "auto" }
+                    if (!map.containsKey(key)) {
+                        map[key] = v.content
+                        muxed.add(key)
+                    }
+                } catch (_: Exception) {}
             }
+            // Video-only (DASH) streams for higher qualities
+            val videoOnly = try { ext.videoOnlyStreams } catch (_: Exception) { null } ?: emptyList()
+            var idx = 0
+            for (v in videoOnly) {
+                try {
+                    val base = (v.resolution ?: "").ifBlank { "video$idx" }
+                    if (!map.containsKey(base)) {
+                        map[base] = v.content
+                    }
+                    idx++
+                } catch (_: Exception) {}
+            }
+            // ensure uniqueness: if duplicate keys slipped, re-key
             var title: String? = null
             try { title = ext.name } catch (_: Exception) {}
-            StreamData(audioUrl, map, title)
+            StreamData(audioUrl, map, muxed, title)
         } catch (_: Exception) { StreamData() }
     }
 }
