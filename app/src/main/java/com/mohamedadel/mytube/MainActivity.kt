@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Rational
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -16,11 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.compose.PlayerSurface
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
@@ -35,12 +36,12 @@ class MainActivity : ComponentActivity() {
         setContent { MyTubeApp(onEnterPip = { enterPip() }, playerProvider = { player }) }
     }
     private fun enterPip() {
-        val params = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational(16, 9)).build()
+        val params = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()
         enterPictureInPictureMode(params)
     }
     override fun onUserLeaveHint() {
-        if (player?.isPlaying == true && player?.videoSize?.height\u0020?: 0 > 0) enterPip()
+        val h = try { player?.videoSize?.height ?: 0 } catch (_: Exception) { 0 }
+        if (player?.isPlaying == true && h > 0) enterPip()
         super.onUserLeaveHint()
     }
     override fun onDestroy() { player?.release(); player = null; super.onDestroy() }
@@ -60,12 +61,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, playerProvider: () -> ExoPlayer?) {
     Scaffold(topBar = { TopAppBar(title = { Text("MyTube") }) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             OutlinedTextField(value = query, onValueChange = { query = it; svm.onQueryChange(it) }, label = { Text("Search") }, modifier = Modifier.fillMaxWidth().padding(8.dp), singleLine = true)
-            if (suggestions.isNotEmpty()) {
-                suggestions.forEach { s -> Text(s, Modifier.fillMaxWidth().clickable { query = s; svm.onQueryChange(s); scope.launch { results = YouTubeRepo.search(s).first } }.padding(12.dp, 8.dp)) }
+            suggestions.forEach { s ->
+                Text(s, Modifier.fillMaxWidth().clickable { query = s; svm.onQueryChange(s); scope.launch { results = YouTubeRepo.search(s).first } }.padding(12.dp, 8.dp))
             }
             Button(onClick = { scope.launch { results = YouTubeRepo.search(query).first } }, modifier = Modifier.padding(8.dp)) { Text("Search") }
             if (playing != null) {
-                PlayerArea(playing!!, playerProvider(), quality, qualityList, onQuality = { quality = it; applyQuality(it, playerProvider()) }, onFallbackYoutube = { openInYoutube(playing!!) })
+                PlayerArea(playing!!, playerProvider(), quality, qualityList, onQuality = { quality = it }, onFallbackYoutube = { openInYoutube(playing!!) })
                 Button(onClick = onEnterPip, modifier = Modifier.padding(8.dp)) { Text("PiP") }
             }
             LazyColumn(Modifier.fillMaxSize()) {
@@ -73,7 +74,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, playerProvider: () -> ExoPlayer?) {
                     Row(Modifier.fillMaxWidth().clickable { playing = v; scope.launch { loadStream(v, playerProvider(), onQualities = { qualityList = it }) } }.padding(8.dp)) {
                         AsyncImage(model = v.thumbnail, contentDescription = null, modifier = Modifier.size(120.dp, 68.dp), contentScale = ContentScale.Crop)
                         Column(Modifier.padding(start = 8.dp)) {
-                            Text(v.title ?: ""); Text(v.channel ?: "", style = MaterialTheme.typography.bodySmall)
+                            Text(v.title ?: "")
+                            Text(v.channel ?: "", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -85,17 +87,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, playerProvider: () -> ExoPlayer?) {
 @Composable
 fun PlayerArea(video: VideoItem, player: ExoPlayer?, quality: String, qualities: List<String>, onQuality: (String) -> Unit, onFallbackYoutube: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     Column(Modifier.fillMaxWidth().padding(8.dp)) {
-        if (quality != "audio-only (default)" && player != null) PlayerSurface(player, Modifier.fillMaxWidth().height(200.dp)) else AsyncImage(model = video.thumbnail, contentDescription = null, modifier = Modifier.fillMaxWidth().height(200.dp), contentScale = ContentScale.Crop)
+        if (quality != "audio-only (default)" && player != null) {
+            AndroidView(factory = { c -> PlayerView(c).apply { this.player = player; layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 600) } }, modifier = Modifier.fillMaxWidth().height(200.dp))
+        } else {
+            AsyncImage(model = video.thumbnail, contentDescription = null, modifier = Modifier.fillMaxWidth().height(200.dp), contentScale = ContentScale.Crop)
+        }
         Text(video.title ?: "")
-        Row { Box { Button(onClick = { expanded = true }) { Text(quality) }
-            DropdownMenu(expanded, onDismissRequest = { expanded = false }) { qualities.forEach { q -> DropdownMenuItem(text = { Text(q) }, onClick = { onQuality(q); expanded = false }) } } }
+        Row {
+            Box {
+                Button(onClick = { expanded = true }) { Text(quality) }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    qualities.forEach { q -> DropdownMenuItem(text = { Text(q) }, onClick = { onQuality(q); expanded = false }) }
+                }
+            }
             Spacer(Modifier.width(8.dp))
-            Button(onClick = onFallbackYoutube) { Text("Open in YouTube") } }
+            Button(onClick = onFallbackYoutube) { Text("Open in YouTube") }
+        }
     }
 }
-
-fun applyQuality(q: String, player: ExoPlayer?) { /* MVP: quality switch re-resolves stream in loadStream; auto = bandwidth pick */ }
 
 suspend fun loadStream(v: VideoItem, player: ExoPlayer?, onQualities: (List<String>) -> Unit) {
     val url = v.url ?: return
@@ -104,9 +115,10 @@ suspend fun loadStream(v: VideoItem, player: ExoPlayer?, onQualities: (List<Stri
         val quals = mutableListOf("audio-only (default)", "auto")
         quals.addAll(s.videoUrlByQuality.keys)
         onQualities(quals)
-        // default: lowest audio
         val audioUrl = s.audioLowestUrl ?: return
-        player?.setMediaItem(MediaItem.fromUri(Uri.parse(audioUrl))); player?.prepare(); player?.play()
+        player?.setMediaItem(MediaItem.fromUri(Uri.parse(audioUrl)))
+        player?.prepare()
+        player?.play()
     }
 }
 
