@@ -1567,14 +1567,11 @@ fun PlayerArea(
                     }
                 }
                 // bottom control bar: play/pause + time + volume/mute — fades in on tap, auto-hides while playing
+                // bottom control bar (plain conditional: avoids AnimatedVisibility scope-overload quirk)
+                if (controlsVisible && errorMsg == null && !playerLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.BottomCenter
-                ) {
-                AnimatedVisibility(
-                    visible = controlsVisible && errorMsg == null && !playerLoading,
-                    enter = fadeIn(),
-                    exit = fadeOut()
                 ) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
