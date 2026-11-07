@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -230,7 +231,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
 
-    // auto-load more when scrolled to bottom
+    // auto-load more when scrolled to bottom (guarded: single-flight + null page + error-safe)
     val shouldLoadMore by remember {
         derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -238,14 +239,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             total > 0 && last >= total - 3
         }
     }
-    LaunchedEffect(shouldLoadMore) {
+    LaunchedEffect(shouldLoadMore, currentQuery) {
         if (shouldLoadMore && hasMore && !loadingMore && !loading && currentQuery.isNotBlank()) {
+            val q = currentQuery
+            val page = nextPage ?: return@LaunchedEffect
             loadingMore = true
-            val page = YouTubeRepo.search(currentQuery, nextPage)
-            results = results + page.items
-            nextPage = page.nextPage
-            hasMore = page.hasNext
-            loadingMore = false
+            try {
+                val res = YouTubeRepo.search(q, page)
+                // drop duplicates already in list (same url/id) to avoid key crash
+                val seen = results.mapNotNull { it.url ?: it.id }.toSet()
+                val fresh = res.items.filter { (it.url ?: it.id ?: it.title) !in seen }
+                results = results + fresh
+                nextPage = res.nextPage
+                hasMore = res.hasNext && res.nextPage != null
+            } catch (_: Exception) {
+                hasMore = false
+            } finally {
+                loadingMore = false
+            }
         }
     }
 
@@ -541,7 +552,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        items(items = results, key = { it.id ?: it.url ?: it.title ?: "" }) { v ->
+                        itemsIndexed(items = results, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
                             SearchRow(
                                 v = v,
                                 isCurrent = playing?.id == v.id || playing?.url == v.url,
@@ -560,13 +571,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             item {
                                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                                     androidx.compose.material3.Button(onClick = {
+                                        if (loadingMore) return@Button
+                                        val pg = nextPage ?: return@Button
                                         loadingMore = true
                                         scope.launch {
-                                            val page = YouTubeRepo.search(currentQuery, nextPage)
-                                            results = results + page.items
-                                            nextPage = page.nextPage
-                                            hasMore = page.hasNext
-                                            loadingMore = false
+                                            try {
+                                                val page = YouTubeRepo.search(currentQuery, pg)
+                                                val seen = results.mapNotNull { it.url ?: it.id }.toSet()
+                                                val fresh = page.items.filter { (it.url ?: it.id ?: it.title) !in seen }
+                                                results = results + fresh
+                                                nextPage = page.nextPage
+                                                hasMore = page.hasNext && page.nextPage != null
+                                            } catch (_: Exception) {
+                                                hasMore = false
+                                            } finally {
+                                                loadingMore = false
+                                            }
                                         }
                                     }) { Text("Load more") }
                                 }
