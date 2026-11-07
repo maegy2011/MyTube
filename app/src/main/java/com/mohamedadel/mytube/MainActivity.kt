@@ -1567,11 +1567,14 @@ fun PlayerArea(
                     }
                 }
                 // bottom control bar: play/pause + time + volume/mute — fades in on tap, auto-hides while playing
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
                 AnimatedVisibility(
                     visible = controlsVisible && errorMsg == null && !playerLoading,
                     enter = fadeIn(),
-                    exit = fadeOut(),
-                    modifier = Modifier.align(Alignment.BottomCenter)
+                    exit = fadeOut()
                 ) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -1624,6 +1627,7 @@ fun PlayerArea(
                             )
                         }
                     }
+                }
                 }
             }
             // seek + time row (when duration known)
