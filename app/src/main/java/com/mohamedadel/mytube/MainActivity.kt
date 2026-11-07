@@ -722,8 +722,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         } else {
         Column(Modifier.padding(pad).fillMaxSize()) {
-            // Battery-exemption banner: visible only while the exemption is missing
-            if (!batteryExempt) {
+            // Battery-exemption banner: visible only while the exemption is missing (never in fullscreen)
+            if (!isFullscreen && !batteryExempt) {
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
@@ -746,6 +746,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 }
             }
+            // Search + suggestions are hidden in fullscreen: they stole vertical space and
+            // squeezed the video to "app size" instead of true fullscreen.
+            if (!isFullscreen) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
@@ -807,6 +810,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     }
                 }
+            }
             }
 
             val cur = playing
