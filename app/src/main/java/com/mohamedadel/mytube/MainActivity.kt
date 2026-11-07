@@ -290,8 +290,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
-    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?) {
+    // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
+    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false) {
         if (p == null) return
+        val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
         val url = when (q) {
             "audio-only (default)" -> s.audioLowestUrl
             "auto" -> autoUrl(s)
@@ -307,10 +309,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
             .build()
         val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).build()
+        // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch).
+        val resume = autoplay && wasPlaying
+        p.playWhenReady = false
         if (q == "audio-only (default)" || isMuxed || s.audioLowestUrl == null) {
             p.setMediaItem(mediaItem)
             p.prepare()
-            p.play()
         } else {
             val httpFactory = DefaultHttpDataSource.Factory()
             val dataSourceFactory = DefaultDataSource.Factory(ctx, httpFactory)
@@ -319,8 +323,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val merged = MergingMediaSource(videoSource, audioSource)
             p.setMediaSource(merged)
             p.prepare()
-            p.play()
         }
+        p.playWhenReady = resume
     }
 
     // Auto-switch to audio-only (lowest quality) when app goes to background / screen locked
@@ -330,7 +334,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val activity = ctx as? android.app.Activity
                 if (activity?.isInPictureInPictureMode != true && playing != null && quality != "audio-only (default)") {
                     quality = "audio-only (default)"
-                    streamData?.let { applyQuality("audio-only (default)", it, player) }
+                    // preserve play state: autoplay=true resumes only if it was playing
+                    streamData?.let { applyQuality("audio-only (default)", it, player, autoplay = true) }
                 }
             }
         }
@@ -338,9 +343,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Open video WITHOUT auto-play: default quality audio-only, prepared paused. User taps play explicitly.
     fun playVideo(v: VideoItem) {
         playing = v
         playerLoading = true
+        try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
         scope.launch {
             val s = YouTubeRepo.stream(v.url ?: return@launch)
             streamData = s
@@ -348,9 +355,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityRank(it) }
             quals.addAll(sorted)
             qualityList = quals
-            val defaultQ = quals.getOrElse(2) { "audio-only (default)" }
-            quality = defaultQ
-            applyQuality(defaultQ, s, player)
+            quality = "audio-only (default)"
+            applyQuality("audio-only (default)", s, player, autoplay = false)
         }
     }
 
@@ -515,7 +521,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     playerLoading = playerLoading,
                     onQuality = { q ->
                         quality = q
-                        streamData?.let { applyQuality(q, it, player) }
+                        // user explicitly picked quality: resume only if it was already playing
+                        streamData?.let { applyQuality(q, it, player, autoplay = true) }
                     },
                     onTogglePlay = {
                         if (player?.isPlaying == true) player?.pause() else player?.play()
