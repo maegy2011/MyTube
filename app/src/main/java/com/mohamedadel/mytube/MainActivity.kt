@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Clear
@@ -316,6 +317,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
+    // saved scroll position per query: firstVisibleIndex + offset, restored when the same query is searched again
+    val savedScroll = remember { mutableMapOf<String, Pair<Int, Int>>() }
     fun doSearch(q: String) {
         if (q.isBlank()) return
         currentQuery = q
@@ -327,6 +330,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             nextPage = page.nextPage
             hasMore = page.hasNext
             loading = false
+            // restore saved scroll position for repeated queries
+            savedScroll[q]?.let { (idx, off) ->
+                try { listState.scrollToItem(idx, off) } catch (_: Exception) { }
+            }
             if (!recentSearches.contains(q)) {
                 recentSearches = (listOf(q) + recentSearches).take(6)
             }
@@ -412,15 +419,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
-    BackHandler(enabled = playing != null || results.isNotEmpty()) {
+    // Smart back: player open -> close player (results + scroll kept); results shown -> save scroll, back home. Returns true if consumed.
+    fun smartBack(): Boolean {
         if (playing != null) {
             playing = null
             streamData = null
-        } else if (results.isNotEmpty()) {
+            return true
+        }
+        if (results.isNotEmpty()) {
+            try {
+                savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+            } catch (_: Exception) { }
             results = emptyList()
             query = ""
+            return true
         }
+        return false
     }
+    BackHandler(enabled = playing != null || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
@@ -460,8 +476,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     Text("MyTube", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 },
                 navigationIcon = {
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                    // smart back button: shown whenever back would do something smart; hamburger otherwise
+                    if (playing != null || results.isNotEmpty()) {
+                        IconButton(onClick = { smartBack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    } else {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
