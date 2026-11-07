@@ -443,7 +443,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
                 Text("MyTube", style = MaterialTheme.typography.displayMedium, color = Color.White)
                 Spacer(Modifier.height(8.dp))
-                Text("v0.1.3", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
+                Text("v0.2.0", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
                 Spacer(Modifier.height(24.dp))
                 Text("© MyTube. All rights reserved.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
                 Spacer(Modifier.height(4.dp))
