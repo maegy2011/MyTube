@@ -47,5 +47,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.newpipe.extractor)
     implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 }
