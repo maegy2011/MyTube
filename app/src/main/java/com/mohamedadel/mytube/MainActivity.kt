@@ -257,6 +257,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
+    // persisted recent searches (survive app restarts; shown ONLY in the search dropdown)
+    LaunchedEffect(Unit) {
+        try {
+            val raw = prefs.getString("recent_searches", "") ?: ""
+            if (raw.isNotBlank()) recentSearches = raw.split("\u001f").filter { it.isNotBlank() }.take(6)
+        } catch (_: Exception) { }
+    }
     // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
     fun setFullscreen(full: Boolean) {
@@ -590,6 +597,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
             if (!recentSearches.contains(q)) {
                 recentSearches = (listOf(q) + recentSearches).take(6)
+                try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
             }
         }
     }
@@ -801,7 +809,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             )
             }
 
-            AnimatedVisibility(visible = showSuggestions && suggestions.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
+            // Dropdown = recent searches (history icon) + live network suggestions, merged and deduped.
+            // Blank query -> recents only. Typing -> matching recents first, then network.
+            val dropRecents = if (query.isBlank()) recentSearches else recentSearches.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
+            AnimatedVisibility(visible = showSuggestions && (suggestions.isNotEmpty() || dropRecents.isNotEmpty()), enter = fadeIn(), exit = fadeOut()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(16.dp),
@@ -809,6 +820,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     tonalElevation = 2.dp
                 ) {
                     Column {
+                        if (query.isBlank() && dropRecents.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("عمليات بحث سابقة", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                                androidx.compose.material3.TextButton(onClick = {
+                                    recentSearches = emptyList()
+                                    try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
+                                }) { Text("مسح الكل") }
+                            }
+                        }
+                        dropRecents.forEach { s ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    query = s; svm.onQueryChange(s); doSearch(s)
+                                }.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
                         suggestions.take(8).forEach { s ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().clickable {
@@ -938,7 +973,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 }
                 results.isEmpty() && query.isBlank() -> {
-                    HomeEmptyState(recentSearches = recentSearches, trending = trending, onSearch = { q -> query = q; doSearch(q) })
+                    HomeEmptyState(trending = trending, onSearch = { q -> query = q; doSearch(q) })
                 }
                 results.isEmpty() && !loading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1130,20 +1165,12 @@ fun qualityHeight(label: String): Int? {
 }
 
 @Composable
-fun HomeEmptyState(recentSearches: List<String>, trending: List<String>, onSearch: (String) -> Unit) {
+fun HomeEmptyState(trending: List<String>, onSearch: (String) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        if (recentSearches.isNotEmpty()) {
-            item { Text("عمليات بحث سابقة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(recentSearches) { q -> FilterChip(selected = false, onClick = { onSearch(q) }, label = { Text(q) }) }
-                }
-            }
-        }
         item { Text("رائج الآن", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
