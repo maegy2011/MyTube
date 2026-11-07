@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.net.Uri
 import android.util.Rational
 import android.view.ViewGroup
@@ -237,6 +238,99 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val suggestions by svm.suggestions.collectAsState()
     val listState = rememberLazyListState()
 
+    // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
+    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false) {
+        if (p == null) return
+        val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
+        val url = when {
+            q == "audio-only (default)" -> s.audioLowestUrl
+            q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
+            else -> s.videoUrlByQuality[q]
+        } ?: return
+        val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
+        val isMuxed = url in muxedUrls
+        val meta = MediaMetadata.Builder()
+            .setTitle(playing?.title ?: s.title)
+            .setArtist(playing?.channel)
+            .setAlbumTitle("MyTube")
+            .setDescription("© MyTube")
+            .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
+            .build()
+        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).build()
+        // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
+        val resume = (autoplay && wasPlaying) || forceStart
+        p.playWhenReady = false
+        if (q == "audio-only (default)" || isMuxed || s.audioLowestUrl == null) {
+            p.setMediaItem(mediaItem)
+            p.prepare()
+        } else {
+            val httpFactory = DefaultHttpDataSource.Factory()
+            val dataSourceFactory = DefaultDataSource.Factory(ctx, httpFactory)
+            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(s.audioLowestUrl)))
+            val merged = MergingMediaSource(videoSource, audioSource)
+            p.setMediaSource(merged)
+            p.prepare()
+        }
+        p.playWhenReady = resume
+    }
+
+    // Auto-switch to audio-only (lowest quality) when app goes to background / screen locked
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                val activity = ctx as? android.app.Activity
+                if (activity?.isInPictureInPictureMode != true && playing != null && quality != "audio-only (default)") {
+                    quality = "audio-only (default)"
+                    // preserve play state: autoplay=true resumes only if it was playing
+                    streamData?.let { applyQuality("audio-only (default)", it, player, autoplay = true) }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Open video WITHOUT auto-play: default quality audio-only, prepared paused. User taps play explicitly.
+    // queue=true means this playback belongs to the user-started queue ("play all" / next / prev).
+    fun playVideo(v: VideoItem, queue: Boolean = false) {
+        playing = v
+        autoAdvance = queue
+        queueIndex = results.indexOfFirst { it.id == v.id || (it.url != null && it.url == v.url) }
+        playerLoading = true
+        playerError = null
+        playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
+        try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
+        scope.launch {
+            val s = YouTubeRepo.stream(v.url ?: return@launch)
+            streamData = s
+            // label the auto entry with the speed-based target so the user sees what auto will pick
+            val kbps = ctx.estimatedDownstreamKbps()
+            val autoKey = autoUrl(s, kbps)?.let { u ->
+                val h = s.videoUrlByQuality.entries.firstOrNull { it.value == u }?.key
+                    ?.let { qualityHeight(it) }
+                if (h != null && h != Int.MAX_VALUE) "auto \u2022 ${h}p" else "auto"
+            } ?: "auto"
+            val quals = mutableListOf("audio-only (default)", autoKey)
+            val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
+            quals.addAll(sorted)
+            qualityList = quals
+            quality = "audio-only (default)"
+            applyQuality("audio-only (default)", s, player, autoplay = false)
+        }
+    }
+
+    // Queue navigation (suggestion #3): next/previous within the result list.
+    fun playNextInQueue() {
+        val i = queueIndex
+        val next = if (i >= 0) results.getOrNull(i + 1) else null
+        if (next != null) playVideo(next, queue = true) else autoAdvance = false
+    }
+    fun playPrevInQueue() {
+        val prev = if (queueIndex > 0) results.getOrNull(queueIndex - 1) else null
+        if (prev != null) playVideo(prev, queue = true)
+    }
+
     // Connect to PlaybackService for notification/lock-screen controls
     LaunchedEffect(Unit) {
         try {
@@ -349,99 +443,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 recentSearches = (listOf(q) + recentSearches).take(6)
             }
         }
-    }
-
-    // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
-    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false) {
-        if (p == null) return
-        val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
-        val url = when {
-            q == "audio-only (default)" -> s.audioLowestUrl
-            q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
-            else -> s.videoUrlByQuality[q]
-        } ?: return
-        val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
-        val isMuxed = url in muxedUrls
-        val meta = MediaMetadata.Builder()
-            .setTitle(playing?.title ?: s.title)
-            .setArtist(playing?.channel)
-            .setAlbumTitle("MyTube")
-            .setDescription("© MyTube")
-            .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
-            .build()
-        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).build()
-        // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
-        val resume = (autoplay && wasPlaying) || forceStart
-        p.playWhenReady = false
-        if (q == "audio-only (default)" || isMuxed || s.audioLowestUrl == null) {
-            p.setMediaItem(mediaItem)
-            p.prepare()
-        } else {
-            val httpFactory = DefaultHttpDataSource.Factory()
-            val dataSourceFactory = DefaultDataSource.Factory(ctx, httpFactory)
-            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
-            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(s.audioLowestUrl)))
-            val merged = MergingMediaSource(videoSource, audioSource)
-            p.setMediaSource(merged)
-            p.prepare()
-        }
-        p.playWhenReady = resume
-    }
-
-    // Auto-switch to audio-only (lowest quality) when app goes to background / screen locked
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                val activity = ctx as? android.app.Activity
-                if (activity?.isInPictureInPictureMode != true && playing != null && quality != "audio-only (default)") {
-                    quality = "audio-only (default)"
-                    // preserve play state: autoplay=true resumes only if it was playing
-                    streamData?.let { applyQuality("audio-only (default)", it, player, autoplay = true) }
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    // Open video WITHOUT auto-play: default quality audio-only, prepared paused. User taps play explicitly.
-    // queue=true means this playback belongs to the user-started queue ("play all" / next / prev).
-    fun playVideo(v: VideoItem, queue: Boolean = false) {
-        playing = v
-        autoAdvance = queue
-        queueIndex = results.indexOfFirst { it.id == v.id || (it.url != null && it.url == v.url) }
-        playerLoading = true
-        playerError = null
-        playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
-        try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
-        scope.launch {
-            val s = YouTubeRepo.stream(v.url ?: return@launch)
-            streamData = s
-            // label the auto entry with the speed-based target so the user sees what auto will pick
-            val kbps = ctx.estimatedDownstreamKbps()
-            val autoKey = autoUrl(s, kbps)?.let { u ->
-                val h = s.videoUrlByQuality.entries.firstOrNull { it.value == u }?.key
-                    ?.let { qualityHeight(it) }
-                if (h != null && h != Int.MAX_VALUE) "auto \u2022 ${h}p" else "auto"
-            } ?: "auto"
-            val quals = mutableListOf("audio-only (default)", autoKey)
-            val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
-            quals.addAll(sorted)
-            qualityList = quals
-            quality = "audio-only (default)"
-            applyQuality("audio-only (default)", s, player, autoplay = false)
-        }
-    }
-
-    // Queue navigation (suggestion #3): next/previous within the result list.
-    fun playNextInQueue() {
-        val i = queueIndex
-        val next = if (i >= 0) results.getOrNull(i + 1) else null
-        if (next != null) playVideo(next, queue = true) else autoAdvance = false
-    }
-    fun playPrevInQueue() {
-        val prev = if (queueIndex > 0) results.getOrNull(queueIndex - 1) else null
-        if (prev != null) playVideo(prev, queue = true)
     }
 
     // Smart back: player open -> close player (results + scroll kept); results shown -> save scroll, back home. Returns true if consumed.
