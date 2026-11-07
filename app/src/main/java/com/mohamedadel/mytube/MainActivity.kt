@@ -633,19 +633,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+        // Full-screen solid red splash (same red as the system splash background).
+        // Legal lines + version live at the very bottom in small type.
+        Box(Modifier.fillMaxSize().background(Color(0xFFD5392E)), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 androidx.compose.ui.res.painterResource(id = com.mohamedadel.mytube.R.drawable.ic_launcher_foreground)?.let { p ->
                     Icon(painter = p, contentDescription = "MyTube", tint = Color.White, modifier = Modifier.size(96.dp))
                     Spacer(Modifier.height(12.dp))
                 }
                 Text("MyTube", style = MaterialTheme.typography.displayMedium, color = Color.White)
-                Spacer(Modifier.height(8.dp))
-                Text("v0.1.9", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
-                Spacer(Modifier.height(24.dp))
-                Text("© MyTube. All rights reserved.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
+            }
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("v0.1.9", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.85f))
                 Spacer(Modifier.height(4.dp))
-                Text("Not affiliated with YouTube or Google.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
+                Text("© MyTube. All rights reserved.", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
+                Spacer(Modifier.height(2.dp))
+                Text("Not affiliated with YouTube or Google.", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
             }
         }
         return
