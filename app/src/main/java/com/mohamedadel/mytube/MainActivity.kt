@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -184,6 +186,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    var loadMoreError by remember { mutableStateOf<String?>(null) }
     var nextPage by remember { mutableStateOf<Page?>(null) }
     var playing by remember { mutableStateOf<VideoItem?>(null) }
     var streamData by remember { mutableStateOf<StreamData?>(null) }
@@ -195,6 +199,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var playerDurationMs by remember { mutableStateOf(0L) }
     var playerBufferedPct by remember { mutableStateOf(0) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    // queue (suggestion #3): sequential playback of the result list, started only by explicit user action
+    var autoAdvance by remember { mutableStateOf(false) }
+    var queueIndex by remember { mutableStateOf(-1) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -291,6 +298,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 playerLoading = state == Player.STATE_BUFFERING
                 isPlaying = player?.isPlaying == true
                 if (state == Player.STATE_READY) playerError = null
+                // queue: when a queued track ends, advance to the next result (user started the queue explicitly)
+                if (state == Player.STATE_ENDED && autoAdvance) playNextInQueue()
             }
             override fun onIsPlayingChanged(playingFlag: Boolean) {
                 isPlaying = playingFlag
@@ -396,8 +405,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
 
     // Open video WITHOUT auto-play: default quality audio-only, prepared paused. User taps play explicitly.
-    fun playVideo(v: VideoItem) {
+    // queue=true means this playback belongs to the user-started queue ("play all" / next / prev).
+    fun playVideo(v: VideoItem, queue: Boolean = false) {
         playing = v
+        autoAdvance = queue
+        queueIndex = results.indexOfFirst { it.id == v.id || (it.url != null && it.url == v.url) }
         playerLoading = true
         playerError = null
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
@@ -419,6 +431,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             quality = "audio-only (default)"
             applyQuality("audio-only (default)", s, player, autoplay = false)
         }
+    }
+
+    // Queue navigation (suggestion #3): next/previous within the result list.
+    fun playNextInQueue() {
+        val i = queueIndex
+        val next = if (i >= 0) results.getOrNull(i + 1) else null
+        if (next != null) playVideo(next, queue = true) else autoAdvance = false
+    }
+    fun playPrevInQueue() {
+        val prev = if (queueIndex > 0) results.getOrNull(queueIndex - 1) else null
+        if (prev != null) playVideo(prev, queue = true)
     }
 
     // Smart back: player open -> close player (results + scroll kept); results shown -> save scroll, back home. Returns true if consumed.
@@ -651,6 +674,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         playerError = null
                         streamData?.let { applyQuality(quality, it, player, forceStart = true) }
                     },
+                    queueOn = autoAdvance,
+                    onNext = { playNextInQueue() },
+                    onPrev = { playPrevInQueue() },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
                     onEnterPip = onEnterPip
                 )
@@ -683,6 +709,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
+                        // queue entry point (suggestion #3): play the whole result list sequentially, audio-only, no autoplay until tapped
+                        item {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("${results.size} نتيجة", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.weight(1f))
+                                androidx.compose.material3.Button(onClick = {
+                                    if (results.isNotEmpty()) playVideo(results[0], queue = true)
+                                }) { Text(if (autoAdvance) "القائمة تعمل" else "تشغيل الكل") }
+                            }
+                        }
                         itemsIndexed(items = results, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
                             SearchRow(
                                 v = v,
@@ -945,6 +981,9 @@ fun PlayerArea(
     onTogglePlay: () -> Unit,
     onSeek: (Long) -> Unit = {},
     onRetry: () -> Unit = {},
+    queueOn: Boolean = false,
+    onNext: () -> Unit = {},
+    onPrev: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit
 ) {
@@ -1048,6 +1087,10 @@ fun PlayerArea(
                     Text(text = meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.height(12.dp))
+                if (queueOn) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("▶ تشغيل بالتتابع من نتائج البحث", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box {
                         FilterChip(selected = false, onClick = { expanded = true }, label = { Text(quality) })
@@ -1056,6 +1099,12 @@ fun PlayerArea(
                         }
                     }
                     Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = onPrev) {
+                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(onClick = onNext) {
+                        Icon(Icons.Filled.SkipNext, contentDescription = "Next", tint = MaterialTheme.colorScheme.primary)
+                    }
                     IconButton(onClick = onEnterPip) {
                         Icon(Icons.Filled.PictureInPicture, contentDescription = "PiP", tint = MaterialTheme.colorScheme.primary)
                     }

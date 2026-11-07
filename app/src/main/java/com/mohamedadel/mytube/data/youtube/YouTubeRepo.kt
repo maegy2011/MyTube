@@ -13,7 +13,7 @@ import java.net.URLEncoder
 
 data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null)
 data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null)
-data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false)
+data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false, val error: String? = null)
 
 object YouTubeRepo {
     private val client = OkHttpClient()
@@ -76,7 +76,7 @@ object YouTubeRepo {
             val hasNext = try { lp.hasNextPage() } catch (_: Exception) { false }
             val next = if (hasNext) try { lp.nextPage } catch (_: Exception) { null } else null
             SearchPage(out, next, hasNext)
-        } catch (_: Exception) { SearchPage() }
+        } catch (e: Exception) { SearchPage(error = e.message ?: e.javaClass.simpleName) }
     }
 
     suspend fun stream(url: String): StreamData = withContext(Dispatchers.IO) {
