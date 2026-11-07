@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube
 
 import android.app.PictureInPictureParams
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -91,7 +92,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -105,6 +109,7 @@ import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
+import com.mohamedadel.mytube.playback.PlaybackService
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
 import kotlinx.coroutines.launch
@@ -115,9 +120,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
-        player = ExoPlayer.Builder(this).build()
-        val p = player
-        setContent { MyTubeTheme { MyTubeApp(onEnterPip = { enterPip() }, player = p) } }
+        setContent { MyTubeTheme { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }) } }
     }
     private fun enterPip() {
         val params = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()
@@ -134,7 +137,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
+fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) {
     var query by remember { mutableStateOf("") }
     var currentQuery by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<VideoItem>()) }
@@ -150,6 +153,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
     var isPlaying by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
+    var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var selectedTab by remember { mutableStateOf(0) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val ctx = LocalContext.current
@@ -157,6 +161,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, player: ExoPlayer?) {
     val svm: SearchViewModel = viewModel()
     val suggestions by svm.suggestions.collectAsState()
     val listState = rememberLazyListState()
+
+    // Connect to PlaybackService for notification/lock-screen controls
+    LaunchedEffect(Unit) {
+        try {
+            ctx.startService(Intent(ctx, PlaybackService::class.java))
+        } catch (_: Exception) { }
+        var p: ExoPlayer? = null
+        while (p == null) {
+            p = PlaybackService.player
+            if (p == null) kotlinx.coroutines.delay(100)
+        }
+        player = p
+        onPlayerReady(p)
+    }
 
     val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
 
