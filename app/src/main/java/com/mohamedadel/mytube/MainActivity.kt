@@ -55,8 +55,6 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.RepeatOne
-import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PlaylistPlay
@@ -64,6 +62,9 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.Player
+import androidx.media3.common.util.RepeatModeUtil
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Add
@@ -1621,11 +1622,44 @@ fun PlayerArea(
                     AndroidView(
                         factory = { c ->
                             PlayerView(c).apply {
-                                this.player = player
                                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                                 // full native controller (Arabic on Arabic devices via media3 values-ar);
-                                // the fullscreen button appears because we set its click listener below
+                                // the fullscreen button appears because we set its click listener below.
+                                // Wrapped player: native prev/next/shuffle/repeat drive OUR queue/modes
+                                // (single-item timeline would leave them dead otherwise).
+                                val wrapped = object : ForwardingPlayer(player!!) {
+                                    override fun seekToNext() { playNextInQueue() }
+                                    override fun seekToPrevious() { playPrevInQueue() }
+                                    override fun setRepeatMode(m: Int) {
+                                        setMode(when (m) {
+                                            Player.REPEAT_MODE_ONE -> "repeatOne"
+                                            Player.REPEAT_MODE_ALL -> "repeatAll"
+                                            else -> "order"
+                                        })
+                                    }
+                                    override fun getRepeatMode(): Int = when (playMode) {
+                                        "repeatOne" -> Player.REPEAT_MODE_ONE
+                                        "repeatAll" -> Player.REPEAT_MODE_ALL
+                                        else -> Player.REPEAT_MODE_OFF
+                                    }
+                                    override fun setShuffleModeEnabled(b: Boolean) { setShuffle(b) }
+                                    override fun getShuffleModeEnabled(): Boolean = shuffleOn
+                                    override fun getAvailableCommands(): Player.Commands =
+                                        super.getAvailableCommands().buildUpon()
+                                            .add(Player.COMMAND_SEEK_TO_NEXT)
+                                            .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                                            .build()
+                                }
+                                this.player = wrapped
                                 useController = true
+                                setShowPreviousButton(true)
+                                setShowNextButton(true)
+                                setShowRewindButton(true)
+                                setShowFastForwardButton(true)
+                                setRepeatToggleModes(RepeatModeUtil.REPEAT_TOGGLE_MODE_ONE or RepeatModeUtil.REPEAT_TOGGLE_MODE_ALL)
+                                setShowShuffleButton(true)
+                                setShowSubtitleButton(true)
+                                setShowVrButton(true)
                             }
                         },
                         update = { v ->
@@ -1784,7 +1818,8 @@ fun PlayerArea(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                if (!nativeOnly) {
+                // outer row is always visible: quality, working queue nav, queue manager, volume, PiP, close.
+                // Repeat/shuffle live ONLY on the native controller (single source of truth via the wrapped player).
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box {
                         FilterChip(selected = false, onClick = { expanded = true }, label = { Text(quality) })
@@ -1799,18 +1834,6 @@ fun PlayerArea(
                     IconButton(onClick = onNext) {
                         Icon(Icons.Rounded.SkipNext, contentDescription = "التالي", tint = MaterialTheme.colorScheme.primary)
                     }
-                    // playback mode: order -> repeat all -> repeat one (cycles)
-                    IconButton(onClick = onCycleMode) {
-                        Icon(
-                            when (playMode) { "repeatOne" -> Icons.Rounded.RepeatOne; else -> Icons.Rounded.Repeat },
-                            contentDescription = "وضع التشغيل: $playModeLabel",
-                            tint = if (playMode == "order") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    // shuffle toggle
-                    IconButton(onClick = onToggleShuffle) {
-                        Icon(Icons.Rounded.Shuffle, contentDescription = if (shuffleOn) "إيقاف العشوائي" else "تشغيل عشوائي", tint = if (shuffleOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                     // current queue: manage / reorder / save
                     IconButton(onClick = onQueue) {
                         Icon(Icons.Rounded.QueueMusic, contentDescription = "إدارة القائمة الحالية", tint = MaterialTheme.colorScheme.primary)
@@ -1818,6 +1841,23 @@ fun PlayerArea(
                     IconButton(onClick = onEnterPip) {
                         Icon(Icons.Rounded.PictureInPicture, contentDescription = "صورة داخل صورة", tint = MaterialTheme.colorScheme.primary)
                     }
+                    // in-player volume (the native controller has no volume button)
+                    IconButton(onClick = { muted = !muted }, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
+                            else if (volume < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown
+                            else Icons.AutoMirrored.Rounded.VolumeUp,
+                            contentDescription = if (muted) "إلغاء الكتم" else "كتم الصوت",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Slider(
+                        value = if (muted) 0f else volume,
+                        onValueChange = { volume = it; if (it > 0f) muted = false },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.width(90.dp)
+                    )
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onFallbackYoutube) {
                         Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "فتح في يوتيوب", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1825,7 +1865,6 @@ fun PlayerArea(
                     IconButton(onClick = onClose) {
                         Icon(Icons.Rounded.Clear, contentDescription = "إغلاق المشغل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
                 }
             }
             }
