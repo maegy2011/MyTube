@@ -329,7 +329,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             q == "audio-only (default)" -> selAudio
             q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
             else -> s.videoUrlByQuality[q]
-        } ?: return
+        } ?: run {
+            playerError = "الجودة المطلوبة غير متاحة لهذا الفيديو — اختر جودة أخرى أو شاهده في يوتيوب."
+            playerLoading = false
+            return
+        }
         val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
         val isMuxed = url in muxedUrls
         val meta = MediaMetadata.Builder()
@@ -401,6 +405,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
         scope.launch {
             val s = YouTubeRepo.stream(v.url ?: return@launch)
+            // total extraction failure used to leave the spinner forever with NO error (silent death).
+            // Detect it here and report a smart message instead.
+            if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
+                playerLoading = false
+                playerError = "تعذّر جلب مصادر هذا الفيديو — قد يكون محذوفًا أو مقيّدًا أو محميًا. جرّب مجددًا أو شاهده في يوتيوب."
+                return@launch
+            }
             streamData = s
             // label the auto entry with the speed-based target so the user sees what auto will pick
             val kbps = ctx.estimatedDownstreamKbps()
@@ -537,7 +548,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 isPlaying = playingFlag
             }
             override fun onPlayerError(error: PlaybackException) {
-                playerError = error.message ?: "Playback error"
+                playerError = smartError(error)
                 playerLoading = false
                 isPlaying = false
             }
@@ -1778,14 +1789,17 @@ fun PlayerArea(
                 val videoNative = nativeOnly && player != null
                 when {
                     errorMsg != null -> {
-                        Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Rounded.Clear, contentDescription = "خطأ", tint = Color.White, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(8.dp))
                             Text("تعذّر التشغيل", style = MaterialTheme.typography.titleSmall, color = Color.White)
                             Spacer(Modifier.height(2.dp))
-                            Text("تحقق من الاتصال ثم حاول مجددًا", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
-                            Spacer(Modifier.height(8.dp))
-                            androidx.compose.material3.Button(onClick = onRetry) { Text("إعادة المحاولة") }
+                            Text(errorMsg, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f))
+                            Spacer(Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                androidx.compose.material3.Button(onClick = onRetry) { Text("إعادة المحاولة") }
+                                androidx.compose.material3.OutlinedButton(onClick = onFallbackYoutube) { Text("يوتيوب", color = Color.White) }
+                            }
                         }
                     }
                     playerLoading && !videoNative -> {
@@ -2001,6 +2015,26 @@ private fun shortQuality(q: String): String {
         q.startsWith("audio-only") -> "🔊 صوت"
         q.startsWith("auto") -> "⚡ تلقائي"
         else -> q.substringBefore(" • ").ifBlank { q }
+    }
+}
+
+// Smart Arabic error messages: raw ExoPlayer/NewPipe errors are English codes —
+// map them to something the user can act on (retry vs. open in YouTube).
+private fun smartError(error: PlaybackException?): String {
+    if (error == null) return "حدث خطأ غير معروف — جرّب مجددًا أو شاهده في يوتيوب."
+    return when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        PlaybackException.ERROR_CODE_TIMEOUT -> "انقطع الاتصال أثناء التحميل — تحقق من الإنترنت ثم أعد المحاولة."
+        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "المصدر غير متاح (رُبما حُذف الفيديو أو قيّده الناشر) — جرّب مجددًا أو شاهده في يوتيوب."
+        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "هذا بث مباشر انتهت نافذته — شاهده في يوتيوب."
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> "جهازك تعذّر عليه فك تشفير هذا الفيديو — جرّب جودة أقل أو شاهده في يوتيوب."
+        PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> "محتوى محمي لا يمكن تشغيله هنا — شاهده في يوتيوب."
+        PlaybackException.ERROR_CODE_REMOTE_ERROR -> "خطأ من جهة الخادم — أعد المحاولة بعد قليل أو شاهده في يوتيوب."
+        else -> "تعذّر التشغيل (خطأ ${error.errorCode}) — أعد المحاولة أو شاهده في يوتيوب."
     }
 }
 
