@@ -74,6 +74,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
@@ -132,8 +133,28 @@ class MainActivity : ComponentActivity() {
         setContent { MyTubeTheme { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }) } }
     }
     private fun enterPip() {
-        val params = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()
+        val p = player
+        val ratio = run {
+            val w = p?.videoSize?.width ?: 0
+            val h = p?.videoSize?.height ?: 0
+            if (w > 0 && h > 0) {
+                val r = w.toFloat() / h.toFloat()
+                // clamp to PiP allowed range [0.418..2.39]
+                val clamped = r.coerceIn(0.418f, 2.39f)
+                Rational((clamped * 1000).toInt(), 1000)
+            } else {
+                Rational(16, 9)
+            }
+        }
+        val params = PictureInPictureParams.Builder()
+            .setAspectRatio(ratio)
+            .setAutoEnterEnabled(true)
+            .build()
+        try { setPictureInPictureParams(params) } catch (_: Exception) { }
         enterPictureInPictureMode(params)
+    }
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     }
     override fun onUserLeaveHint() {
         val h: Int = try { player?.videoSize?.height ?: 0 } catch (_: Exception) { 0 }
@@ -282,6 +303,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
             p.prepare()
             p.play()
         }
+    }
+
+    // Auto-switch to audio-only (lowest quality) when app goes to background / screen locked
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                val activity = ctx as? android.app.Activity
+                if (activity?.isInPictureInPictureMode != true && playing != null && quality != "audio-only (default)") {
+                    quality = "audio-only (default)"
+                    streamData?.let { applyQuality("audio-only (default)", it, player) }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     fun playVideo(v: VideoItem) {
