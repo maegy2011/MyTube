@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SearchViewModel : ViewModel() {
     private val _query = MutableStateFlow("")
     val query = _query.asStateFlow()
