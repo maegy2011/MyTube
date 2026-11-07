@@ -212,9 +212,32 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var nextPage by remember { mutableStateOf<Page?>(null) }
     var playing by remember { mutableStateOf<VideoItem?>(null) }
     var streamData by remember { mutableStateOf<StreamData?>(null) }
-    // selected dubbed/original audio track (resets per video); index into streamData.audioTracks
+    // selected dubbed/original audio track; auto-matched to the audio pref on every new video
     var audioTrackIdx by remember { mutableStateOf(0) }
-    LaunchedEffect(streamData) { audioTrackIdx = 0 }
+    fun resolveLang(pref: String): String? = when (pref) {
+        "off" -> null
+        "auto" -> try { java.util.Locale.getDefault().language } catch (_: Exception) { "ar" }
+        else -> pref
+    }
+    fun applyLangPrefs() {
+        try {
+            val p = player ?: return
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setPreferredAudioLanguage(resolveLang(prefAudioLang))
+                .setPreferredTextLanguage(resolveLang(prefSubLang))
+                .build()
+        } catch (_: Exception) { }
+    }
+    LaunchedEffect(streamData, prefAudioLang) {
+        // auto-pick the audio track matching the saved preference (device language by default)
+        val want = resolveLang(prefAudioLang)
+        val idx = streamData?.audioTracks?.indexOfFirst { t ->
+            val tag = t.localeTag ?: t.name ?: ""
+            want != null && tag.startsWith(want, ignoreCase = true)
+        } ?: -1
+        audioTrackIdx = if (idx >= 0) idx else 0
+    }
+    LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
     var quality by remember { mutableStateOf("audio-only (default)") }
     var playerLoading by remember { mutableStateOf(false) }
@@ -249,6 +272,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val dao = remember { db.playlists() }
     val playlists by dao.observePlaylists().collectAsState(initial = emptyList())
     var showPlaylists by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    // language prefs: "auto" (device language), "off" (subtitles only), or a language tag (ar/en/…)
+    var prefSubLang by remember { mutableStateOf("auto") }
+    var prefAudioLang by remember { mutableStateOf("auto") }
     var openPlaylistId by remember { mutableStateOf<Long?>(null) }
     val openItems by remember(openPlaylistId) {
         openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
@@ -257,8 +284,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
-    // persisted recent searches (survive app restarts; shown ONLY in the search dropdown)
+    // persisted settings + recents (survive app restarts)
     LaunchedEffect(Unit) {
+        try {
+            prefSubLang = prefs.getString("pref_sub_lang", "auto") ?: "auto"
+            prefAudioLang = prefs.getString("pref_audio_lang", "auto") ?: "auto"
+        } catch (_: Exception) { }
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
             if (raw.isNotBlank()) recentSearches = raw.split("\u001f").filter { it.isNotBlank() }.take(6)
@@ -628,6 +659,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (openPlaylistId != null) openPlaylistId = null else showPlaylists = false
             return true
         }
+        if (showSettings) {
+            showSettings = false
+            return true
+        }
         if (results.isNotEmpty()) {
             try {
                 savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -638,7 +673,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showSettings || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -670,8 +705,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ModalDrawerSheet {
                 Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = !showPlaylists, onClick = { showPlaylists = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
-                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { showPlaylists = true; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
+                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = !showPlaylists && !showSettings, onClick = { showPlaylists = false; showSettings = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
+                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { showPlaylists = true; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
+                NavigationDrawerItem(label = { Text("الإعدادات") }, selected = showSettings, onClick = { showSettings = true; showPlaylists = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Settings, null) })
             }
         }
     ) {
@@ -758,7 +794,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) {
+                if (playerExpanded || playing != null || showPlaylists || showSettings || results.isNotEmpty()) {
                     IconButton(onClick = { smartBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
@@ -904,6 +940,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     audioIdx = audioTrackIdx,
                     onAudioTrack = { i ->
                         audioTrackIdx = i
+                        // manual pick becomes the saved preference (applies to all future videos)
+                        try {
+                            val t = streamData?.audioTracks?.getOrNull(i)
+                            val tag = t?.localeTag?.substringBefore("-") ?: t?.name
+                            if (!tag.isNullOrBlank()) {
+                                prefAudioLang = tag
+                                prefs.edit().putString("pref_audio_lang", tag).apply()
+                            }
+                        } catch (_: Exception) { }
                         streamData?.let { sd -> applyQuality(quality, sd, player, autoplay = true) }
                     },
                     onNext = { playNextInQueue() },
@@ -915,6 +960,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
             if (!isFullscreen) {
             when {
+                showSettings -> {
+                    SettingsScreen(
+                        subLang = prefSubLang,
+                        audioLang = prefAudioLang,
+                        deviceLang = try { java.util.Locale.getDefault() } catch (_: Exception) { null },
+                        onSubLang = { v ->
+                            prefSubLang = v
+                            try { prefs.edit().putString("pref_sub_lang", v).apply() } catch (_: Exception) { }
+                            applyLangPrefs()
+                        },
+                        onAudioLang = { v ->
+                            prefAudioLang = v
+                            try { prefs.edit().putString("pref_audio_lang", v).apply() } catch (_: Exception) { }
+                            applyLangPrefs()
+                        }
+                    )
+                }
                 showPlaylists -> {
                     PlaylistsScreen(
                         playlists = playlists,
@@ -1188,6 +1250,85 @@ fun HomeEmptyState(trending: List<String>, onSearch: (String) -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Text("ابحث أعلاه عن أي فيديو أو قناة على يوتيوب", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+// ============ Settings (language prefs) UI ============
+
+private val LANG_OPTIONS = listOf("ar" to "العربية", "en" to "الإنجليزية", "fr" to "الفرنسية", "es" to "الإسبانية", "de" to "الألمانية")
+
+private fun langLabel(code: String, deviceTag: String?): String = when (code) {
+    "auto" -> "تلقائي (لغة الجهاز" + (deviceTag?.let { ": $it" } ?: "") + ")"
+    "off" -> "إيقاف"
+    else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second ?: code
+}
+
+@Composable
+fun SettingsScreen(
+    subLang: String,
+    audioLang: String,
+    deviceLang: java.util.Locale?,
+    onSubLang: (String) -> Unit,
+    onAudioLang: (String) -> Unit
+) {
+    val deviceTag = deviceLang?.language ?: "ar"
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item { Text("الإعدادات", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface) }
+        item {
+            Text(
+                "لغة الجهاز الحالية: ${deviceLang?.displayLanguage ?: deviceTag} ($deviceTag) — تُستخدم تلقائيًا ما لم تختر غيرها. اختياراتك تُحفظ دائمًا وتُطبق على كل فيديو.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        item {
+            Text("لغة الترجمة المفضلة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(listOf("auto", "off") + LANG_OPTIONS.map { it.first }) { code ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onSubLang(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (subLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (subLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text("لغة الصوت المفضلة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(listOf("auto") + LANG_OPTIONS.map { it.first }) { code ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onAudioLang(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (audioLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (audioLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Text(
+                "ملاحظة: الترجمة تُختار تلقائيًا عند توفرها بلغة التفضيل (اليدوية قبل المولّدة آليًا)، والصوت المدبلج/الأصلي يُطابق اللغة نفسها — ويمكن تغييرهما لأي فيديو من أزرار المشغل، فيُحفظ الاختيار الجديد تلقائيًا.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
