@@ -195,6 +195,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val ctx = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    var batteryExempt by remember { mutableStateOf(true) }
+    // result of battery-exemption request: re-check right after user returns
+    val batteryLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { batteryExempt = ctx.isBatteryExempt() }
     fun ensurePermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -202,10 +207,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         }
     }
-    LaunchedEffect(Unit) { ensurePermissions() }
+    // Battery-optimization exemption: required for uninterrupted background audio. Checked on every launch/resume; requested if missing.
+    fun ensureBatteryExemption() {
+        val ok = ctx.isBatteryExempt()
+        batteryExempt = ok
+        if (!ok) {
+            try {
+                batteryLauncher.launch(ctx.batteryExemptionIntent())
+            } catch (_: Exception) { }
+        }
+    }
+    LaunchedEffect(Unit) { ensurePermissions(); ensureBatteryExemption() }
     LaunchedEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) ensurePermissions()
+            if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption() }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         // no remove needed for composition lifetime
@@ -447,6 +462,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         } else {
         Column(Modifier.padding(pad).fillMaxSize()) {
+            // Battery-exemption banner: visible only while the exemption is missing
+            if (!batteryExempt) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "السماح بتشغيل الصوت في الخلفية بلا انقطاع",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        androidx.compose.material3.Button(onClick = { ensureBatteryExemption() }) {
+                            Text("سماح")
+                        }
+                    }
+                }
+            }
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
@@ -801,6 +840,24 @@ private fun formatViews(n: Long): String {
         n >= 1_000_000 -> String.format("%.1fM views", n / 1_000_000.0)
         n >= 1_000 -> String.format("%.1fK views", n / 1_000.0)
         else -> "$n views"
+    }
+}
+
+// Battery-optimization exemption helpers (checked on every app start/resume).
+fun Context.isBatteryExempt(): Boolean {
+    return try {
+        val pm = getSystemService(android.os.PowerManager::class.java) ?: return true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) pm.isIgnoringBatteryOptimizations(packageName) else true
+    } catch (_: Exception) { true }
+}
+
+fun Context.batteryExemptionIntent(): Intent {
+    return try {
+        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+    } catch (_: Exception) {
+        Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
     }
 }
 
