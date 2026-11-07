@@ -223,6 +223,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var queueIndex by remember { mutableStateOf(-1) }
     // full player vs mini player: back collapses (keeps audio), X closes (stops audio)
     var playerExpanded by remember { mutableStateOf(false) }
+    // fullscreen experiment: native ExoPlayer controls only; follows device rotation via SENSOR
+    var isFullscreen by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -250,6 +252,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
+    fun setFullscreen(full: Boolean) {
+        isFullscreen = full
+        try {
+            (ctx as? android.app.Activity)?.requestedOrientation = if (full)
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } catch (_: Exception) { }
+    }
     var playMode by remember { mutableStateOf(prefs.getString("play_mode", "order") ?: "order") } // order | repeatAll | repeatOne
     var shuffleOn by remember { mutableStateOf(prefs.getBoolean("shuffle", false)) }
     fun setMode(m: String) { playMode = m; try { prefs.edit().putString("play_mode", m).apply() } catch (_: Exception) { } }
@@ -554,8 +564,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         autoAdvance = false
         queueIndex = -1
     }
-    // Smart back: collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
+    // Smart back: exit fullscreen first; collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
     fun smartBack(): Boolean {
+        if (isFullscreen) {
+            setFullscreen(false)
+            return true
+        }
         if (playerExpanded) {
             playerExpanded = false
             return true
@@ -574,7 +588,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
@@ -608,7 +622,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val isInPip = pipMode.value
     Scaffold(
         topBar = {
-            if (!isInPip) {
+            if (!isInPip && !isFullscreen) {
             CenterAlignedTopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -635,7 +649,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         },
         bottomBar = {
             // Mini-player: visible whenever audio plays while the full player is collapsed (home, results, playlists). Never shown together with the full player.
-            if (!isInPip && playing != null && !playerExpanded) {
+            if (!isInPip && !isFullscreen && playing != null && !playerExpanded) {
                 MiniPlayer(
                     video = playing!!,
                     isPlaying = isPlaying,
@@ -768,7 +782,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
 
             val cur = playing
-            if (cur != null && playerExpanded) {
+            if (cur != null && (playerExpanded || isFullscreen)) {
                 PlayerArea(
                     video = cur,
                     player = player,
@@ -802,6 +816,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onToggleShuffle = { setShuffle(!shuffleOn) },
                     onQueue = { showQueue = true },
                     onClose = { closePlayer() },
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = { setFullscreen(!isFullscreen) },
                     onNext = { playNextInQueue() },
                     onPrev = { playPrevInQueue() },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
@@ -809,6 +825,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 )
             }
 
+            if (!isFullscreen) {
             when {
                 showPlaylists -> {
                     PlaylistsScreen(
@@ -942,6 +959,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     }
                 }
+            }
             }
             // queue manager dialog: reorder / remove items of the current list + save it as a playlist
             if (showQueue) {
@@ -1564,10 +1582,16 @@ fun PlayerArea(
     onToggleShuffle: () -> Unit = {},
     onQueue: () -> Unit = {},
     onClose: () -> Unit = {},
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // TEMPORARY EXPERIMENT (native-controls test): hide all our custom bars, use the full native ExoPlayer controller.
+    // Media3 ships Arabic strings (values-ar), so the native buttons appear Arabic on an Arabic device.
+    // To revert: set nativeOnly = false.
+    val nativeOnly = true
     // professional controls: visible on tap, auto-hide after 3s while playing
     var controlsVisible by remember { mutableStateOf(true) }
     // in-player volume (0..1) + mute; applied to ExoPlayer, remembered per session
@@ -1583,14 +1607,14 @@ fun PlayerArea(
         }
     }
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(16.dp),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
     ) {
         Column {
             Box(
                 // tap toggles the control bar (professional show/hide); play/pause lives on the buttons
-                modifier = Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
+                modifier = if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
             ) {
                 if (quality != "audio-only (default)" && player != null) {
                     AndroidView(
@@ -1598,8 +1622,13 @@ fun PlayerArea(
                             PlayerView(c).apply {
                                 this.player = player
                                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                                // full native controller (Arabic on Arabic devices via media3 values-ar);
+                                // the fullscreen button appears because we set its click listener below
                                 useController = true
                             }
+                        },
+                        update = { v ->
+                            v.setFullscreenButtonClickListener { onToggleFullscreen() }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -1655,7 +1684,8 @@ fun PlayerArea(
                 }
                 // bottom control bar: play/pause + time + volume/mute — fades in on tap, auto-hides while playing
                 // bottom control bar (plain conditional: avoids AnimatedVisibility scope-overload quirk)
-                if (controlsVisible && errorMsg == null && !playerLoading) {
+                // hidden while the nativeOnly experiment runs
+                if (!nativeOnly && controlsVisible && errorMsg == null && !playerLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.BottomCenter
@@ -1714,8 +1744,8 @@ fun PlayerArea(
                 }
                 }
             }
-            // seek + time row (when duration known)
-            if (durationMs > 0) {
+            // seek + time row (when duration known) — hidden while the nativeOnly experiment runs
+            if (!nativeOnly && durationMs > 0) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Slider(
                         value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
@@ -1730,6 +1760,8 @@ fun PlayerArea(
                     }
                 }
             }
+            // title/meta/buttons: hidden in fullscreen (pure video); outer buttons hidden while nativeOnly runs
+            if (!isFullscreen) {
             Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp)) {
                 Text(text = video.title ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(2.dp))
@@ -1751,6 +1783,7 @@ fun PlayerArea(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                if (!nativeOnly) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box {
                         FilterChip(selected = false, onClick = { expanded = true }, label = { Text(quality) })
@@ -1792,6 +1825,8 @@ fun PlayerArea(
                         Icon(Icons.Rounded.Clear, contentDescription = "إغلاق المشغل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                }
+            }
             }
         }
     }
