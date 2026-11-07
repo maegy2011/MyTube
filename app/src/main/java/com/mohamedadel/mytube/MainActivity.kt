@@ -258,6 +258,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         player = p
         onPlayerReady(p)
+        // route notification / lock-screen prev+next buttons to the in-app queue
+        PlaybackService.onCustomAction = { action ->
+            try {
+                when (action) {
+                    PlaybackService.ACTION_NEXT -> playNextInQueue()
+                    PlaybackService.ACTION_PREV -> playPrevInQueue()
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
