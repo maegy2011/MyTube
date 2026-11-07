@@ -2,13 +2,11 @@ package com.mohamedadel.mytube
 
 import android.app.PictureInPictureParams
 import android.Manifest
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.net.Uri
-import android.os.Bundle
 import android.util.Rational
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
@@ -48,7 +46,6 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -91,7 +88,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,10 +104,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -186,8 +179,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(false) }
-    var searchError by remember { mutableStateOf<String?>(null) }
-    var loadMoreError by remember { mutableStateOf<String?>(null) }
     var nextPage by remember { mutableStateOf<Page?>(null) }
     var playing by remember { mutableStateOf<VideoItem?>(null) }
     var streamData by remember { mutableStateOf<StreamData?>(null) }
@@ -732,7 +723,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             SearchRow(
                                 v = v,
                                 isCurrent = playing?.id == v.id || playing?.url == v.url,
-                                isLoading = playerLoading && (playing?.id == v.id || playing?.url == v.url),
                                 isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
                                 onClick = { playVideo(v) }
                             )
@@ -925,7 +915,7 @@ fun MiniPlayer(
 }
 
 @Composable
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isLoading: Boolean, isPlaying: Boolean, onClick: () -> Unit) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
