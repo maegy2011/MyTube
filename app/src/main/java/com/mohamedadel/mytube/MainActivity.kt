@@ -127,10 +127,15 @@ import org.schabi.newpipe.extractor.Page
 
 class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
+    val pipMode = androidx.compose.runtime.mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
-        setContent { MyTubeTheme { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }) } }
+        setContent { MyTubeTheme { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }, pipMode = pipMode) } }
+    }
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipMode.value = isInPictureInPictureMode
     }
     private fun enterPip() {
         val p = player
@@ -153,9 +158,7 @@ class MainActivity : ComponentActivity() {
         try { setPictureInPictureParams(params) } catch (_: Exception) { }
         enterPictureInPictureMode(params)
     }
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-    }
+
     override fun onUserLeaveHint() {
         val h: Int = try { player?.videoSize?.height ?: 0 } catch (_: Exception) { 0 }
         val playing: Boolean = try { player?.isPlaying == true } catch (_: Exception) { false }
@@ -167,7 +170,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) {
+fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, pipMode: androidx.compose.runtime.MutableState<Boolean> = androidx.compose.runtime.mutableStateOf(false)) {
     var query by remember { mutableStateOf("") }
     var currentQuery by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<VideoItem>()) }
@@ -185,6 +188,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var selectedTab by remember { mutableStateOf(0) }
+    var showSplash by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(1800); showSplash = false }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val ctx = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -348,6 +353,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
         }
     }
 
+    if (showSplash) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("MyTube", style = MaterialTheme.typography.displayMedium, color = Color.White)
+                Spacer(Modifier.height(8.dp))
+                Text("v0.1.2", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
+                Spacer(Modifier.height(24.dp))
+                Text("© MyTube. All rights reserved.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
+                Spacer(Modifier.height(4.dp))
+                Text("Not affiliated with YouTube or Google.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
+            }
+        }
+        return
+    }
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -359,7 +378,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
             }
         }
     ) {
-    val isInPip = (ctx as? android.app.Activity)?.isInPictureInPictureMode == true
+    val isInPip = pipMode.value
     Scaffold(
         topBar = {
             if (!isInPip) {
