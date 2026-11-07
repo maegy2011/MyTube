@@ -2,15 +2,16 @@ package com.mohamedadel.mytube.playback
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.core.app.NotificationManagerCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.mohamedadel.mytube.MainActivity
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
@@ -23,9 +24,11 @@ class PlaybackService : MediaSessionService() {
     }
     override fun onCreate() {
         super.onCreate()
-        // Notification channel
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Media playback controls"
+                setShowBadge(false)
+            }
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
         val provider = DefaultMediaNotificationProvider.Builder(this)
@@ -34,10 +37,19 @@ class PlaybackService : MediaSessionService() {
         setMediaNotificationProvider(provider)
         val p = ExoPlayer.Builder(this).build()
         player = p
-        session = MediaSession.Builder(this, p).build()
+        val activityIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val sessionActivity = PendingIntent.getActivity(this, 0, activityIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val sess = MediaSession.Builder(this, p)
+            .setSessionActivity(sessionActivity)
+            .build()
+        session = sess
+        addSession(sess)
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
     override fun onDestroy() {
+        session?.let { removeSession(it) }
         session?.release()
         session = null
         player?.release()

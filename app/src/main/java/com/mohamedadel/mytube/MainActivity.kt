@@ -106,6 +106,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -261,14 +262,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}) 
         } ?: return
         val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
         val isMuxed = url in muxedUrls
+        val meta = MediaMetadata.Builder()
+            .setTitle(playing?.title ?: s.title)
+            .setArtist(playing?.channel)
+            .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
+            .build()
+        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).build()
         if (q == "audio-only (default)" || isMuxed || s.audioLowestUrl == null) {
-            p.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+            p.setMediaItem(mediaItem)
             p.prepare()
             p.play()
         } else {
             val httpFactory = DefaultHttpDataSource.Factory()
             val dataSourceFactory = DefaultDataSource.Factory(ctx, httpFactory)
-            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(url)))
+            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
             val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(s.audioLowestUrl)))
             val merged = MergingMediaSource(videoSource, audioSource)
             p.setMediaSource(merged)
