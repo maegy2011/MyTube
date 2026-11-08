@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -236,15 +237,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val favoriteKeys by remember { dao.observeFavoriteKeys() }.collectAsState(initial = emptyList())
     val favoriteSet = remember(favoriteKeys) { favoriteKeys.toSet() }
     val favorites by remember { dao.observeFavorites() }.collectAsState(initial = emptyList())
-    fun toggleFavorite(v: VideoItem) {
-        scope.launch {
-            try {
-                val key = v.favKey()
-                if (dao.favoriteCount(key) > 0) dao.deleteFavorite(key)
-                else dao.insertFavorite(v.toFavorite())
-            } catch (_: Exception) { }
-        }
-    }
+    // (toggleFavorite lives after `scope` below — Kotlin locals must precede use.)
     // language prefs: "auto" (device language), "off" (subtitles only), "original" (video's own language),
     // or a language tag (ar/en/…). Secondary = fallback when the primary is unavailable.
     var prefSubLang by remember { mutableStateOf("auto") }
@@ -384,6 +377,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // no remove needed for composition lifetime
     }
     val scope = rememberCoroutineScope()
+    // One-tap favorite toggle (needs scope, so it lives here).
+    fun toggleFavorite(v: VideoItem) {
+        scope.launch {
+            try {
+                val key = v.favKey()
+                if (dao.favoriteCount(key) > 0) dao.deleteFavorite(key)
+                else dao.insertFavorite(v.toFavorite())
+            } catch (_: Exception) { }
+        }
+    }
     fun refreshTrending() {
         val tab = TREND_TABS.getOrNull(trendTab)
         val kiosk = tab?.second
