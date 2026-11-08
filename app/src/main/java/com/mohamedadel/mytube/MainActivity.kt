@@ -329,16 +329,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // auto-pick the audio track along the fallback chain (primary -> secondary -> device -> en/original)
         audioTrackIdx = pickAudioIdx()
     }
-    fun refreshTrending() {
-        trendingLoading = true
-        scope.launch {
-            try {
-                trendingItems = YouTubeRepo.trending(if (prefCountry == "global") null else prefCountry)
-            } catch (_: Exception) { trendingItems = emptyList() }
-            finally { trendingLoading = false }
-        }
-    }
-    LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
+    // (refreshTrending lives after `scope` below — Kotlin locals must precede use.)
     LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
     // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
@@ -398,6 +389,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // no remove needed for composition lifetime
     }
     val scope = rememberCoroutineScope()
+    fun refreshTrending() {
+        trendingLoading = true
+        scope.launch {
+            try {
+                trendingItems = YouTubeRepo.trending(if (prefCountry == "global") null else prefCountry)
+            } catch (_: Exception) { trendingItems = emptyList() }
+            finally { trendingLoading = false }
+        }
+    }
+    LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
     val svm: SearchViewModel = viewModel()
     val suggestions by svm.suggestions.collectAsState()
     val listState = rememberLazyListState()
