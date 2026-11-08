@@ -139,6 +139,8 @@ import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
+import com.mohamedadel.mytube.ui.queue.QueuePanel
+import com.mohamedadel.mytube.ui.queue.VideoOptionsDialog
 import com.mohamedadel.mytube.ui.settings.COUNTRY_OPTIONS
 import com.mohamedadel.mytube.ui.settings.SettingsScreen
 import com.mohamedadel.mytube.util.autoUrl
