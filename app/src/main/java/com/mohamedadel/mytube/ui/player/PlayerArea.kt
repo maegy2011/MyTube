@@ -57,7 +57,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.common.util.RepeatModeUtil
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.ForwardingPlayer
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.AudioTrackItem
