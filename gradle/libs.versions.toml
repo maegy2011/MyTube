@@ -11,6 +11,7 @@ coil = "2.6.0"
 paging = "3.3.5"
 coroutines = "1.8.1"
 okhttp = "4.12.0"
+newpipe = "0.26.5"
 room = "2.6.1"
 ksp = "2.0.20-1.0.25"
 
@@ -32,7 +33,7 @@ paging-compose = { group = "androidx.paging", name = "paging-compose", version.r
 paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
-newpipe-extractor = { group = "com.github.TeamNewPipe", name = "NewPipeExtractor", version = "+" }
+newpipe-extractor = { group = "com.github.TeamNewPipe", name = "NewPipeExtractor", version.ref = "newpipe" }
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }

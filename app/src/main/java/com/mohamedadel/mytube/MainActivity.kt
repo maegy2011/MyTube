@@ -145,6 +145,17 @@ import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.AudioTrackItem
 import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.util.autoUrl
+import com.mohamedadel.mytube.util.batteryExemptionIntent
+import com.mohamedadel.mytube.util.estimatedDownstreamKbps
+import com.mohamedadel.mytube.util.formatDuration
+import com.mohamedadel.mytube.util.formatMs
+import com.mohamedadel.mytube.util.formatViews
+import com.mohamedadel.mytube.util.isBatteryExempt
+import com.mohamedadel.mytube.util.openInYoutubeCtx
+import com.mohamedadel.mytube.util.qualityHeight
+import com.mohamedadel.mytube.util.shortQuality
+import com.mohamedadel.mytube.util.smartError
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.playback.PlaybackService
 import androidx.room.Room
@@ -209,8 +220,10 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, pipMode: androidx.compose.runtime.MutableState<Boolean> = androidx.compose.runtime.mutableStateOf(false)) {
-    var query by remember { mutableStateOf("") }
-    var currentQuery by remember { mutableStateOf("") }
+    // Survive rotation: the query text and current query live in saved state,
+    // results refetch via LaunchedEffect below (ViewModel owns suggestions already).
+    var query by rememberSaveable { mutableStateOf("") }
+    var currentQuery by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<VideoItem>()) }
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
@@ -248,8 +261,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var queue by remember { mutableStateOf(emptyList<VideoItem>()) }
     // playlists (Room) + playback modes. Modes persist in prefs; playlists persist in Room.
     val db = remember {
-        Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2).fallbackToDestructiveMigration().build()
+        // Release safety: destructive fallback ONLY in debug. A shipped schema change
+        // without a written migration must crash loudly in testing, never wipe user data.
+        val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
+            .addMigrations(MIGRATION_1_2)
+        if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
+        builder.build()
     }
     val dao = remember { db.playlists() }
     val playlists by dao.observePlaylists().collectAsState(initial = emptyList())
@@ -653,35 +670,56 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         })
     }
     // position / duration / buffer polling for the upgraded player UI
+    // Position polling runs ONLY while something is loaded; idle = slow heartbeat, no battery burn.
     LaunchedEffect(player, playing) {
         while (true) {
             val p = player
-            if (p != null) {
+            if (p != null && playing != null) {
                 try {
                     playerPositionMs = p.currentPosition.coerceAtLeast(0L)
                     playerDurationMs = p.duration.takeIf { it > 0 } ?: 0L
                     playerBufferedPct = p.bufferedPercentage
                 } catch (_: Exception) { }
+                kotlinx.coroutines.delay(500)
             } else {
                 playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
+                kotlinx.coroutines.delay(2000)
             }
-            kotlinx.coroutines.delay(500)
         }
     }
 
     // saved scroll position per query: firstVisibleIndex + offset, restored when the same query is searched again
     val savedScroll = remember { mutableMapOf<String, Pair<Int, Int>>() }
+    // Search single-flight with cancellation: a new query kills the previous request,
+    // so late responses can never overwrite fresh results. Failures surface with retry.
+    var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var searchError by remember { mutableStateOf<String?>(null) }
     fun doSearch(q: String) {
         if (q.isBlank()) return
         currentQuery = q
         loading = true
+        searchError = null
         showSuggestions = false
-        scope.launch {
-            val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry)
-            results = page.items
-            nextPage = page.nextPage
-            hasMore = page.hasNext
-            loading = false
+        searchJob?.cancel()
+        searchJob = scope.launch {
+            try {
+                val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry)
+                if (page.error != null && page.items.isEmpty()) {
+                    searchError = "تعذّر البحث — تحقق من الاتصال ثم أعد المحاولة."
+                    results = emptyList()
+                    hasMore = false
+                } else {
+                    results = page.items
+                    nextPage = page.nextPage
+                    hasMore = page.hasNext
+                }
+            } catch (_: Exception) {
+                searchError = "تعذّر البحث — تحقق من الاتصال ثم أعد المحاولة."
+                results = emptyList()
+                hasMore = false
+            } finally {
+                loading = false
+            }
             // restore saved scroll position for repeated queries
             savedScroll[q]?.let { (idx, off) ->
                 try { listState.scrollToItem(idx, off) } catch (_: Exception) { }
@@ -1160,9 +1198,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
                             Spacer(Modifier.height(12.dp))
-                            Text("لا توجد نتائج", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                            Text(
+                                if (searchError != null) searchError!! else "لا توجد نتائج",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                             Spacer(Modifier.height(4.dp))
-                            Text("جرّب كلمة مختلفة أو تحقق من الاتصال بالإنترنت", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                if (searchError != null) "تحقق من الاتصال بالإنترنت" else "جرّب كلمة مختلفة أو تحقق من الاتصال بالإنترنت",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (searchError != null && currentQuery.isNotBlank()) {
+                                Spacer(Modifier.height(12.dp))
+                                androidx.compose.material3.Button(onClick = { doSearch(currentQuery) }) { Text("إعادة المحاولة") }
+                            }
                         }
                     }
                 }
@@ -1268,52 +1318,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 }
 
 // Estimated downstream bandwidth in Kbps from the active network (0 = unknown).
-fun Context.estimatedDownstreamKbps(): Int {
-    return try {
-        val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return 0
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return 0
-        caps.linkDownstreamBandwidthKbps
-    } catch (_: Exception) { 0 }
-}
-
-// Auto quality mapped to the user's actual connection speed:
-// <1Mbps→144p, <2.5Mbps→360p, <5Mbps→480p, <10Mbps→720p, <20Mbps→1080p, else highest. Unknown speed → old mid default (720/480).
-fun autoUrl(s: StreamData, kbps: Int = 0): String? {
-    val heights = s.videoUrlByQuality.keys.mapNotNull { k ->
-        qualityHeight(k)?.let { h -> h to k }
-    }
-    if (heights.isEmpty()) return s.videoUrlByQuality.values.firstOrNull()
-    if (kbps <= 0) {
-        val target = heights.filter { it.first == 720 }.firstOrNull()
-            ?: heights.filter { it.first == 480 }.firstOrNull()
-            ?: heights.maxByOrNull { it.first }
-        return target?.let { s.videoUrlByQuality[it.second] }
-    }
-    val targetH = when {
-        kbps < 1000 -> 144
-        kbps < 2500 -> 360
-        kbps < 5000 -> 480
-        kbps < 10000 -> 720
-        kbps < 20000 -> 1080
-        else -> Int.MAX_VALUE
-    }
-    val atOrBelow = heights.filter { it.first <= targetH }.maxByOrNull { it.first }
-    val best = atOrBelow ?: heights.minByOrNull { it.first }
-    return best?.let { s.videoUrlByQuality[it.second] }
-}
-
-fun qualityHeight(label: String): Int? {
-    val l = label.lowercase()
-    if (l.contains("2160") || l.contains("4k")) return 2160
-    if (l.contains("1440")) return 1440
-    if (l.contains("1080")) return 1080
-    if (l.contains("720")) return 720
-    if (l.contains("480")) return 480
-    if (l.contains("360")) return 360
-    if (l.contains("240")) return 240
-    if (l.contains("144")) return 144
-    return l.filter { it.isDigit() }.toIntOrNull()
-}
 
 // Real YouTube kiosk sections (null = default Trending). "news" has no kiosk: region search, labeled.
 private val TREND_TABS = listOf(
@@ -2503,89 +2507,5 @@ fun PlayerArea(
             }
             }
         }
-    }
-}
-
-// Short chip labels: the raw quality strings are long ("audio-only (default)", "auto • 720p")
-// and pushed buttons off-screen. Display stays compact; the dropdown keeps full names.
-private fun shortQuality(q: String): String {
-    return when {
-        q.startsWith("audio-only") -> "🔊 صوت"
-        q.startsWith("auto") -> "⚡ تلقائي"
-        else -> q.substringBefore(" • ").ifBlank { q }
-    }
-}
-
-// Smart Arabic error messages: raw ExoPlayer/NewPipe errors are English codes —
-// map them to something the user can act on (retry vs. open in YouTube).
-private fun smartError(error: PlaybackException?): String {
-    if (error == null) return "حدث خطأ غير معروف — جرّب مجددًا أو شاهده في يوتيوب."
-    return when (error.errorCode) {
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-        PlaybackException.ERROR_CODE_TIMEOUT -> "انقطع الاتصال أثناء التحميل — تحقق من الإنترنت ثم أعد المحاولة."
-        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
-        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "المصدر غير متاح (رُبما حُذف الفيديو أو قيّده الناشر) — جرّب مجددًا أو شاهده في يوتيوب."
-        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "هذا بث مباشر انتهت نافذته — شاهده في يوتيوب."
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> "جهازك تعذّر عليه فك تشفير هذا الفيديو — جرّب جودة أقل أو شاهده في يوتيوب."
-        PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> "محتوى محمي لا يمكن تشغيله هنا — شاهده في يوتيوب."
-        PlaybackException.ERROR_CODE_REMOTE_ERROR -> "خطأ من جهة الخادم — أعد المحاولة بعد قليل أو شاهده في يوتيوب."
-        else -> "تعذّر التشغيل (خطأ ${error.errorCode}) — أعد المحاولة أو شاهده في يوتيوب."
-    }
-}
-
-private fun formatMs(ms: Long): String {
-    val totalSec = (ms / 1000).coerceAtLeast(0)
-    val h = totalSec / 3600
-    val m = (totalSec % 3600) / 60
-    val s = totalSec % 60
-    return if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%d:%02d", m, s)
-}
-
-private fun formatDuration(sec: Long): String {
-    val m = sec / 60
-    val s = sec % 60
-    return if (m >= 60) {
-        val h = m / 60
-        String.format("%d:%02d:%02d", h, m % 60, s)
-    } else {
-        String.format("%d:%02d", m, s)
-    }
-}
-
-private fun formatViews(n: Long): String {
-    return when {
-        n >= 1_000_000 -> String.format("%.1f مليون مشاهدة", n / 1_000_000.0)
-        n >= 1_000 -> String.format("%.1f ألف مشاهدة", n / 1_000.0)
-        else -> "$n مشاهدة"
-    }
-}
-
-// Battery-optimization exemption helpers (checked on every app start/resume).
-fun Context.isBatteryExempt(): Boolean {
-    return try {
-        val pm = getSystemService(android.os.PowerManager::class.java) ?: return true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) pm.isIgnoringBatteryOptimizations(packageName) else true
-    } catch (_: Exception) { true }
-}
-
-fun Context.batteryExemptionIntent(): Intent {
-    return try {
-        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-            data = Uri.parse("package:$packageName")
-        }
-    } catch (_: Exception) {
-        Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-    }
-}
-
-fun Context.openInYoutubeCtx(v: VideoItem) {
-    val id = v.id ?: return
-    try {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$id")).apply { `package` = "com.google.android.youtube" })
-    } catch (_: Exception) {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$id")))
     }
 }
