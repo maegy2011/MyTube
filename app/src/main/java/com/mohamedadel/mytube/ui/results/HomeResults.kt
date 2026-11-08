@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube.ui.results
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
@@ -31,7 +33,7 @@ import com.mohamedadel.mytube.data.youtube.VideoItem
 // Home (trending tabs + country badge) extracted from MainActivity (split step 6, final).
 
 // Real YouTube kiosk sections (null = default Trending). "news" has no kiosk: region search, labeled.
-private val TREND_TABS = listOf(
+val TREND_TABS = listOf(
     Triple("عام", null, false),
     Triple("موسيقى", "trending_music", false),
     Triple("ألعاب", "trending_gaming", false),

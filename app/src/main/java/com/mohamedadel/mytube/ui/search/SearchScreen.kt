@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 
 // Standalone search screen extracted from MainActivity (split step 6, final).
 // Pure UI: query in via params, actions out via callbacks.
