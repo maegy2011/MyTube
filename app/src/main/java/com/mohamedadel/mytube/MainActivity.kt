@@ -69,10 +69,8 @@ import androidx.media3.common.util.RepeatModeUtil
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
@@ -146,6 +144,8 @@ import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.AudioTrackItem
 import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.ui.settings.COUNTRY_OPTIONS
+import com.mohamedadel.mytube.ui.settings.SettingsScreen
 import com.mohamedadel.mytube.util.autoUrl
 import com.mohamedadel.mytube.util.batteryExemptionIntent
 import com.mohamedadel.mytube.util.estimatedDownstreamKbps
@@ -1446,156 +1446,6 @@ fun HomeEmptyState(
                     SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = {})
                 }
             }
-        }
-    }
-}
-
-// ============ Settings (language prefs) UI ============
-
-private val LANG_OPTIONS = listOf("ar" to "العربية", "en" to "الإنجليزية", "fr" to "الفرنسية", "es" to "الإسبانية", "de" to "الألمانية")
-
-private val COUNTRY_OPTIONS = listOf(
-    "EG" to "🇪🇬 مصر", "SA" to "🇸🇦 السعودية", "AE" to "🇦🇪 الإمارات",
-    "KW" to "🇰🇼 الكويت", "QA" to "🇶🇦 قطر", "MA" to "🇲🇦 المغرب",
-    "DZ" to "🇩🇿 الجزائر", "JO" to "🇯🇴 الأردن", "IQ" to "🇮🇶 العراق",
-    "US" to "🇺🇸 أمريكا", "GB" to "🇬🇧 بريطانيا", "global" to "🌍 عالمي"
-)
-
-private fun langLabel(code: String, deviceTag: String?): String = when (code) {
-    "auto" -> "تلقائي (لغة الجهاز" + (deviceTag?.let { ": $it" } ?: "") + ")"
-    "off" -> "إيقاف"
-    "original" -> "الأصلية (لغة الفيديو أيا كانت)"
-    else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second ?: code
-}
-
-@Composable
-fun SettingsScreen(
-    subLang: String,
-    audioLang: String,
-    subLang2: String,
-    audioLang2: String,
-    country: String,
-    deviceLang: java.util.Locale?,
-    onSubLang: (String) -> Unit,
-    onAudioLang: (String) -> Unit,
-    onSubLang2: (String) -> Unit,
-    onAudioLang2: (String) -> Unit,
-    onCountry: (String) -> Unit
-) {
-    val deviceTag = deviceLang?.language ?: "ar"
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item { Text("الإعدادات", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface) }
-        item {
-            Text(
-                "لغة الجهاز الحالية: ${deviceLang?.displayLanguage ?: deviceTag} ($deviceTag) — تُستخدم تلقائيًا ما لم تختر غيرها. اختياراتك تُحفظ دائمًا وتُطبق على كل فيديو.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        item {
-            Text("لغة الترجمة المفضلة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("auto", "off") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onSubLang(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (subLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (subLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text("لغة الترجمة البديلة (عند غياب المفضلة)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onSubLang2(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (subLang2 == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (subLang2 == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text("لغة الصوت المفضلة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("auto") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onAudioLang(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (audioLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (audioLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text("لغة الصوت البديلة (عند غياب المفضلة)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onAudioLang2(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (audioLang2 == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (audioLang2 == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text("بلد المحتوى (يحدد الرائج والبحث — اختيار يدوي فقط، بلا تتبع)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(COUNTRY_OPTIONS) { (code, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onCountry(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (country == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (country == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Text(
-                "ملاحظة: الترجمة تُختار تلقائيًا عند توفرها بلغة التفضيل (اليدوية قبل المولّدة آليًا)، والصوت المدبلج/الأصلي يُطابق اللغة نفسها — ويمكن تغييرهما لأي فيديو من أزرار المشغل، فيُحفظ الاختيار الجديد تلقائيًا.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
