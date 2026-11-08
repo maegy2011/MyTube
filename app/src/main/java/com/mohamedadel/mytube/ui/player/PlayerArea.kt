@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PictureInPicture
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
@@ -107,7 +108,9 @@ fun PlayerArea(
     isFullscreen: Boolean = false,
     onToggleFullscreen: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
-    onEnterPip: () -> Unit
+    onEnterPip: () -> Unit,
+    sleepLabel: String? = null,
+    onSleepClick: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
     var langExpanded by remember { mutableStateOf(false) }
@@ -446,6 +449,14 @@ fun PlayerArea(
                     }
                     IconButton(onClick = onEnterPip) {
                         Icon(Icons.Rounded.PictureInPicture, contentDescription = "صورة داخل صورة", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    // sleep timer: shows remaining time when armed, opens the picker otherwise
+                    IconButton(onClick = onSleepClick) {
+                        if (sleepLabel != null) {
+                            Text(sleepLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            Icon(Icons.Rounded.Timer, contentDescription = "مؤقت النوم", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
                     // in-player volume (the native controller has no volume button)
                     IconButton(onClick = { muted = !muted }, modifier = Modifier.size(40.dp)) {

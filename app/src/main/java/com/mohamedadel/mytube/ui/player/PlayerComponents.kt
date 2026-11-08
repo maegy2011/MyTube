@@ -110,3 +110,44 @@ fun MiniPlayer(
         }
     }
 }
+// Sleep timer picker: arms playback auto-pause after N minutes (or disarms).
+@Composable
+fun SleepTimerDialog(
+    currentLabel: String?,
+    onPick: (Int?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(5, 10, 15, 30, 45, 60)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (currentLabel != null) "مؤقت النوم يعمل ($currentLabel)" else "مؤقت النوم", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("سيتوقف التشغيل تلقائيًا بعد المدة المختارة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                options.forEach { m ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { onPick(m) }.padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text("بعد $m دقيقة", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                if (currentLabel != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { onPick(null) }.padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Clear, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(12.dp))
+                        Text("إيقاف المؤقت", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
+        },
+        confirmButton = { },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") } }
+    )
+}

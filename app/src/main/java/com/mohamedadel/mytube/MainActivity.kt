@@ -95,6 +95,7 @@ import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.player.MiniPlayer
 import com.mohamedadel.mytube.ui.player.PlayerArea
+import com.mohamedadel.mytube.ui.player.SleepTimerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.queue.QueuePanel
@@ -243,6 +244,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val openItems by remember(openPlaylistId) {
         openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
     }.collectAsState(initial = emptyList())
+    // Sleep timer: absolute deadline (uptime ms). The polling loop below watches it;
+    // expiry pauses playback and clears itself. Survives nothing — a deliberate session choice.
+    var sleepAtMs by remember { mutableStateOf<Long?>(null) }
+    var sleepLeft by remember { mutableStateOf("") }
+    var showSleep by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
@@ -634,6 +640,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     playerDurationMs = p.duration.takeIf { it > 0 } ?: 0L
                     playerBufferedPct = p.bufferedPercentage
                 } catch (_: Exception) { }
+                // sleep timer watch
+                sleepAtMs?.let { deadline ->
+                    val left = deadline - android.os.SystemClock.uptimeMillis()
+                    if (left <= 0) {
+                        try { p.pause() } catch (_: Exception) { }
+                        sleepAtMs = null
+                        sleepLeft = ""
+                    } else {
+                        val m = (left / 60000).toInt()
+                        sleepLeft = if (m >= 1) "$m د" else "${(left / 1000).toInt()} ث"
+                    }
+                }
                 kotlinx.coroutines.delay(500)
             } else {
                 playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
@@ -994,7 +1012,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onNext = { playNextInQueue() },
                     onPrev = { playPrevInQueue() },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
-                    onEnterPip = onEnterPip
+                    onEnterPip = onEnterPip,
+                    sleepLabel = sleepLeft.ifBlank { null },
+                    onSleepClick = { showSleep = true }
                 )
             }
 
@@ -1252,6 +1272,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     },
                     onDismiss = { pickFor = null }
+                )
+            }
+            // sleep timer picker: arms/clears the auto-pause deadline watched by the polling loop
+            if (showSleep) {
+                SleepTimerDialog(
+                    currentLabel = sleepLeft.ifBlank { null },
+                    onPick = { m ->
+                        sleepAtMs = if (m == null) null else android.os.SystemClock.uptimeMillis() + m * 60000L
+                        if (m == null) sleepLeft = ""
+                        showSleep = false
+                    },
+                    onDismiss = { showSleep = false }
                 )
             }
             // long-press video options: play now / play next / queue end / add to playlist
