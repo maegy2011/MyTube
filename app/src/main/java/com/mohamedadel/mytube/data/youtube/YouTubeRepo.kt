@@ -26,12 +26,18 @@ object YouTubeRepo {
     private fun service() = NewPipe.getService("YouTube")
     init { runCatching { NewPipe.init(NewPipeDownloaderImpl()) } }
 
-    // Real per-country trending via the YouTube Trending kiosk (falls back to empty on failure).
-    suspend fun trending(region: String? = null): List<VideoItem> = withContext(Dispatchers.IO) {
+    // Real per-country kiosks (verified against NewPipeExtractor 0.26.5 YoutubeService):
+    // default Trending + trending_music + trending_gaming + trending_movies_and_shows
+    // + trending_podcasts_episodes + live. "news" has NO kiosk — served as region search, labeled honestly.
+    // Any failing kiosk returns empty (caller shows the fallback, never a fake list).
+    suspend fun trending(region: String? = null, kioskId: String? = null): List<VideoItem> = withContext(Dispatchers.IO) {
         try {
             applyRegion(region)
             val svc = service()
-            val kiosk = try { svc.kioskList.getDefaultKioskExtractor(null) } catch (_: Exception) { null } ?: return@withContext emptyList()
+            val kiosk = try {
+                if (kioskId.isNullOrBlank()) svc.kioskList.getDefaultKioskExtractor(null)
+                else svc.kioskList.getExtractorById(kioskId, null)
+            } catch (_: Exception) { null } ?: return@withContext emptyList()
             kiosk.fetchPage()
             val lp = try { kiosk.initialPage } catch (_: Exception) { return@withContext emptyList() }
             val out = mutableListOf<VideoItem>()

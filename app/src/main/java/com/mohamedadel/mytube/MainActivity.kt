@@ -74,8 +74,8 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.activity.compose.BackHandler
@@ -390,10 +390,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val scope = rememberCoroutineScope()
     fun refreshTrending() {
+        val tab = TREND_TABS.getOrNull(trendTab)
+        val kiosk = tab?.second
+        val isSearchTab = tab?.third == true
         trendingLoading = true
         scope.launch {
             try {
-                trendingItems = YouTubeRepo.trending(if (prefCountry == "global") null else prefCountry)
+                val region = if (prefCountry == "global") null else prefCountry
+                trendingItems = if (isSearchTab) {
+                    // "news" has no YouTube kiosk: honest region-scoped search instead of a fake list
+                    YouTubeRepo.search("أخبار", null, region).items
+                } else {
+                    YouTubeRepo.trending(region, kiosk)
+                }
             } catch (_: Exception) { trendingItems = emptyList() }
             finally { trendingLoading = false }
         }
@@ -1137,8 +1146,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         trendTab = trendTab,
                         onTrendTab = { i ->
                             trendTab = i
-                            val key = TREND_TABS.getOrNull(i)?.second ?: ""
-                            if (key.isNotBlank()) { query = key; doSearch(key) }
+                            refreshTrending()
                         },
                         trendingItems = trendingItems,
                         trendingLoading = trendingLoading,
@@ -1307,7 +1315,16 @@ fun qualityHeight(label: String): Int? {
     return l.filter { it.isDigit() }.toIntOrNull()
 }
 
-private val TREND_TABS = listOf("عام" to "", "موسيقى" to "music", "ألعاب" to "gaming", "أخبار" to "news")
+// Real YouTube kiosk sections (null = default Trending). "news" has no kiosk: region search, labeled.
+private val TREND_TABS = listOf(
+    Triple("عام", null, false),
+    Triple("موسيقى", "trending_music", false),
+    Triple("ألعاب", "trending_gaming", false),
+    Triple("أفلام", "trending_movies_and_shows", false),
+    Triple("بودكاست", "trending_podcasts_episodes", false),
+    Triple("مباشر", "live", false),
+    Triple("أخبار", "news", true)
+)
 
 // Real per-country trending (kiosk) in "عام"; category tabs search within the same country.
 // A small badge names the country so a non-local list is never passed off as local.
@@ -1380,8 +1397,8 @@ fun HomeEmptyState(
     onPlay: (VideoItem) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = trendTab) {
-            TREND_TABS.forEachIndexed { i, (label, _) ->
+        ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
+            TREND_TABS.forEachIndexed { i, (label, _, _) ->
                 Tab(selected = trendTab == i, onClick = { onTrendTab(i) }, text = { Text(label) })
             }
         }
@@ -1396,41 +1413,33 @@ fun HomeEmptyState(
                 Text(countryName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
         }
-        if (trendTab == 0) {
-            if (trendingLoading) {
-                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                }
-            } else if (trendingItems.isEmpty()) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)) {
-                    items(trending) { q ->
-                        FilterChip(selected = false, onClick = { onSearch(q) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) }, label = { Text(q) })
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                        SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = {})
-                    }
-                }
+        // every tab is a real kiosk list (or labeled region-search for news); empty = honest fallback chips
+        if (trendingLoading) {
+            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
             }
-        } else {
+        } else if (trendingItems.isEmpty()) {
+            Text(
+                if (TREND_TABS.getOrNull(trendTab)?.third == true) "لا توجد نتائج إخبارية لهذا البلد — جرّب بلدًا آخر من الإعدادات."
+                else "تعذّر جلب هذا القسم لبلدك حاليًا — جرّب لاحقًا أو غيّر البلد من الإعدادات.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)) {
                 items(trending) { q ->
                     FilterChip(selected = false, onClick = { onSearch(q) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) }, label = { Text(q) })
                 }
             }
-            Spacer(Modifier.height(24.dp))
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(72.dp))
-                Spacer(Modifier.height(12.dp))
-                Text("اكتشف الفيديوهات", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(4.dp))
-                Text("اختر تصنيفًا بالأعلى أو ابحث عن أي فيديو", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
+                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = {})
+                }
             }
         }
     }
