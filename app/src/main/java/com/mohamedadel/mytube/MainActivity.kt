@@ -1356,11 +1356,11 @@ fun SettingsScreen(
 
 // ============ Playlists (Room) UI ============
 
-@Composable
 private val PLAYLIST_EMOJIS = listOf("🎵", "🎬", "🔥", "❤️", "📚", "🎮", "🎧", "⭐", "🌙", "⚽", "🚗", "🍳")
 
 // View mode by default (tap = play). Edit mode stages changes in memory;
 // Save writes name + emoji + order + deletions in one transaction, Cancel discards.
+@Composable
 fun PlaylistsScreen(
     playlists: List<PlaylistWithCount>,
     openId: Long?,
@@ -1587,6 +1587,7 @@ fun PlaylistsScreen(
 @Composable
 // Inline queue panel: rendered IN PLACE of the suggestions/results below the video
 // (no popup dialog). Same powers: reorder, remove, play-from, save as playlist, close.
+@Composable
 fun QueuePanel(
     items: List<VideoItem>,
     onMove: (Int, Int) -> Unit,
