@@ -17,9 +17,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,42 +30,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.QueueMusic
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.activity.compose.BackHandler
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -87,15 +73,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextDirection
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -113,20 +93,21 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
-import com.mohamedadel.mytube.ui.player.EqualizerBars
 import com.mohamedadel.mytube.ui.player.MiniPlayer
 import com.mohamedadel.mytube.ui.player.PlayerArea
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.queue.QueuePanel
+import com.mohamedadel.mytube.ui.results.HomeEmptyState
+import com.mohamedadel.mytube.ui.results.SearchRow
+import com.mohamedadel.mytube.ui.results.TREND_TABS
+import com.mohamedadel.mytube.ui.search.SearchScreen
 import com.mohamedadel.mytube.ui.queue.VideoOptionsDialog
 import com.mohamedadel.mytube.ui.settings.COUNTRY_OPTIONS
 import com.mohamedadel.mytube.ui.settings.SettingsScreen
 import com.mohamedadel.mytube.util.autoUrl
 import com.mohamedadel.mytube.util.batteryExemptionIntent
 import com.mohamedadel.mytube.util.estimatedDownstreamKbps
-import com.mohamedadel.mytube.util.formatDuration
-import com.mohamedadel.mytube.util.formatViews
 import com.mohamedadel.mytube.util.isBatteryExempt
 import com.mohamedadel.mytube.util.openInYoutubeCtx
 import com.mohamedadel.mytube.util.qualityHeight
@@ -1292,188 +1273,3 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
 // Estimated downstream bandwidth in Kbps from the active network (0 = unknown).
 
-// Real YouTube kiosk sections (null = default Trending). "news" has no kiosk: region search, labeled.
-private val TREND_TABS = listOf(
-    Triple("عام", null, false),
-    Triple("موسيقى", "trending_music", false),
-    Triple("ألعاب", "trending_gaming", false),
-    Triple("أفلام", "trending_movies_and_shows", false),
-    Triple("بودكاست", "trending_podcasts_episodes", false),
-    Triple("مباشر", "live", false),
-    Triple("أخبار", "news", true)
-)
-
-// Real per-country trending (kiosk) in "عام"; category tabs search within the same country.
-// A small badge names the country so a non-local list is never passed off as local.
-// Standalone search screen (YouTube-style): back + full-width field + hint. Opens over content.
-@Composable
-fun SearchScreen(
-    query: String,
-    loading: Boolean,
-    onQueryChange: (String) -> Unit,
-    onSearch: (String) -> Unit,
-    onClose: () -> Unit,
-    onClear: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
-            }
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                placeholder = { Text("ابحث عن فيديو أو قناة…") },
-                leadingIcon = {
-                    if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                },
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (!loading && query.isNotEmpty()) {
-                            IconButton(onClick = onClear) {
-                                Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
-                            }
-                        }
-                        IconButton(onClick = { onSearch(query) }) {
-                            Icon(Icons.Rounded.Search, contentDescription = "بحث")
-                        }
-                    }
-                },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-                shape = RoundedCornerShape(28.dp),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Search
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSearch = { onSearch(query) }
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                ),
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text("اكتب ثم اضغط بحث — الاقتراحات والسجل يظهران أسفل الحقل.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-fun HomeEmptyState(
-    trending: List<String>,
-    trendTab: Int,
-    onTrendTab: (Int) -> Unit,
-    trendingItems: List<VideoItem>,
-    trendingLoading: Boolean,
-    countryName: String,
-    onSearch: (String) -> Unit,
-    onPlay: (VideoItem) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
-            TREND_TABS.forEachIndexed { i, (label, _, _) ->
-                Tab(selected = trendTab == i, onClick = { onTrendTab(i) }, text = { Text(label) })
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("رائج الآن", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                Text(countryName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-            }
-        }
-        // every tab is a real kiosk list (or labeled region-search for news); empty = honest fallback chips
-        if (trendingLoading) {
-            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            }
-        } else if (trendingItems.isEmpty()) {
-            Text(
-                if (TREND_TABS.getOrNull(trendTab)?.third == true) "لا توجد نتائج إخبارية لهذا البلد — جرّب بلدًا آخر من الإعدادات."
-                else "تعذّر جلب هذا القسم لبلدك حاليًا — جرّب لاحقًا أو غيّر البلد من الإعدادات.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)) {
-                items(trending) { q ->
-                    FilterChip(selected = false, onClick = { onSearch(q) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) }, label = { Text(q) })
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = {})
-                }
-            }
-        }
-    }
-}
-
-
-@Composable
-@OptIn(ExperimentalFoundationApi::class)
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}, onLongClick: (VideoItem) -> Unit = {}) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) }),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.elevatedCardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
-    ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(132.dp, 74.dp)) {
-                AsyncImage(model = v.thumbnail, contentDescription = v.title, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-                // current row: animated equalizer (dances while playing, frozen while paused); others: plain play icon
-                Box(
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isCurrent) {
-                        EqualizerBars(playing = isPlaying)
-                    } else {
-                        Icon(
-                            Icons.Rounded.PlayArrow,
-                            contentDescription = "تشغيل",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                }
-                v.durationSec?.let { dur ->
-                    Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.75f)) {
-                        Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                    }
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = v.title ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
-                Text(text = v.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (v.viewCount != null && v.viewCount > 0) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(text = formatViews(v.viewCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = onClick) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = { onAdd(v) }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "إضافة لآخر القائمة الحالية", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                }
-            }
-        }
-    }
-}
