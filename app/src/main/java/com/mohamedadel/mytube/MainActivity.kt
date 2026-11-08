@@ -69,7 +69,11 @@ import androidx.media3.common.util.RepeatModeUtil
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.activity.compose.BackHandler
@@ -212,32 +216,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var nextPage by remember { mutableStateOf<Page?>(null) }
     var playing by remember { mutableStateOf<VideoItem?>(null) }
     var streamData by remember { mutableStateOf<StreamData?>(null) }
-    // selected dubbed/original audio track; auto-matched to the audio pref on every new video
+    // selected dubbed/original audio track (auto-matched to the audio pref once prefs load below)
     var audioTrackIdx by remember { mutableStateOf(0) }
-    fun resolveLang(pref: String): String? = when (pref) {
-        "off" -> null
-        "auto" -> try { java.util.Locale.getDefault().language } catch (_: Exception) { "ar" }
-        else -> pref
-    }
-    fun applyLangPrefs() {
-        try {
-            val p = player ?: return
-            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                .setPreferredAudioLanguage(resolveLang(prefAudioLang))
-                .setPreferredTextLanguage(resolveLang(prefSubLang))
-                .build()
-        } catch (_: Exception) { }
-    }
-    LaunchedEffect(streamData, prefAudioLang) {
-        // auto-pick the audio track matching the saved preference (device language by default)
-        val want = resolveLang(prefAudioLang)
-        val idx = streamData?.audioTracks?.indexOfFirst { t ->
-            val tag = t.localeTag ?: t.name ?: ""
-            want != null && tag.startsWith(want, ignoreCase = true)
-        } ?: -1
-        audioTrackIdx = if (idx >= 0) idx else 0
-    }
-    LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
     var quality by remember { mutableStateOf("audio-only (default)") }
     var playerLoading by remember { mutableStateOf(false) }
@@ -295,6 +275,32 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (raw.isNotBlank()) recentSearches = raw.split("\u001f").filter { it.isNotBlank() }.take(6)
         } catch (_: Exception) { }
     }
+    // language helpers: resolve "auto" to the device language; push prefs into the player.
+    // Placed AFTER prefs/player/streamData declarations (Kotlin locals must precede use).
+    fun resolveLang(pref: String): String? = when (pref) {
+        "off" -> null
+        "auto" -> try { java.util.Locale.getDefault().language } catch (_: Exception) { "ar" }
+        else -> pref
+    }
+    fun applyLangPrefs() {
+        try {
+            val p = player ?: return
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setPreferredAudioLanguage(resolveLang(prefAudioLang))
+                .setPreferredTextLanguage(resolveLang(prefSubLang))
+                .build()
+        } catch (_: Exception) { }
+    }
+    LaunchedEffect(streamData, prefAudioLang) {
+        // auto-pick the audio track matching the saved preference (device language by default)
+        val want = resolveLang(prefAudioLang)
+        val idx = streamData?.audioTracks?.indexOfFirst { t ->
+            val tag = t.localeTag ?: t.name ?: ""
+            want != null && tag.startsWith(want, ignoreCase = true)
+        } ?: -1
+        audioTrackIdx = if (idx >= 0) idx else 0
+    }
+    LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
     // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
     fun setFullscreen(full: Boolean) {
@@ -1584,7 +1590,6 @@ fun PlaylistsScreen(
 }
 
 // Current-queue manager: reorder / remove / play-from / save-as-playlist.
-@Composable
 // Inline queue panel: rendered IN PLACE of the suggestions/results below the video
 // (no popup dialog). Same powers: reorder, remove, play-from, save as playlist, close.
 @Composable
