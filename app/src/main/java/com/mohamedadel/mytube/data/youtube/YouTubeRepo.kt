@@ -8,6 +8,7 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.Page
+import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 
@@ -24,6 +25,34 @@ object YouTubeRepo {
     }
     private fun service() = NewPipe.getService("YouTube")
     init { runCatching { NewPipe.init(NewPipeDownloaderImpl()) } }
+
+    // Real per-country trending via the YouTube Trending kiosk (falls back to empty on failure).
+    suspend fun trending(region: String? = null): List<VideoItem> = withContext(Dispatchers.IO) {
+        try {
+            applyRegion(region)
+            val svc = service()
+            val kiosk = try { svc.kioskList.getDefaultKioskExtractor(null) } catch (_: Exception) { null } ?: return@withContext emptyList()
+            kiosk.fetchPage()
+            val lp = try { kiosk.initialPage } catch (_: Exception) { return@withContext emptyList() }
+            val out = mutableListOf<VideoItem>()
+            for (info in lp.items) {
+                if (info is StreamInfoItem) {
+                    val url: String? = try { info.url } catch (_: Exception) { null }
+                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                    val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
+                    var thumb: String? = null
+                    try { thumb = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    var dur: Long? = null
+                    try { dur = info.duration } catch (_: Exception) {}
+                    var views: Long? = null
+                    try { views = info.viewCount } catch (_: Exception) {}
+                    val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                    out.add(VideoItem(id, name, up, thumb, dur, views, url))
+                }
+            }
+            out
+        } catch (_: Exception) { emptyList() }
+    }
 
     suspend fun suggestions(query: String): List<String> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList<String>()
@@ -54,8 +83,18 @@ object YouTubeRepo {
         } catch (_: Exception) { emptyList() }
     }
 
-    suspend fun search(query: String, page: Page? = null): SearchPage = withContext(Dispatchers.IO) {
+    // Manual content country (no IP, no permission): drives YouTube search/trending region.
+    // "global" = leave NewPipe default; otherwise force Arabic + chosen country.
+    fun applyRegion(country: String?) {
+        runCatching {
+            if (!country.isNullOrBlank() && country != "global")
+                NewPipe.setupLocalization(Localization("ar", country))
+        }
+    }
+
+    suspend fun search(query: String, page: Page? = null, region: String? = null): SearchPage = withContext(Dispatchers.IO) {
         try {
+            applyRegion(region)
             val ext = service().getSearchExtractor(query)
             val lp = if (page == null) { ext.fetchPage(); ext.initialPage } else { ext.getPage(page) }
             val items = lp.items

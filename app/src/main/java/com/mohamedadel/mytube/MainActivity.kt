@@ -253,9 +253,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val playlists by dao.observePlaylists().collectAsState(initial = emptyList())
     var showPlaylists by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
-    // language prefs: "auto" (device language), "off" (subtitles only), or a language tag (ar/en/…)
+    // language prefs: "auto" (device language), "off" (subtitles only), "original" (video's own language),
+    // or a language tag (ar/en/…). Secondary = fallback when the primary is unavailable.
     var prefSubLang by remember { mutableStateOf("auto") }
     var prefAudioLang by remember { mutableStateOf("auto") }
+    var prefSubLang2 by remember { mutableStateOf("en") }
+    var prefAudioLang2 by remember { mutableStateOf("original") }
+    // content country (manual only, no IP): drives search/trending region. "global" = YouTube default.
+    var prefCountry by remember { mutableStateOf("EG") }
+    // standalone search screen (YouTube-style) + trending tabs
+    var showSearch by remember { mutableStateOf(false) }
+    var trendTab by remember { mutableStateOf(0) }
+    var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
+    var trendingLoading by remember { mutableStateOf(false) }
     var openPlaylistId by remember { mutableStateOf<Long?>(null) }
     val openItems by remember(openPlaylistId) {
         openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
@@ -269,6 +279,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try {
             prefSubLang = prefs.getString("pref_sub_lang", "auto") ?: "auto"
             prefAudioLang = prefs.getString("pref_audio_lang", "auto") ?: "auto"
+            prefSubLang2 = prefs.getString("pref_sub_lang2", "en") ?: "en"
+            prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
+            prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
         } catch (_: Exception) { }
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
@@ -279,8 +292,35 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Placed AFTER prefs/player/streamData declarations (Kotlin locals must precede use).
     fun resolveLang(pref: String): String? = when (pref) {
         "off" -> null
+        "original" -> null
         "auto" -> try { java.util.Locale.getDefault().language } catch (_: Exception) { "ar" }
         else -> pref
+    }
+    // fallback chain: primary -> secondary -> device -> English/original. Null = no forcing.
+    fun pickAudioIdx(): Int {
+        val tracks = streamData?.audioTracks ?: return 0
+        if (tracks.isEmpty()) return 0
+        val ordered = listOf(resolveLang(prefAudioLang), resolveLang(prefAudioLang2)) +
+            listOf(try { java.util.Locale.getDefault().language } catch (_: Exception) { null }, "en")
+        for (want in ordered) {
+            if (want == null) return 0 // "original" or "off": keep the video's own first track
+            val i = tracks.indexOfFirst { t ->
+                val tag = t.localeTag ?: t.name ?: ""
+                tag.startsWith(want, ignoreCase = true)
+            }
+            if (i >= 0) return i
+        }
+        return 0
+    }
+    fun loadTrending() {
+        trendingLoading = true
+        scope.launch {
+            try {
+                val items = YouTubeRepo.trending(if (prefCountry == "global") null else prefCountry)
+                trendingItems = items
+            } catch (_: Exception) { trendingItems = emptyList() }
+            finally { trendingLoading = false }
+        }
     }
     fun applyLangPrefs() {
         try {
@@ -291,15 +331,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 .build()
         } catch (_: Exception) { }
     }
-    LaunchedEffect(streamData, prefAudioLang) {
-        // auto-pick the audio track matching the saved preference (device language by default)
-        val want = resolveLang(prefAudioLang)
-        val idx = streamData?.audioTracks?.indexOfFirst { t ->
-            val tag = t.localeTag ?: t.name ?: ""
-            want != null && tag.startsWith(want, ignoreCase = true)
-        } ?: -1
-        audioTrackIdx = if (idx >= 0) idx else 0
+    LaunchedEffect(streamData, prefAudioLang, prefAudioLang2) {
+        // auto-pick the audio track along the fallback chain (primary -> secondary -> device -> en/original)
+        audioTrackIdx = pickAudioIdx()
     }
+    LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) loadTrending() }
     LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
     // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
@@ -558,7 +594,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val page = nextPage ?: return@LaunchedEffect
             loadingMore = true
             try {
-                val res = YouTubeRepo.search(q, page)
+                val res = YouTubeRepo.search(q, page, if (prefCountry == "global") null else prefCountry)
                 // drop duplicates already in list (same url/id) to avoid key crash
                 val seen = results.mapNotNull { it.url ?: it.id }.toSet()
                 val fresh = res.items.filter { (it.url ?: it.id ?: it.title) !in seen }
@@ -628,7 +664,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         loading = true
         showSuggestions = false
         scope.launch {
-            val page = YouTubeRepo.search(q, null)
+            val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry)
             results = page.items
             nextPage = page.nextPage
             hasMore = page.hasNext
@@ -674,6 +710,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             showQueue = false
             return true
         }
+        if (showSearch) {
+            showSearch = false
+            return true
+        }
         if (showSettings) {
             showSettings = false
             return true
@@ -688,7 +728,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showQueue || showSettings || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showQueue || showSettings || showSearch || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -804,12 +844,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // Search + suggestions are hidden in fullscreen: they stole vertical space and
             // squeezed the video to "app size" instead of true fullscreen.
             if (!isFullscreen) {
-            // Unified header row: nav + logo + search (the old 64dp top bar is gone).
+            // Compact header: nav + logo + search icon only (YouTube-style).
+            // Tapping search opens a standalone search screen; the inline field is gone.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (playerExpanded || playing != null || showPlaylists || showSettings || results.isNotEmpty()) {
+                if (playerExpanded || playing != null || showPlaylists || showSettings || showSearch || results.isNotEmpty()) {
                     IconButton(onClick = { smartBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
@@ -819,45 +860,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 }
                 Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(30.dp))
-                Spacer(Modifier.width(8.dp))
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
-                placeholder = { Text("ابحث عن فيديو أو قناة…") },
-                leadingIcon = {
-                    if (loading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                    }
-                },
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (!loading && query.isNotEmpty()) {
-                            IconButton(onClick = { query = ""; svm.onQueryChange(""); showSuggestions = false }) {
-                                Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
-                            }
-                        }
-                        IconButton(onClick = { doSearch(query) }) {
-                            Icon(Icons.Rounded.Search, contentDescription = "بحث")
-                        }
-                    }
-                },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-                shape = RoundedCornerShape(28.dp),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Search
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSearch = { doSearch(query) }
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                ),
-                modifier = Modifier.weight(1f)
-            )
+                Spacer(Modifier.weight(1f))
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = { showSearch = true; showSuggestions = true }) {
+                    Icon(Icons.Rounded.Search, contentDescription = "بحث")
+                }
+            }
+            // Standalone search screen: full search UI lives here, results stay in the main list.
+            if (showSearch) {
+                SearchScreen(
+                    query = query,
+                    loading = loading,
+                    onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
+                    onSearch = { q -> doSearch(q); showSearch = false },
+                    onClose = { showSearch = false },
+                    onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false }
+                )
             }
 
             // Dropdown = recent searches (history icon) + live network suggestions, merged and deduped.
@@ -1011,6 +1031,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     SettingsScreen(
                         subLang = prefSubLang,
                         audioLang = prefAudioLang,
+                        subLang2 = prefSubLang2,
+                        audioLang2 = prefAudioLang2,
+                        country = prefCountry,
                         deviceLang = try { java.util.Locale.getDefault() } catch (_: Exception) { null },
                         onSubLang = { v ->
                             prefSubLang = v
@@ -1021,6 +1044,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             prefAudioLang = v
                             try { prefs.edit().putString("pref_audio_lang", v).apply() } catch (_: Exception) { }
                             applyLangPrefs()
+                        },
+                        onSubLang2 = { v ->
+                            prefSubLang2 = v
+                            try { prefs.edit().putString("pref_sub_lang2", v).apply() } catch (_: Exception) { }
+                        },
+                        onAudioLang2 = { v ->
+                            prefAudioLang2 = v
+                            try { prefs.edit().putString("pref_audio_lang2", v).apply() } catch (_: Exception) { }
+                            audioTrackIdx = pickAudioIdx()
+                        },
+                        onCountry = { v ->
+                            prefCountry = v
+                            try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
+                            loadTrending()
                         }
                     )
                 }
@@ -1091,7 +1128,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 }
                 results.isEmpty() && query.isBlank() -> {
-                    HomeEmptyState(trending = trending, onSearch = { q -> query = q; doSearch(q) })
+                    HomeEmptyState(
+                        trending = trending,
+                        trendTab = trendTab,
+                        onTrendTab = { i ->
+                            trendTab = i
+                            val key = TREND_TABS.getOrNull(i)?.second ?: ""
+                            if (key.isNotBlank()) { query = key; doSearch(key) }
+                        },
+                        trendingItems = trendingItems,
+                        trendingLoading = trendingLoading,
+                        countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second ?: prefCountry,
+                        onSearch = { q -> query = q; doSearch(q) },
+                        onPlay = { playVideo(it) }
+                    )
                 }
                 results.isEmpty() && !loading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1141,7 +1191,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         loadingMore = true
                                         scope.launch {
                                             try {
-                                                val page = YouTubeRepo.search(currentQuery, pg)
+                                                val page = YouTubeRepo.search(currentQuery, pg, if (prefCountry == "global") null else prefCountry)
                                                 val seen = results.mapNotNull { it.url ?: it.id }.toSet()
                                                 val fresh = page.items.filter { (it.url ?: it.id ?: it.title) !in seen }
                                                 results = results + fresh
@@ -1253,29 +1303,130 @@ fun qualityHeight(label: String): Int? {
     return l.filter { it.isDigit() }.toIntOrNull()
 }
 
+private val TREND_TABS = listOf("عام" to "", "موسيقى" to "music", "ألعاب" to "gaming", "أخبار" to "news")
+
+// Real per-country trending (kiosk) in "عام"; category tabs search within the same country.
+// A small badge names the country so a non-local list is never passed off as local.
+// Standalone search screen (YouTube-style): back + full-width field + hint. Opens over content.
 @Composable
-fun HomeEmptyState(trending: List<String>, onSearch: (String) -> Unit) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item { Text("رائج الآن", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+fun SearchScreen(
+    query: String,
+    loading: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSearch: (String) -> Unit,
+    onClose: () -> Unit,
+    onClear: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                placeholder = { Text("ابحث عن فيديو أو قناة…") },
+                leadingIcon = {
+                    if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!loading && query.isNotEmpty()) {
+                            IconButton(onClick = onClear) {
+                                Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
+                            }
+                        }
+                        IconButton(onClick = { onSearch(query) }) {
+                            Icon(Icons.Rounded.Search, contentDescription = "بحث")
+                        }
+                    }
+                },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                shape = RoundedCornerShape(28.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Search
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { onSearch(query) }
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("اكتب ثم اضغط بحث — الاقتراحات والسجل يظهران أسفل الحقل.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+fun HomeEmptyState(
+    trending: List<String>,
+    trendTab: Int,
+    onTrendTab: (Int) -> Unit,
+    trendingItems: List<VideoItem>,
+    trendingLoading: Boolean,
+    countryName: String,
+    onSearch: (String) -> Unit,
+    onPlay: (VideoItem) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = trendTab) {
+            TREND_TABS.forEachIndexed { i, (label, _) ->
+                Tab(selected = trendTab == i, onClick = { onTrendTab(i) }, text = { Text(label) })
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("رائج الآن", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                Text(countryName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            }
+        }
+        if (trendTab == 0) {
+            if (trendingLoading) {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                }
+            } else if (trendingItems.isEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)) {
+                    items(trending) { q ->
+                        FilterChip(selected = false, onClick = { onSearch(q) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) }, label = { Text(q) })
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
+                        SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = {})
+                    }
+                }
+            }
+        } else {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)) {
                 items(trending) { q ->
                     FilterChip(selected = false, onClick = { onSearch(q) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) }, label = { Text(q) })
                 }
             }
-        }
-        item {
             Spacer(Modifier.height(24.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(72.dp))
                 Spacer(Modifier.height(12.dp))
                 Text("اكتشف الفيديوهات", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(4.dp))
-                Text("ابحث أعلاه عن أي فيديو أو قناة على يوتيوب", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("اختر تصنيفًا بالأعلى أو ابحث عن أي فيديو", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -1285,9 +1436,17 @@ fun HomeEmptyState(trending: List<String>, onSearch: (String) -> Unit) {
 
 private val LANG_OPTIONS = listOf("ar" to "العربية", "en" to "الإنجليزية", "fr" to "الفرنسية", "es" to "الإسبانية", "de" to "الألمانية")
 
+private val COUNTRY_OPTIONS = listOf(
+    "EG" to "🇪🇬 مصر", "SA" to "🇸🇦 السعودية", "AE" to "🇦🇪 الإمارات",
+    "KW" to "🇰🇼 الكويت", "QA" to "🇶🇦 قطر", "MA" to "🇲🇦 المغرب",
+    "DZ" to "🇩🇿 الجزائر", "JO" to "🇯🇴 الأردن", "IQ" to "🇮🇶 العراق",
+    "US" to "🇺🇸 أمريكا", "GB" to "🇬🇧 بريطانيا", "global" to "🌍 عالمي"
+)
+
 private fun langLabel(code: String, deviceTag: String?): String = when (code) {
     "auto" -> "تلقائي (لغة الجهاز" + (deviceTag?.let { ": $it" } ?: "") + ")"
     "off" -> "إيقاف"
+    "original" -> "الأصلية (لغة الفيديو أيا كانت)"
     else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second ?: code
 }
 
@@ -1295,9 +1454,15 @@ private fun langLabel(code: String, deviceTag: String?): String = when (code) {
 fun SettingsScreen(
     subLang: String,
     audioLang: String,
+    subLang2: String,
+    audioLang2: String,
+    country: String,
     deviceLang: java.util.Locale?,
     onSubLang: (String) -> Unit,
-    onAudioLang: (String) -> Unit
+    onAudioLang: (String) -> Unit,
+    onSubLang2: (String) -> Unit,
+    onAudioLang2: (String) -> Unit,
+    onCountry: (String) -> Unit
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     LazyColumn(
@@ -1333,6 +1498,25 @@ fun SettingsScreen(
         }
         item {
             Spacer(Modifier.height(4.dp))
+            Text("لغة الترجمة البديلة (عند غياب المفضلة)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onSubLang2(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (subLang2 == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (subLang2 == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
             Text("لغة الصوت المفضلة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(listOf("auto") + LANG_OPTIONS.map { it.first }) { code ->
@@ -1348,6 +1532,44 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text("لغة الصوت البديلة (عند غياب المفضلة)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onAudioLang2(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (audioLang2 == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (audioLang2 == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text("بلد المحتوى (يحدد الرائج والبحث — اختيار يدوي فقط، بلا تتبع)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(COUNTRY_OPTIONS) { (code, label) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onCountry(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (country == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (country == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
