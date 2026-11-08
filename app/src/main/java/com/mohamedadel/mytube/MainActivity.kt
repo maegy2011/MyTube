@@ -74,6 +74,8 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.activity.compose.BackHandler
@@ -312,16 +314,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return 0
     }
-    fun loadTrending() {
-        trendingLoading = true
-        scope.launch {
-            try {
-                val items = YouTubeRepo.trending(if (prefCountry == "global") null else prefCountry)
-                trendingItems = items
-            } catch (_: Exception) { trendingItems = emptyList() }
-            finally { trendingLoading = false }
-        }
-    }
+    // Trending loader: defined as a suspend-friendly launcher; the actual scope is
+    // passed at call sites (Kotlin locals must precede use, scope lives below).
     fun applyLangPrefs() {
         try {
             val p = player ?: return
@@ -335,7 +329,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // auto-pick the audio track along the fallback chain (primary -> secondary -> device -> en/original)
         audioTrackIdx = pickAudioIdx()
     }
-    LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) loadTrending() }
+    fun refreshTrending() {
+        trendingLoading = true
+        scope.launch {
+            try {
+                trendingItems = YouTubeRepo.trending(if (prefCountry == "global") null else prefCountry)
+            } catch (_: Exception) { trendingItems = emptyList() }
+            finally { trendingLoading = false }
+        }
+    }
+    LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
     LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
     // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
@@ -1057,7 +1060,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onCountry = { v ->
                             prefCountry = v
                             try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
-                            loadTrending()
+                            refreshTrending()
                         }
                     )
                 }
