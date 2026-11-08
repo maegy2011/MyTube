@@ -120,6 +120,7 @@ import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.playback.PlaybackService
 import androidx.room.Room
 import com.mohamedadel.mytube.data.local.MIGRATION_1_2
+import com.mohamedadel.mytube.data.local.MIGRATION_2_3
 import com.mohamedadel.mytube.data.local.MIGRATION_3_4
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
