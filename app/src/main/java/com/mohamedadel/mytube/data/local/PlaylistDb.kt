@@ -48,6 +48,21 @@ data class PlaylistItemEntity(
     val position: Int
 )
 
+// One-tap favorite. Keyed by stable video key (id or url) so toggling is idempotent.
+@Entity(tableName = "favorites", indices = [Index(value = ["videoKey"], unique = true)])
+data class FavoriteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val videoKey: String,
+    val videoId: String?,
+    val title: String?,
+    val channel: String?,
+    val thumbnail: String?,
+    val url: String?,
+    val durationSec: Long?,
+    val viewCount: Long?,
+    val addedAt: Long = System.currentTimeMillis()
+)
+
 // Playlist row + item count for the management screen.
 data class PlaylistWithCount(
     val id: Long,
@@ -94,11 +109,38 @@ interface PlaylistDao {
 
     @Update
     suspend fun updateItems(items: List<PlaylistItemEntity>)
+
+    // ---- Favorites (one-tap heart) ----
+    @Query("SELECT * FROM favorites ORDER BY addedAt DESC")
+    fun observeFavorites(): Flow<List<FavoriteEntity>>
+
+    @Query("SELECT videoKey FROM favorites")
+    fun observeFavoriteKeys(): Flow<List<String>>
+
+    @Query("SELECT COUNT(*) FROM favorites WHERE videoKey = :key")
+    suspend fun favoriteCount(key: String): Int
+
+    @Insert
+    suspend fun insertFavorite(f: FavoriteEntity): Long
+
+    @Query("DELETE FROM favorites WHERE videoKey = :key")
+    suspend fun deleteFavorite(key: String)
+
+    @Query("DELETE FROM favorites")
+    suspend fun clearFavorites()
 }
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class], version = 2, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class], version = 3, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
+}
+
+// v2 -> v3: favorites table (non-destructive).
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS favorites (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, videoKey TEXT NOT NULL, videoId TEXT, title TEXT, channel TEXT, thumbnail TEXT, url TEXT, durationSec INTEGER, viewCount INTEGER, addedAt INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_favorites_videoKey ON favorites (videoKey)")
+    }
 }
 
 // v1 -> v2: playlist cover emoji (non-destructive: existing user data is preserved).
@@ -111,6 +153,30 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 // ---- Mapping between player items and stored rows ----
 
 fun PlaylistItemEntity.toVideoItem(): VideoItem = VideoItem(
+    id = videoId,
+    title = title,
+    channel = channel,
+    thumbnail = thumbnail,
+    durationSec = durationSec,
+    viewCount = viewCount,
+    url = url
+)
+
+// Stable key for favorites: video id when present, else the stream url.
+fun VideoItem.favKey(): String = id?.takeIf { it.isNotBlank() } ?: url ?: title ?: hashCode().toString()
+
+fun VideoItem.toFavorite(): FavoriteEntity = FavoriteEntity(
+    videoKey = favKey(),
+    videoId = id,
+    title = title,
+    channel = channel,
+    thumbnail = thumbnail,
+    url = url,
+    durationSec = durationSec,
+    viewCount = viewCount
+)
+
+fun FavoriteEntity.toVideoItem(): VideoItem = VideoItem(
     id = videoId,
     title = title,
     channel = channel,

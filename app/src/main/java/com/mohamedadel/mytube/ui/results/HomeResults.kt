@@ -55,7 +55,9 @@ fun HomeEmptyState(
     trendingLoading: Boolean,
     countryName: String,
     onSearch: (String) -> Unit,
-    onPlay: (VideoItem) -> Unit
+    onPlay: (VideoItem) -> Unit,
+    isFav: (VideoItem) -> Boolean = { false },
+    onFav: (VideoItem) -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
@@ -99,7 +101,7 @@ fun HomeEmptyState(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = {})
+                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = {}, isFav = isFav(v), onFav = onFav)
                 }
             }
         }
