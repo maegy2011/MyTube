@@ -6,6 +6,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
@@ -61,6 +62,22 @@ data class FavoriteEntity(
     val durationSec: Long?,
     val viewCount: Long?,
     val addedAt: Long = System.currentTimeMillis()
+)
+
+// Listening history: one row per video, refreshed on every play (REPLACE keeps it unique),
+// capped to the latest 100 by the writer.
+@Entity(tableName = "history", indices = [Index(value = ["videoKey"], unique = true)])
+data class HistoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val videoKey: String,
+    val videoId: String?,
+    val title: String?,
+    val channel: String?,
+    val thumbnail: String?,
+    val url: String?,
+    val durationSec: Long?,
+    val viewCount: Long?,
+    val playedAt: Long = System.currentTimeMillis()
 )
 
 // Playlist row + item count for the management screen.
@@ -128,9 +145,25 @@ interface PlaylistDao {
 
     @Query("DELETE FROM favorites")
     suspend fun clearFavorites()
+
+    // ---- Listening history ----
+    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT :limit")
+    fun observeHistory(limit: Int = 100): Flow<List<HistoryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertHistory(h: HistoryEntity): Long
+
+    @Query("DELETE FROM history WHERE videoKey = :key")
+    suspend fun deleteHistory(key: String)
+
+    @Query("DELETE FROM history")
+    suspend fun clearHistory()
+
+    @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY playedAt DESC LIMIT 100)")
+    suspend fun trimHistory()
 }
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class], version = 3, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class], version = 4, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -140,6 +173,14 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS favorites (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, videoKey TEXT NOT NULL, videoId TEXT, title TEXT, channel TEXT, thumbnail TEXT, url TEXT, durationSec INTEGER, viewCount INTEGER, addedAt INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_favorites_videoKey ON favorites (videoKey)")
+    }
+}
+
+// v3 -> v4: listening-history table (non-destructive).
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, videoKey TEXT NOT NULL, videoId TEXT, title TEXT, channel TEXT, thumbnail TEXT, url TEXT, durationSec INTEGER, viewCount INTEGER, playedAt INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_history_videoKey ON history (videoKey)")
     }
 }
 
@@ -174,6 +215,27 @@ fun VideoItem.toFavorite(): FavoriteEntity = FavoriteEntity(
     url = url,
     durationSec = durationSec,
     viewCount = viewCount
+)
+
+fun VideoItem.toHistory(): HistoryEntity = HistoryEntity(
+    videoKey = favKey(),
+    videoId = id,
+    title = title,
+    channel = channel,
+    thumbnail = thumbnail,
+    url = url,
+    durationSec = durationSec,
+    viewCount = viewCount
+)
+
+fun HistoryEntity.toVideoItem(): VideoItem = VideoItem(
+    id = videoId,
+    title = title,
+    channel = channel,
+    thumbnail = thumbnail,
+    durationSec = durationSec,
+    viewCount = viewCount,
+    url = url
 )
 
 fun FavoriteEntity.toVideoItem(): VideoItem = VideoItem(

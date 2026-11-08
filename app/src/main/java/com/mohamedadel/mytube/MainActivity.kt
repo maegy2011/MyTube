@@ -98,6 +98,7 @@ import com.mohamedadel.mytube.ui.player.MiniPlayer
 import com.mohamedadel.mytube.ui.player.PlayerArea
 import com.mohamedadel.mytube.ui.player.SleepTimerDialog
 import com.mohamedadel.mytube.ui.playlists.FavoritesScreen
+import com.mohamedadel.mytube.ui.playlists.HistoryScreen
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.queue.QueuePanel
@@ -119,7 +120,8 @@ import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.playback.PlaybackService
 import androidx.room.Room
 import com.mohamedadel.mytube.data.local.MIGRATION_1_2
-import com.mohamedadel.mytube.data.local.MIGRATION_2_3
+import com.mohamedadel.mytube.data.local.MIGRATION_3_4
+import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
 import com.mohamedadel.mytube.data.local.MyTubeDb
@@ -224,7 +226,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }
@@ -233,6 +235,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showPlaylists by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showFavorites by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
+    val history by remember { dao.observeHistory() }.collectAsState(initial = emptyList())
     // Favorites (one-tap heart): keys observed live so every heart reflects instantly.
     val favoriteKeys by remember { dao.observeFavoriteKeys() }.collectAsState(initial = emptyList())
     val favoriteSet = remember(favoriteKeys) { favoriteKeys.toSet() }
@@ -387,6 +391,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             } catch (_: Exception) { }
         }
     }
+    // Listening history: every explicit play lands here (dedupe by key, capped at 100).
+    fun recordHistory(v: VideoItem) {
+        scope.launch {
+            try {
+                dao.upsertHistory(v.toHistory())
+                dao.trimHistory()
+            } catch (_: Exception) { }
+        }
+    }
     fun refreshTrending() {
         val tab = TREND_TABS.getOrNull(trendTab)
         val kiosk = tab?.second
@@ -481,6 +494,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // expand=false keeps the current collapsed/expanded state (queue advancing while browsing).
     fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true) {
         playing = v
+        recordHistory(v)
         if (expand) playerExpanded = true
         if (!inQueue) {
             // single tap: this video alone is the queue (no implicit follow-up)
@@ -746,6 +760,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             playerExpanded = false
             return true
         }
+        if (showHistory) {
+            showHistory = false
+            return true
+        }
         if (showPlaylists) {
             if (openPlaylistId != null) openPlaylistId = null else showPlaylists = false
             return true
@@ -776,7 +794,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showQueue || showSettings || showSearch || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -808,10 +826,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ModalDrawerSheet {
                 Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = !showPlaylists && !showSettings && !showFavorites, onClick = { showPlaylists = false; showSettings = false; showFavorites = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
-                NavigationDrawerItem(label = { Text(if (favoriteKeys.isNotEmpty()) "المفضلة (${favoriteKeys.size})" else "المفضلة") }, selected = showFavorites, onClick = { playerExpanded = false; showFavorites = true; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Favorite, null) })
-                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { playerExpanded = false; showPlaylists = true; showSettings = false; showFavorites = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
-                NavigationDrawerItem(label = { Text("الإعدادات") }, selected = showSettings, onClick = { showSettings = true; showFavorites = false; showPlaylists = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Settings, null) })
+                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = !showPlaylists && !showSettings && !showFavorites && !showHistory, onClick = { showPlaylists = false; showSettings = false; showFavorites = false; showHistory = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
+                NavigationDrawerItem(label = { Text(if (favoriteKeys.isNotEmpty()) "المفضلة (${favoriteKeys.size})" else "المفضلة") }, selected = showFavorites, onClick = { playerExpanded = false; showFavorites = true; showHistory = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Favorite, null) })
+                NavigationDrawerItem(label = { Text("السجل") }, selected = showHistory, onClick = { playerExpanded = false; showHistory = true; showFavorites = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.History, null) })
+                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { playerExpanded = false; showPlaylists = true; showSettings = false; showFavorites = false; showHistory = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
+                NavigationDrawerItem(label = { Text("الإعدادات") }, selected = showSettings, onClick = { showSettings = true; showFavorites = false; showHistory = false; showPlaylists = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Settings, null) })
             }
         }
     ) {
@@ -1110,6 +1129,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
                             refreshTrending()
                         }
+                    )
+                }
+                showHistory -> {
+                    HistoryScreen(
+                        items = history,
+                        onPlay = { playVideo(it) },
+                        onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { } } },
+                        onClear = { scope.launch { try { dao.clearHistory() } catch (_: Exception) { } } },
+                        onBack = { smartBack() }
                     )
                 }
                 showFavorites -> {

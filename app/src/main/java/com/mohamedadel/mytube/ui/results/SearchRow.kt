@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -44,7 +45,7 @@ import com.mohamedadel.mytube.util.formatViews
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) }),
         shape = MaterialTheme.shapes.medium,
@@ -89,8 +90,13 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 IconButton(onClick = onClick) {
                     Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
                 }
-                IconButton(onClick = { onAdd(v) }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "إضافة لآخر القائمة الحالية", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                IconButton(onClick = { if (onRemove != null) onRemove(v) else onAdd(v) }) {
+                    Icon(
+                        if (onRemove != null) Icons.Rounded.Clear else Icons.Rounded.Add,
+                        contentDescription = if (onRemove != null) "حذف من السجل" else "إضافة لآخر القائمة الحالية",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
                 IconButton(onClick = { onFav(v) }) {
                     Icon(
