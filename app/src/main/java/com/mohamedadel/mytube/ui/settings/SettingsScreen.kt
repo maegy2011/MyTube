@@ -143,6 +143,8 @@ fun SettingsScreen(
     onFeedParallel: (Boolean) -> Unit = {},
     feedCache: Boolean = true,
     onFeedCache: (Boolean) -> Unit = {},
+    preloadNext: Boolean = true,
+    onPreloadNext: (Boolean) -> Unit = {},
     onClearFavorites: () -> Unit,
     onClearHistory: () -> Unit
 ) {
@@ -518,6 +520,16 @@ fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.perf_feedcache), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(stringResource(R.string.perf_feedcache_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onPreloadNext(!preloadNext) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (preloadNext) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (preloadNext) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.perf_preload), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.perf_preload_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

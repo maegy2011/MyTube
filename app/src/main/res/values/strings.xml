@@ -309,4 +309,7 @@
     <string name="perf_parallel_desc">الإيقاف = قناة كل مرة (أرحم للشبكات الضعيفة).</string>
     <string name="perf_feedcache">كاش الخلاصة (6 ساعات)</string>
     <string name="perf_feedcache_desc">خلاصة فورية من القرص عند حداثتها؛ تتحدث تلقائيًا.</string>
+    <string name="perf_preload">تجهيز معلومات المقطع التالي</string>
+    <string name="perf_preload_desc">يتخطى انتظار التحميل عند التقدم. جلب معلومات صغير فقط، بلا بايتات ميديا.</string>
+    <string name="hist_load_fail">فشل تحميل السجل</string>
 </resources>

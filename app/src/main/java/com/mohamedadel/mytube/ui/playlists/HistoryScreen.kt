@@ -6,12 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
@@ -25,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,18 +36,21 @@ import com.mohamedadel.mytube.data.local.toVideoItem
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.results.SearchRow
 
-// Listening history: newest first (capped at 100). Tap = replay, ✕ = remove, trash = clear all.
+// Listening history: newest first (H1: Paging 3, page 30, cap 1000 rows). Tap = replay, ✕ = remove, trash = clear all.
 @Composable
 fun HistoryScreen(
-    items: List<HistoryEntity>,
+    flowAll: kotlinx.coroutines.flow.Flow<androidx.paging.PagingData<HistoryEntity>>,
+    flowPinned: kotlinx.coroutines.flow.Flow<androidx.paging.PagingData<HistoryEntity>>,
+    flowUnpinned: kotlinx.coroutines.flow.Flow<androidx.paging.PagingData<HistoryEntity>>,
     onPlay: (VideoItem) -> Unit,
     onDelete: (VideoItem) -> Unit,
     onClear: () -> Unit,
     onBack: () -> Unit,
     onLongClick: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
-    // Phase 5: offline-pin badges + filter tabs (in-memory filter, zero network)
+    // Phase 5: offline-pin badges (zero network)
     pinInfo: Map<String, com.mohamedadel.mytube.data.local.PinEntity> = emptyMap(),
-    pinningKeys: Set<String> = emptySet()
+    pinningKeys: Set<String> = emptySet(),
+    totalCount: Int = 0
 ) {
     val lctx = androidx.compose.ui.platform.LocalContext.current
     var tab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
@@ -53,25 +58,21 @@ fun HistoryScreen(
         if (bytes < 1048576) lctx.getString(com.mohamedadel.mytube.R.string.db_kb, (bytes / 1024).toInt())
         else lctx.getString(com.mohamedadel.mytube.R.string.db_mb, bytes / 1048576.0)
     } catch (_: Exception) { "" }
-    val shown = remember(items, tab, pinInfo) {
-        when (tab) {
-            1 -> items.filter { h -> pinInfo.containsKey(h.videoKey) }
-            2 -> items.filter { h -> !pinInfo.containsKey(h.videoKey) }
-            else -> items
-        }
-    }
+    // Tabs switch the Paging query itself (Room-side filter) — the list stays lazy at any depth.
+    val activeFlow = when (tab) { 1 -> flowPinned 2 -> flowUnpinned else -> flowAll }
+    val paged = remember(activeFlow) { activeFlow }.collectAsLazyPagingItems()
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
             }
             Text(
-                if (items.isNotEmpty()) stringResource(R.string.hist_title_fmt, items.size) else stringResource(R.string.nav_history),
+                if (totalCount > 0) stringResource(R.string.hist_title_fmt, totalCount) else stringResource(R.string.nav_history),
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
-            if (items.isNotEmpty()) {
+            if (totalCount > 0) {
                 IconButton(onClick = onClear) {
                     Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.clear_history), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -85,7 +86,20 @@ fun HistoryScreen(
             androidx.compose.material3.Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(stringResource(com.mohamedadel.mytube.R.string.hist_tab_unpinned)) })
         }
         Spacer(Modifier.height(8.dp))
-        if (shown.isEmpty()) {
+        val isEmpty = paged.itemCount == 0 && paged.loadState.refresh !is androidx.paging.LoadState.Loading
+        if (paged.loadState.refresh is androidx.paging.LoadState.Loading && paged.itemCount == 0) {
+            Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(48.dp))
+                androidx.compose.material3.CircularProgressIndicator()
+            }
+        } else if (paged.loadState.refresh is androidx.paging.LoadState.Error && paged.itemCount == 0) {
+            Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(48.dp))
+                Text(stringResource(com.mohamedadel.mytube.R.string.hist_load_fail), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedButton(onClick = { paged.retry() }) { Text(stringResource(com.mohamedadel.mytube.R.string.retry)) }
+            }
+        } else if (isEmpty) {
             Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(48.dp))
                 Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
@@ -96,7 +110,8 @@ fun HistoryScreen(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(shown, key = { _, h -> h.videoKey }) { _, h ->
+                items(paged.itemCount, key = { i -> paged.peek(i)?.videoKey ?: "idx-$i" }) { i ->
+                    val h = paged[i] ?: return@items
                     val v = h.toVideoItem()
                     val pin = pinInfo[h.videoKey]
                     val badge = pin?.let { p ->
@@ -112,6 +127,15 @@ fun HistoryScreen(
                         pinBadge = badge,
                         pinning = pinningKeys.contains(h.videoKey)
                     )
+                }
+                if (paged.loadState.append is androidx.paging.LoadState.Loading) {
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Spacer(Modifier.height(8.dp))
+                            androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
                 }
             }
         }

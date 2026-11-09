@@ -281,6 +281,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showFavorites by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     val history by remember { dao.observeHistory() }.collectAsState(initial = emptyList())
+
     // Favorites (one-tap heart): keys observed live so every heart reflects instantly.
     val favoriteKeys by remember { dao.observeFavoriteKeys() }.collectAsState(initial = emptyList())
     val subscriptions by remember { dao.observeSubscriptions() }.collectAsState(initial = emptyList())
@@ -329,9 +330,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Perf toggles (settings): feed parallelism + feed cache; lazy lists stay lazy (no toggle needed)
     var prefFeedParallel by remember { mutableStateOf(true) }
     var prefFeedCache by remember { mutableStateOf(true) }
+    // M1: next-item stream prefetch (latency only — no media bytes; one extractor fetch).
+    // Skipped when offline (pins need no resolve) and capped at 2 entries.
+    var prefPreloadNext by remember { mutableStateOf(true) }
+    val prefetched = remember { java.util.concurrent.ConcurrentHashMap<String, com.mohamedadel.mytube.data.youtube.StreamData>() }
     var pinsCount by remember { mutableStateOf(0) }
     var pinsSizeLabel by remember { mutableStateOf("—") }
     var pinsBytes by remember { mutableStateOf(0L) }
+    var histCount by remember { mutableStateOf(0) }
     var cacheSizeLabel by remember { mutableStateOf("—") }
     var prefSpeed by remember { mutableStateOf(1.0f) }
     var prefPitch by remember { mutableStateOf(1.0f) }
@@ -365,6 +371,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val pinKeys = remember(pins) { pins.map { it.videoKey }.toSet() }
     var pinningKeys by remember { mutableStateOf(setOf<String>()) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
+    val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
+    val histFlowPinned = remember(pinKeys) {
+        val k = pinKeys.toList().ifEmpty { listOf("__none__") }
+        androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 1, k) }.flow
+    }
+    val histFlowUnpinned = remember(pinKeys) {
+        val k = pinKeys.toList().ifEmpty { listOf("__none__") }
+        androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 2, k) }.flow
+    }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
     // persisted settings + recents (survive app restarts)
     LaunchedEffect(Unit) {
@@ -395,6 +410,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
             prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
             prefFeedCache = prefs.getBoolean("pref_feed_cache", true)
+            prefPreloadNext = prefs.getBoolean("pref_preload_next", true)
             // cap only (no disk I/O); the cache itself warms on a background thread after scope exists
             try { com.mohamedadel.mytube.playback.MediaCache.setMax(prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
@@ -644,7 +660,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             toast(ctx.getString(R.string.toast_cache_cleared))
         }
     }
-    LaunchedEffect(showSettings) { if (showSettings) { refreshCacheLabel(); refreshPinsLabel() } }
+    LaunchedEffect(showSettings) {
+        if (showSettings) {
+            refreshCacheLabel(); refreshPinsLabel()
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try { histCount = dao.historyCount() } catch (_: Exception) { }
+            }
+        }
+    }
 
     fun dbSizeLabel(): String {
         return try {
@@ -814,6 +837,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
         // queue continuity: advancing inside a playing queue resumes; a fresh tap stays paused (no-autoplay policy)
         val wasPlayingQueue = inQueue && try { player?.isPlaying == true } catch (_: Exception) { false }
+        if (!inQueue) try { prefetched.clear() } catch (_: Exception) { }
         try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
         scope.launch {
             val key = v.favKey()
@@ -872,7 +896,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
                 return@launch
             }
-            val s = YouTubeRepo.stream(v.url ?: return@launch)
+            // M1: consume a prefetched next-item stream when it matches (skips the 1-3s extraction spinner)
+            var s = try { prefetched.remove(key) } catch (_: Exception) { null }
+            if (s != null && s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) s = null
+            if (s == null) {
+                s = try { YouTubeRepo.stream(v.url ?: return@launch) } catch (_: Exception) { null }
+                if (s == null) {
+                    playerLoading = false
+                    playerError = ctx.getString(R.string.err_no_sources)
+                    return@launch
+                }
+            }
             // total extraction failure used to leave the spinner forever with NO error (silent death).
             // Detect it here and report a smart message instead.
             if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
@@ -888,6 +922,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val startQ = pickStartQuality(s, kbps)
             quality = startQ
             applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
+            // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
+            try {
+                if (prefPreloadNext && !prefOffline && autoAdvance && prefetched.size < 2) {
+                    val nxt = queue.getOrNull(queueIndex + 1)
+                    if (nxt != null) {
+                        val nk = nxt.favKey()
+                        val app2 = ctx.applicationContext
+                        if (!com.mohamedadel.mytube.data.local.PinFiles.isPinned(app2, nk) && !prefetched.containsKey(nk) && nxt.url != null) {
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    val s2 = YouTubeRepo.stream(nxt.url ?: return@launch)
+                                    if (s2.audioLowestUrl != null || s2.videoUrlByQuality.isNotEmpty()) {
+                                        if (prefetched.size < 2) prefetched[nk] = s2
+                                    }
+                                } catch (_: Exception) { }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
         }
     }
 
@@ -1841,7 +1895,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
                         },
                         favCount = favoriteKeys.size,
-                        histCount = history.size,
+                        histCount = histCount,
                         plCount = playlists.size,
                         dbSize = dbSizeLabel(),
                         onClearFavorites = { clearFavorites() },
@@ -1884,6 +1938,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onFeedCache = { v ->
                             prefFeedCache = v
                             try { prefs.edit().putBoolean("pref_feed_cache", v).apply() } catch (_: Exception) { }
+                        },
+                        preloadNext = prefPreloadNext,
+                        onPreloadNext = { v ->
+                            prefPreloadNext = v
+                            try { prefs.edit().putBoolean("pref_preload_next", v).apply() } catch (_: Exception) { }
+                            if (!v) try { prefetched.clear() } catch (_: Exception) { }
                         },
                         subHideAuto = prefSubHideAuto,
                         onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
@@ -1934,12 +1994,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
                 showHistory -> {
                     HistoryScreen(
-                        items = history,
+                        flowAll = histFlowAll,
+                        flowPinned = histFlowPinned,
+                        flowUnpinned = histFlowUnpinned,
                         onPlay = { playVideo(it) },
                         onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) } } },
                         onClear = { clearHistory() },
                         onBack = { smartBack() },
                         onLongClick = { optionsFor = it },
+                        totalCount = histCount,
                         pinInfo = remember(pins) { pins.associateBy { it.videoKey } },
                         pinningKeys = pinningKeys
                     )

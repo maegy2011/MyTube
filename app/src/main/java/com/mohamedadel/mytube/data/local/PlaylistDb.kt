@@ -200,7 +200,22 @@ interface PlaylistDao {
     @Query("DELETE FROM history")
     suspend fun clearHistory()
 
-    @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY playedAt DESC LIMIT 100)")
+    // H1: Paging 3 over manual LIMIT/OFFSET pages (room-paging artifact unavailable offline;
+    // app-level PagingSource in HistoryPaging.kt drives the same lazy UX + LoadStates).
+    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT :limit OFFSET :offset")
+    suspend fun historyPage(limit: Int, offset: Int): List<HistoryEntity>
+
+    @Query("SELECT * FROM history WHERE videoKey IN (:keys) ORDER BY playedAt DESC LIMIT :limit OFFSET :offset")
+    suspend fun historyPagePinned(keys: List<String>, limit: Int, offset: Int): List<HistoryEntity>
+
+    @Query("SELECT * FROM history WHERE videoKey NOT IN (:keys) ORDER BY playedAt DESC LIMIT :limit OFFSET :offset")
+    suspend fun historyPageUnpinned(keys: List<String>, limit: Int, offset: Int): List<HistoryEntity>
+
+    @Query("SELECT COUNT(*) FROM history")
+    suspend fun historyCount(): Int
+
+    // Cap 1000 rows (~200KB): Paging makes the full depth browsable, the cap only bounds disk.
+    @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY playedAt DESC LIMIT 1000)")
     suspend fun trimHistory()
 
     // ---- Subscriptions ----
