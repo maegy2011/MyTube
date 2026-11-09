@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -73,12 +74,15 @@ fun PlaylistsScreen(
     onMoveItem: (Long, Long, Int) -> Unit,
     onDeleteItem: (Long, Long) -> Unit,
     onClearItems: (Long) -> Unit,
+    onMoveToPlaylist: (Long, Long, Long) -> Unit = { _, _, _ -> },
     onBack: () -> Unit
 ) {
     var nameDraft by remember { mutableStateOf("") }
     var showCreate by remember { mutableStateOf(false) }
     var createEmoji by remember { mutableStateOf("🎵") }
     var deleteTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    // move-item target picker: which item, from the open playlist, goes where
+    var moveRow by remember(openId) { mutableStateOf<PlaylistItemEntity?>(null) }
     val openPl = playlists.firstOrNull { it.id == openId }
     val openName = openPl?.name ?: ""
     var editMode by remember(openId) { mutableStateOf(false) }
@@ -200,6 +204,12 @@ fun PlaylistsScreen(
                             Text(r.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(r.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
+                        if (!editMode) {
+                            // move to another playlist (copy-then-delete = true move)
+                            IconButton(onClick = { moveRow = r }) {
+                                Icon(Icons.Rounded.DriveFileMove, contentDescription = "نقل لقائمة أخرى", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                         if (editMode) {
                             IconButton(onClick = {
                                 staged = staged?.toMutableList()?.also { l ->
@@ -265,6 +275,36 @@ fun PlaylistsScreen(
                 }) { Text("إنشاء") }
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { showCreate = false }) { Text("إلغاء") } }
+        )
+    }
+    // move target picker: other playlists only; picking one performs the true move
+    moveRow?.let { r ->
+        val targets = playlists.filter { it.id != openId }
+        AlertDialog(
+            onDismissRequest = { moveRow = null },
+            title = { Text("نقل إلى…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(r.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(8.dp))
+                    if (targets.isEmpty()) {
+                        Text("لا توجد قائمة أخرى — أنشئ واحدة أولًا", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            items(targets, key = { it.id }) { p ->
+                                Row(modifier = Modifier.fillMaxWidth().clickable { openId?.let { onMoveToPlaylist(it, r.id, p.id) }; moveRow = null }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(p.emoji.ifBlank { "🎵" }, style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(36.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(p.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${p.count}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { moveRow = null }) { Text("إلغاء") } }
         )
     }
     // delete confirm

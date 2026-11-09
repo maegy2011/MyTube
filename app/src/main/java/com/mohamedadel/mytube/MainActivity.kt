@@ -1072,7 +1072,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
                     onEnterPip = onEnterPip,
                     sleepLabel = sleepLeft.ifBlank { null },
-                    onSleepClick = { showSleep = true }
+                    onSleepClick = { showSleep = true },
+                    isFav = cur.favKey() in favoriteSet,
+                    onToggleFav = { toggleFavorite(cur) }
                 )
             }
 
@@ -1219,6 +1221,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         },
                         onDeleteItem = { pid, iid -> scope.launch { dao.deleteItem(pid, iid) } },
                         onClearItems = { pid -> scope.launch { dao.clearPlaylist(pid) } },
+                        onMoveToPlaylist = { pid, iid, targetPid ->
+                            scope.launch {
+                                try {
+                                    val row = dao.itemsOnce(pid).firstOrNull { it.id == iid }
+                                    if (row == null) { toast("تعذّر النقل"); return@launch }
+                                    val v = VideoItem(id = row.videoId, title = row.title, channel = row.channel, thumbnail = row.thumbnail, durationSec = row.durationSec, viewCount = row.viewCount, url = row.url)
+                                    val key = v.favKey()
+                                    val exists = dao.itemsOnce(targetPid).any { e ->
+                                        VideoItem(id = e.videoId, title = e.title, channel = e.channel, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == key
+                                    }
+                                    if (exists) { toast("موجود مسبقًا في القائمة الهدف") }
+                                    else {
+                                        dao.insertItems(listOf(v.toEntity(targetPid, dao.itemCount(targetPid))))
+                                        dao.deleteItem(pid, iid)
+                                        toast("نُقل إلى القائمة")
+                                    }
+                                } catch (_: Exception) { toast("تعذّر النقل") }
+                            }
+                        },
                         onBack = { showPlaylists = false; openPlaylistId = null }
                     )
                 }

@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.Timer
@@ -110,7 +112,9 @@ fun PlayerArea(
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit,
     sleepLabel: String? = null,
-    onSleepClick: () -> Unit = {}
+    onSleepClick: () -> Unit = {},
+    isFav: Boolean = false,
+    onToggleFav: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
     var langExpanded by remember { mutableStateOf(false) }
@@ -449,6 +453,14 @@ fun PlayerArea(
                     }
                     IconButton(onClick = onEnterPip) {
                         Icon(Icons.Rounded.PictureInPicture, contentDescription = "صورة داخل صورة", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    // favorite: heart the now-playing video without leaving the player
+                    IconButton(onClick = onToggleFav) {
+                        Icon(
+                            if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = if (isFav) "إزالة من المفضلة" else "إضافة للمفضلة",
+                            tint = if (isFav) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
+                        )
                     }
                     // sleep timer: shows remaining time when armed, opens the picker otherwise
                     IconButton(onClick = onSleepClick) {
