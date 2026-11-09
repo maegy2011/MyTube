@@ -212,4 +212,10 @@
     <string name="ui_lang_title">App interface language (applies after reopening)</string>
     <string name="toast_lang_restart">Language applies after reopening the app</string>
     <string name="lib_title">Library</string>
+    <string name="pill_save">Save</string>
+    <string name="pill_queue">Queue</string>
+    <string name="pill_sleep">Sleep</string>
+    <string name="pill_pip">PiP</string>
+    <string name="pill_settings">Settings</string>
+    <string name="dlg_player_settings">Playback settings</string>
 </resources>

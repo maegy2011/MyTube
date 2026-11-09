@@ -38,6 +38,7 @@ import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.player.EqualizerBars
 import com.mohamedadel.mytube.util.formatDuration
+import com.mohamedadel.mytube.util.formatViews
 
 // YouTube video card (design clone, existing data only):
 // full-bleed 16:9 thumbnail + duration badge, avatar circle (channel initial),
@@ -52,7 +53,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
         append(v.channel ?: "")
         if (v.viewCount != null && v.viewCount > 0) {
             if (isNotEmpty()) append(" • ")
-            append(lctx.formatViews(v.viewCount))
+            append(v.viewCount.let { lctx.formatViews(it) })
         }
     }
     Column(

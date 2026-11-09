@@ -212,4 +212,10 @@
     <string name="ui_lang_title">لغة واجهة التطبيق (تُطبق بعد إعادة فتح الشاشة)</string>
     <string name="toast_lang_restart">تُطبق اللغة بعد إعادة فتح التطبيق</string>
     <string name="lib_title">المكتبة</string>
+    <string name="pill_save">حفظ</string>
+    <string name="pill_queue">القائمة</string>
+    <string name="pill_sleep">النوم</string>
+    <string name="pill_pip">صورة</string>
+    <string name="pill_settings">الإعدادات</string>
+    <string name="dlg_player_settings">إعدادات التشغيل</string>
 </resources>

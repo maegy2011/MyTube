@@ -1216,7 +1216,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     sleepLabel = sleepLeft.ifBlank { null },
                     onSleepClick = { showSleep = true },
                     isFav = cur.favKey() in favoriteSet,
-                    onToggleFav = { toggleFavorite(cur) }
+                    onToggleFav = { toggleFavorite(cur) },
+                    onSave = { pickFor = cur }
                 )
             }
 
