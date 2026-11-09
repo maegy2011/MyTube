@@ -45,7 +45,8 @@ import com.mohamedadel.mytube.util.formatViews
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: (VideoItem) -> Unit = {}, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null) {
+// onAdd == null hides the + button entirely: no dead button that promises and does nothing.
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: ((VideoItem) -> Unit)? = null, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) }),
         shape = MaterialTheme.shapes.medium,
@@ -90,13 +91,15 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 IconButton(onClick = onClick) {
                     Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
                 }
-                IconButton(onClick = { if (onRemove != null) onRemove(v) else onAdd(v) }) {
-                    Icon(
-                        if (onRemove != null) Icons.Rounded.Clear else Icons.Rounded.Add,
-                        contentDescription = if (onRemove != null) "حذف من السجل" else "إضافة لآخر القائمة الحالية",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
+                if (onRemove != null || onAdd != null) {
+                    IconButton(onClick = { if (onRemove != null) onRemove(v) else onAdd?.invoke(v) }) {
+                        Icon(
+                            if (onRemove != null) Icons.Rounded.Clear else Icons.Rounded.Add,
+                            contentDescription = if (onRemove != null) "حذف من السجل" else "إضافة لآخر القائمة الحالية",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
                 IconButton(onClick = { onFav(v) }) {
                     Icon(

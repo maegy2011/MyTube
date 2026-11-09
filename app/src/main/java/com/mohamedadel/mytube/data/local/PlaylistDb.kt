@@ -10,6 +10,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -127,6 +128,17 @@ interface PlaylistDao {
     @Update
     suspend fun updateItems(items: List<PlaylistItemEntity>)
 
+    // Staged editor save as ONE transaction: rename + emoji + deletions + reorder succeed or fail together.
+    @Transaction
+    suspend fun savePlaylistEdits(pid: Long, name: String, emoji: String, orderedIds: List<Long>) {
+        if (name.isNotBlank()) rename(pid, name)
+        setEmoji(pid, emoji.ifBlank { "🎵" })
+        val rows = itemsOnce(pid)
+        rows.filter { it.id !in orderedIds }.forEach { deleteItem(pid, it.id) }
+        val keep = orderedIds.mapNotNull { id -> rows.firstOrNull { it.id == id } }
+        updateItems(keep.mapIndexed { k, r -> r.copy(position = k) })
+    }
+
     // ---- Favorites (one-tap heart) ----
     @Query("SELECT * FROM favorites ORDER BY addedAt DESC")
     fun observeFavorites(): Flow<List<FavoriteEntity>>
@@ -203,8 +215,19 @@ fun PlaylistItemEntity.toVideoItem(): VideoItem = VideoItem(
     url = url
 )
 
-// Stable key for favorites: video id when present, else the stream url.
-fun VideoItem.favKey(): String = id?.takeIf { it.isNotBlank() } ?: url ?: title ?: hashCode().toString()
+// Stable key for favorites/history/dedupe. Content-based fallback (title|channel|duration)
+// instead of hashCode(): identical across rebuilds from the DB, so remove/toggle round-trips match.
+// NOTE: keys minted by the old hashCode fallback will not match; only affects videos
+// that had no id, no url and no title (degenerate rows).
+fun VideoItem.favKey(): String =
+    id?.takeIf { it.isNotBlank() }
+        ?: url?.takeIf { it.isNotBlank() }
+        ?: listOfNotNull(
+            title?.takeIf { it.isNotBlank() },
+            channel?.takeIf { it.isNotBlank() },
+            durationSec?.toString()
+        ).joinToString("|").takeIf { it.isNotBlank() }
+        ?: "untitled"
 
 fun VideoItem.toFavorite(): FavoriteEntity = FavoriteEntity(
     videoKey = favKey(),

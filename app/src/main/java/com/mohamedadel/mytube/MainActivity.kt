@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.widget.Toast
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
@@ -383,13 +384,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val scope = rememberCoroutineScope()
     // One-tap favorite toggle (needs scope, so it lives here).
+    // Short user feedback for every silent success/failure in favorites/queue/playlists.
+    fun toast(msg: String) {
+        try { Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+    }
     fun toggleFavorite(v: VideoItem) {
         scope.launch {
             try {
                 val key = v.favKey()
-                if (dao.favoriteCount(key) > 0) dao.deleteFavorite(key)
-                else dao.insertFavorite(v.toFavorite())
-            } catch (_: Exception) { }
+                if (dao.favoriteCount(key) > 0) {
+                    dao.deleteFavorite(key)
+                    toast("أُزيل من المفضلة")
+                } else {
+                    dao.insertFavorite(v.toFavorite())
+                    toast("أُضيف للمفضلة ♡")
+                }
+            } catch (_: Exception) { toast("تعذّر حفظ المفضلة") }
         }
     }
     // Listening history: every explicit play lands here (dedupe by key, capped at 100).
@@ -558,20 +568,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // explicit queue building (long-press menu)
     fun playNowAlone(v: VideoItem) { playVideo(v, inQueue = false, expand = true) }
-    // explicit queue building only: duplicates are refused silently (no dupes in the working queue)
+    // explicit queue building only: duplicates are refused with a toast (no silent dupes)
     fun isQueued(v: VideoItem): Boolean =
-        queue.any { it.id == v.id || (it.url != null && it.url == v.url) }
+        queue.any { it.favKey() == v.favKey() }
     fun enqueueNext(v: VideoItem) {
-        if (isQueued(v)) return
+        if (isQueued(v)) { toast("موجود مسبقًا في القائمة"); return }
         val q = queue.toMutableList()
         val at = if (queueIndex >= 0) queueIndex + 1 else q.size
         q.add(at.coerceIn(0, q.size), v)
         queue = q
+        toast("أُضيف للقائمة الحالية")
         if (playing == null) { queueIndex = 0; playVideo(v, inQueue = true, expand = true) }
     }
     fun enqueueLast(v: VideoItem) {
-        if (isQueued(v)) return
+        if (isQueued(v)) { toast("موجود مسبقًا في القائمة"); return }
         queue = queue + v
+        toast("أُضيف للقائمة الحالية")
         if (playing == null) playVideo(v, inQueue = true, expand = true)
     }
     fun modeLabel(m: String): String = when (m) {
@@ -1136,8 +1148,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     HistoryScreen(
                         items = history,
                         onPlay = { playVideo(it) },
-                        onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { } } },
-                        onClear = { scope.launch { try { dao.clearHistory() } catch (_: Exception) { } } },
+                        onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast("تعذّر حذف العنصر") } } },
+                        onClear = { scope.launch { try { dao.clearHistory(); toast("مُسح السجل") } catch (_: Exception) { toast("تعذّر مسح السجل") } } },
                         onBack = { smartBack() }
                     )
                 }
@@ -1146,7 +1158,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         items = favorites,
                         onPlay = { playVideo(it) },
                         onToggleFav = { toggleFavorite(it) },
-                        onClear = { scope.launch { try { dao.clearFavorites() } catch (_: Exception) { } } },
+                        onAdd = { enqueueLast(it) },
+                        onClear = { scope.launch { try { dao.clearFavorites(); toast("مُسحت المفضلة") } catch (_: Exception) { toast("تعذّر مسح المفضلة") } } },
                         onBack = { smartBack() }
                     )
                 }
@@ -1186,12 +1199,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         },
                         onSaveEdits = { pid, name, emoji, orderedIds ->
                             scope.launch {
-                                if (name.isNotBlank()) dao.rename(pid, name)
-                                dao.setEmoji(pid, emoji.ifBlank { "🎵" })
-                                val rows = dao.itemsOnce(pid)
-                                rows.filter { it.id !in orderedIds }.forEach { dao.deleteItem(pid, it.id) }
-                                val keep = orderedIds.mapNotNull { id -> rows.firstOrNull { it.id == id } }
-                                dao.updateItems(keep.mapIndexed { k, r -> r.copy(position = k) })
+                                try {
+                                    dao.savePlaylistEdits(pid, name, emoji, orderedIds)
+                                    toast("حُفظت القائمة")
+                                } catch (_: Exception) { toast("تعذّر حفظ القائمة") }
                             }
                         },
                         onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
@@ -1230,7 +1241,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onSearch = { q -> query = q; doSearch(q) },
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
-                        onFav = { toggleFavorite(it) }
+                        onFav = { toggleFavorite(it) },
+                        onAdd = { enqueueLast(it) }
                     )
                 }
                 results.isEmpty() && !loading -> {
@@ -1322,19 +1334,27 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     playlists = playlists,
                     onCreateAndAdd = { name ->
                         scope.launch {
-                            val pid = dao.insertPlaylist(PlaylistEntity(name = name))
-                            dao.insertItems(listOf(v.toEntity(pid, 0)))
+                            try {
+                                val pid = dao.insertPlaylist(PlaylistEntity(name = name))
+                                dao.insertItems(listOf(v.toEntity(pid, 0)))
+                                toast("أُنشئت القائمة وأُضيف الفيديو")
+                            } catch (_: Exception) { toast("تعذّر إنشاء القائمة") }
                             pickFor = null
                         }
                     },
                     onAddTo = { pid ->
                         scope.launch {
-                            // no duplicates: skip when the video is already in this playlist
-                            val key = v.id ?: v.url ?: ""
-                            val exists = dao.itemsOnce(pid).any { (it.videoId ?: it.url ?: "") == key }
+                            // no duplicates (same stable key as favorites): reject LOUDLY, never silently
+                            val key = v.favKey()
+                            val exists = dao.itemsOnce(pid).any { e ->
+                                VideoItem(id = e.videoId, title = e.title, channel = e.channel, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == key
+                            }
                             if (!exists) {
                                 val pos = dao.itemCount(pid)
                                 dao.insertItems(listOf(v.toEntity(pid, pos)))
+                                toast("أُضيف للقائمة")
+                            } else {
+                                toast("موجود مسبقًا في القائمة")
                             }
                             pickFor = null
                         }
