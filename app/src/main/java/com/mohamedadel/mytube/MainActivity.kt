@@ -434,6 +434,27 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun toast(msg: String) {
         try { Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
     }
+    // data management (reused by the favorites/history screens AND the settings screen)
+    fun clearFavorites() {
+        scope.launch {
+            try { dao.clearFavorites(); toast("مُسحت المفضلة") }
+            catch (_: Exception) { toast("تعذّر مسح المفضلة") }
+        }
+    }
+    fun clearHistory() {
+        scope.launch {
+            try { dao.clearHistory(); toast("مُسح السجل") }
+            catch (_: Exception) { toast("تعذّر مسح السجل") }
+        }
+    }
+    fun dbSizeLabel(): String {
+        return try {
+            val f = ctx.getDatabasePath("mytube.db")
+            if (!f.exists()) "—"
+            else if (f.length() < 1048576) "${f.length() / 1024} ك.ب"
+            else "%.1f م.ب".format(f.length() / 1048576.0)
+        } catch (_: Exception) { "—" }
+    }
     fun toggleFavorite(v: VideoItem) {
         scope.launch {
             try {
@@ -1230,6 +1251,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             setMode(v)
                             toast("وضع التشغيل: " + modeLabel(v))
                         },
+                        favCount = favoriteKeys.size,
+                        histCount = history.size,
+                        plCount = playlists.size,
+                        dbSize = dbSizeLabel(),
+                        onClearFavorites = { clearFavorites() },
+                        onClearHistory = { clearHistory() },
                         theme = prefTheme,
                         onTheme = { v ->
                             prefTheme = v
@@ -1244,7 +1271,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         items = history,
                         onPlay = { playVideo(it) },
                         onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast("تعذّر حذف العنصر") } } },
-                        onClear = { scope.launch { try { dao.clearHistory(); toast("مُسح السجل") } catch (_: Exception) { toast("تعذّر مسح السجل") } } },
+                        onClear = { clearHistory() },
                         onBack = { smartBack() }
                     )
                 }
@@ -1254,7 +1281,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         onToggleFav = { toggleFavorite(it) },
                         onAdd = { enqueueLast(it) },
-                        onClear = { scope.launch { try { dao.clearFavorites(); toast("مُسحت المفضلة") } catch (_: Exception) { toast("تعذّر مسح المفضلة") } } },
+                        onClear = { clearFavorites() },
                         onBack = { smartBack() }
                     )
                 }

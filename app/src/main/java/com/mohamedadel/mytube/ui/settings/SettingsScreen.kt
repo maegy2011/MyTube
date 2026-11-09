@@ -16,8 +16,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,9 +81,35 @@ fun SettingsScreen(
     theme: String,
     onTheme: (String) -> Unit,
     playMode: String,
-    onPlayMode: (String) -> Unit
+    onPlayMode: (String) -> Unit,
+    favCount: Int,
+    histCount: Int,
+    plCount: Int,
+    dbSize: String,
+    onClearFavorites: () -> Unit,
+    onClearHistory: () -> Unit
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
+    var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var confirmHist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (confirmFav) {
+        AlertDialog(
+            onDismissRequest = { confirmFav = false },
+            title = { Text("مسح المفضلة؟") },
+            text = { Text("سيتم حذف كل عناصر المفضلة ($favCount) نهائيًا.") },
+            confirmButton = { TextButton(onClick = { onClearFavorites(); confirmFav = false }) { Text("مسح") } },
+            dismissButton = { TextButton(onClick = { confirmFav = false }) { Text("إلغاء") } }
+        )
+    }
+    if (confirmHist) {
+        AlertDialog(
+            onDismissRequest = { confirmHist = false },
+            title = { Text("مسح السجل؟") },
+            text = { Text("سيتم حذف كل عناصر السجل ($histCount) نهائيًا.") },
+            confirmButton = { TextButton(onClick = { onClearHistory(); confirmHist = false }) { Text("مسح") } },
+            dismissButton = { TextButton(onClick = { confirmHist = false }) { Text("إلغاء") } }
+        )
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -244,6 +272,23 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text("بياناتي (على هذا الجهاز فقط — تُمسح بالكامل بحذف التطبيق)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Text(
+                "المفضلة: $favCount • السجل: $histCount • القوائم: $plCount • حجم القاعدة: $dbSize",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedButton(onClick = { confirmFav = true }, modifier = Modifier.weight(1f)) { Text("مسح المفضلة") }
+                androidx.compose.material3.OutlinedButton(onClick = { confirmHist = true }, modifier = Modifier.weight(1f)) { Text("مسح السجل") }
             }
         }
         item {
