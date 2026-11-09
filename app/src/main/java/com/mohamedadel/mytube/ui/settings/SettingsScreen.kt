@@ -145,6 +145,8 @@ fun SettingsScreen(
     onFeedCache: (Boolean) -> Unit = {},
     preloadNext: Boolean = true,
     onPreloadNext: (Boolean) -> Unit = {},
+    preloadWifiOnly: Boolean = true,
+    onPreloadWifiOnly: (Boolean) -> Unit = {},
     onClearFavorites: () -> Unit,
     onClearHistory: () -> Unit
 ) {
@@ -530,6 +532,16 @@ fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.perf_preload), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(stringResource(R.string.perf_preload_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable(enabled = preloadNext, onClick = { onPreloadWifiOnly(!preloadWifiOnly) }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (preloadWifiOnly) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (preloadNext && preloadWifiOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (preloadNext) 1f else 0.35f), modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.perf_preload_wifi), style = MaterialTheme.typography.bodyMedium, color = if (preloadNext) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.perf_preload_wifi_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

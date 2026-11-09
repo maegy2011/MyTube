@@ -320,4 +320,6 @@
     <string name="lib_channel_count_fmt">%1$d مقاطع في آخر تحديث</string>
     <string name="lib_channel_count_none">ليست في آخر تحديث</string>
     <string name="feed_filter_fmt">%1$s — انقر لعرض الكل</string>
+    <string name="perf_preload_wifi">التجهيز على واي فاي فقط</string>
+    <string name="perf_preload_wifi_desc">بيانات الهاتف لا تُجهّز أبدًا.</string>
 </resources>

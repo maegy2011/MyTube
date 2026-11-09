@@ -333,6 +333,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // M1: next-item stream prefetch (latency only — no media bytes; one extractor fetch).
     // Skipped when offline (pins need no resolve) and capped at 2 entries.
     var prefPreloadNext by remember { mutableStateOf(true) }
+    // R5: prefetch on WiFi only (default ON, as promised) — mobile data never prefetches.
+    var prefPreloadWifiOnly by remember { mutableStateOf(true) }
+    fun isUnmeteredNet(): Boolean {
+        return try {
+            val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        } catch (_: Exception) { false }
+    }
     val prefetched = remember { java.util.concurrent.ConcurrentHashMap<String, com.mohamedadel.mytube.data.youtube.StreamData>() }
     var pinsCount by remember { mutableStateOf(0) }
     var pinsSizeLabel by remember { mutableStateOf("—") }
@@ -412,6 +421,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
             prefFeedCache = prefs.getBoolean("pref_feed_cache", true)
             prefPreloadNext = prefs.getBoolean("pref_preload_next", true)
+            prefPreloadWifiOnly = prefs.getBoolean("pref_preload_wifi_only", true)
             // cap only (no disk I/O); the cache itself warms on a background thread after scope exists
             try { com.mohamedadel.mytube.playback.MediaCache.setMax(prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
@@ -938,7 +948,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
             // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
             try {
-                if (prefPreloadNext && !prefOffline && autoAdvance && prefetched.size < 2) {
+                if (prefPreloadNext && !prefOffline && autoAdvance && prefetched.size < 2 && (!prefPreloadWifiOnly || isUnmeteredNet())) {
                     val nxt = queue.getOrNull(queueIndex + 1)
                     if (nxt != null) {
                         val nk = nxt.favKey()
@@ -1967,6 +1977,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             prefPreloadNext = v
                             try { prefs.edit().putBoolean("pref_preload_next", v).apply() } catch (_: Exception) { }
                             if (!v) try { prefetched.clear() } catch (_: Exception) { }
+                        },
+                        preloadWifiOnly = prefPreloadWifiOnly,
+                        onPreloadWifiOnly = { v ->
+                            prefPreloadWifiOnly = v
+                            try { prefs.edit().putBoolean("pref_preload_wifi_only", v).apply() } catch (_: Exception) { }
                         },
                         subHideAuto = prefSubHideAuto,
                         onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },

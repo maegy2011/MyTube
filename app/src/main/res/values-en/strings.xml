@@ -320,4 +320,6 @@
     <string name="lib_channel_count_fmt">%1$d videos in latest refresh</string>
     <string name="lib_channel_count_none">Not in latest refresh</string>
     <string name="feed_filter_fmt">%1$s — tap to show all</string>
+    <string name="perf_preload_wifi">Prefetch on Wi-Fi only</string>
+    <string name="perf_preload_wifi_desc">Mobile data never prefetches.</string>
 </resources>
