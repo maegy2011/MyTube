@@ -211,4 +211,5 @@
     <string name="theme_system">System</string>
     <string name="ui_lang_title">App interface language (applies after reopening)</string>
     <string name="toast_lang_restart">Language applies after reopening the app</string>
+    <string name="lib_title">Library</string>
 </resources>

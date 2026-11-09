@@ -46,16 +46,13 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.activity.compose.BackHandler
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -104,6 +101,7 @@ import com.mohamedadel.mytube.ui.playlists.FavoritesScreen
 import com.mohamedadel.mytube.ui.playlists.HistoryScreen
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
+import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.queue.QueuePanel
 import com.mohamedadel.mytube.ui.results.HomeEmptyState
 import com.mohamedadel.mytube.ui.results.SearchRow
@@ -242,7 +240,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var showSplash by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1800); showSplash = false }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    // YouTube-style bottom-nav state: library groups history/favorites/playlists (existing screens)
+    var showLibrary by remember { mutableStateOf(false) }
+    var fromLibrary by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     // explicit queue: ONLY what the user queued (play-single => one item; play-all => results copy; long-press => insert/append).
@@ -862,14 +862,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         if (showHistory) {
             showHistory = false
+            if (fromLibrary) { fromLibrary = false; showLibrary = true }
             return true
         }
         if (showPlaylists) {
-            if (openPlaylistId != null) openPlaylistId = null else showPlaylists = false
+            if (openPlaylistId != null) openPlaylistId = null
+            else {
+                showPlaylists = false
+                if (fromLibrary) { fromLibrary = false; showLibrary = true }
+            }
             return true
         }
         if (showFavorites) {
             showFavorites = false
+            if (fromLibrary) { fromLibrary = false; showLibrary = true }
             return true
         }
         if (showQueue) {
@@ -884,6 +890,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             showSettings = false
             return true
         }
+        if (showLibrary) {
+            showLibrary = false
+            return true
+        }
         if (results.isNotEmpty()) {
             try {
                 savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -894,7 +904,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -920,26 +930,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return
     }
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet {
-                Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(8.dp))
-                NavigationDrawerItem(label = { Text(stringResource(R.string.nav_home)) }, selected = !showPlaylists && !showSettings && !showFavorites && !showHistory, onClick = { showPlaylists = false; showSettings = false; showFavorites = false; showHistory = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
-                NavigationDrawerItem(label = { Text(if (favoriteKeys.isNotEmpty()) ctx.getString(R.string.fav_drawer_fmt, favoriteKeys.size) else stringResource(R.string.nav_favorites)) }, selected = showFavorites, onClick = { playerExpanded = false; showFavorites = true; showHistory = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Favorite, null) })
-                NavigationDrawerItem(label = { Text(stringResource(R.string.nav_history)) }, selected = showHistory, onClick = { playerExpanded = false; showHistory = true; showFavorites = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.History, null) })
-                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) stringResource(R.string.pl_drawer_fmt, playlists.size) else stringResource(R.string.nav_playlists)) }, selected = showPlaylists, onClick = { playerExpanded = false; showPlaylists = true; showSettings = false; showFavorites = false; showHistory = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
-                NavigationDrawerItem(label = { Text(stringResource(R.string.settings_title)) }, selected = showSettings, onClick = { showSettings = true; showFavorites = false; showHistory = false; showPlaylists = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Settings, null) })
-            }
-        }
-    ) {
     val isInPip = pipMode.value
     // No top app bar: logo + nav live INSIDE the search row (saves a full 64dp bar).
+    // YouTube tab routing (all destinations are existing screens — design only, no new features)
+    fun goHome() {
+        showLibrary = false; fromLibrary = false
+        showFavorites = false; showHistory = false; showPlaylists = false
+        openPlaylistId = null; showSettings = false; playerExpanded = false
+    }
+    fun goLibrary() {
+        showFavorites = false; showHistory = false; showPlaylists = false
+        openPlaylistId = null; showSettings = false; playerExpanded = false
+        fromLibrary = false; showLibrary = true
+    }
+    fun goSettings() {
+        showLibrary = false; fromLibrary = false
+        showFavorites = false; showHistory = false; showPlaylists = false
+        openPlaylistId = null; playerExpanded = false
+        showSettings = true
+    }
+    val tabLibrary = showLibrary || showFavorites || showHistory || showPlaylists
     Scaffold(
         topBar = { },
         bottomBar = {
-            // Mini-player: visible whenever audio plays while the full player is collapsed (home, results, playlists). Never shown together with the full player.
+            // Mini-player above the bottom nav (YouTube order): visible whenever audio plays while collapsed.
             if (!isInPip && !isFullscreen && playing != null && !playerExpanded) {
                 MiniPlayer(
                     video = playing!!,
@@ -961,6 +975,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     }
                 )
+            }
+            // YouTube bottom nav: Home / Library / Settings. Hidden on watch screen, fullscreen, PiP, search.
+            if (!isInPip && !isFullscreen && !playerExpanded && !showSearch) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                    NavigationBarItem(
+                        selected = !tabLibrary && !showSettings,
+                        onClick = { goHome() },
+                        icon = { Icon(Icons.Rounded.Home, contentDescription = stringResource(R.string.nav_home)) },
+                        label = { Text(stringResource(R.string.nav_home)) }
+                    )
+                    NavigationBarItem(
+                        selected = tabLibrary,
+                        onClick = { goLibrary() },
+                        icon = { Icon(Icons.Rounded.VideoLibrary, contentDescription = stringResource(R.string.lib_title)) },
+                        label = { Text(stringResource(R.string.lib_title)) }
+                    )
+                    NavigationBarItem(
+                        selected = showSettings,
+                        onClick = { goSettings() },
+                        icon = { Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.settings_title)) },
+                        label = { Text(stringResource(R.string.settings_title)) }
+                    )
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -1018,13 +1055,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (playerExpanded || playing != null || showPlaylists || showSettings || showSearch || results.isNotEmpty()) {
+                if (playerExpanded || playing != null || showPlaylists || showSettings || showSearch || showLibrary || results.isNotEmpty()) {
                     IconButton(onClick = { smartBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                } else {
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Rounded.Menu, contentDescription = stringResource(R.string.queue_title))
                     }
                 }
                 Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(30.dp))
@@ -1219,6 +1252,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             }
                         },
                         onDismiss = { showQueue = false }
+                    )
+                }
+                showLibrary -> {
+                    LibraryScreen(
+                        onHistory = { showLibrary = false; fromLibrary = true; showHistory = true },
+                        onFavorites = { showLibrary = false; fromLibrary = true; showFavorites = true },
+                        onPlaylists = { showLibrary = false; fromLibrary = true; showPlaylists = true }
                     )
                 }
                 showSettings -> {
@@ -1548,7 +1588,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         }
         }
-    }
     }
 }
 

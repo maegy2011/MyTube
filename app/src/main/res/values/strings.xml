@@ -211,4 +211,5 @@
     <string name="theme_system">حسب النظام</string>
     <string name="ui_lang_title">لغة واجهة التطبيق (تُطبق بعد إعادة فتح الشاشة)</string>
     <string name="toast_lang_restart">تُطبق اللغة بعد إعادة فتح التطبيق</string>
+    <string name="lib_title">المكتبة</string>
 </resources>
