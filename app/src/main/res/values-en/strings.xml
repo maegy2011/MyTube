@@ -220,4 +220,23 @@
     <string name="dlg_player_settings">Playback settings</string>
     <string name="chapters_title">Chapters</string>
     <string name="related_title">Up next</string>
+    <string name="sub_studio_title">Subtitle studio</string>
+    <string name="sub_hide_auto">Hide auto-generated</string>
+    <string name="sub_size_s">Small</string>
+    <string name="sub_size_m">Medium</string>
+    <string name="sub_size_l">Large</string>
+    <string name="sub_size_xl">Huge</string>
+    <string name="sub_fg_white">White</string>
+    <string name="sub_fg_yellow">Yellow</string>
+    <string name="sub_fg_black">Black</string>
+    <string name="sub_fg_cyan">Cyan</string>
+    <string name="sub_bg_trans">Transparent</string>
+    <string name="sub_bg_black">Black</string>
+    <string name="sub_bg_white">White</string>
+    <string name="sub_bold">Bold</string>
+    <string name="audio_studio_title">Audio studio</string>
+    <string name="prefer_original">Always prefer original audio</string>
+    <string name="speed_normal">Normal</string>
+    <string name="pill_comments">Comments</string>
+    <string name="pitch_title">Pitch (voice tone)</string>
 </resources>

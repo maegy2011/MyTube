@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -152,7 +153,10 @@ fun PlayerArea(
     chapters: List<com.mohamedadel.mytube.data.youtube.ChapterItem> = emptyList(),
     related: List<com.mohamedadel.mytube.data.youtube.VideoItem> = emptyList(),
     onChapterSeek: (Long) -> Unit = {},
-    onRelatedPlay: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {}
+    onRelatedPlay: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
+    subStyle: SubStyle = SubStyle(),
+    onChannelClick: () -> Unit = {},
+    onCommentsClick: () -> Unit = {}
 ) {
     val lctx = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
@@ -238,6 +242,7 @@ fun PlayerArea(
                         update = { v ->
                             v.setFullscreenButtonClickListener { onToggleFullscreen() }
                             v.controllerShowTimeoutMs = 5000
+                            applySubStyle(v, subStyle)
                             v.showController()
                         },
                         modifier = Modifier.fillMaxSize()
@@ -288,6 +293,7 @@ fun PlayerArea(
                         update = { v ->
                             v.setFullscreenButtonClickListener { onToggleFullscreen() }
                             v.controllerShowTimeoutMs = 5000
+                            applySubStyle(v, subStyle)
                             v.showController()
                         },
                         modifier = Modifier.fillMaxSize()
@@ -464,7 +470,7 @@ fun PlayerArea(
                 Spacer(Modifier.height(10.dp))
                 // channel row: avatar initial + name (no subscribe button — no accounts)
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxWidth().clickable { onChannelClick() }.padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val initial = (video.channel?.trim()?.firstOrNull()?.uppercase() ?: "♪").toString()
@@ -523,6 +529,12 @@ fun PlayerArea(
                         label = stringResource(R.string.pill_pip),
                         selected = false,
                         onClick = onEnterPip
+                    )
+                    ActionPill(
+                        icon = { Icon(Icons.Rounded.Comment, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                        label = stringResource(R.string.pill_comments),
+                        selected = false,
+                        onClick = onCommentsClick
                     )
                     ActionPill(
                         icon = { Icon(Icons.Rounded.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },

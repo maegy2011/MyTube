@@ -220,4 +220,23 @@
     <string name="dlg_player_settings">إعدادات التشغيل</string>
     <string name="chapters_title">الفصول</string>
     <string name="related_title">التالي</string>
+    <string name="sub_studio_title">استوديو الترجمة</string>
+    <string name="sub_hide_auto">إخفاء الترجمة التلقائية</string>
+    <string name="sub_size_s">صغير</string>
+    <string name="sub_size_m">عادي</string>
+    <string name="sub_size_l">كبير</string>
+    <string name="sub_size_xl">ضخم</string>
+    <string name="sub_fg_white">أبيض</string>
+    <string name="sub_fg_yellow">أصفر</string>
+    <string name="sub_fg_black">أسود</string>
+    <string name="sub_fg_cyan">سماوي</string>
+    <string name="sub_bg_trans">شفافة</string>
+    <string name="sub_bg_black">سوداء</string>
+    <string name="sub_bg_white">بيضاء</string>
+    <string name="sub_bold">عريض</string>
+    <string name="audio_studio_title">استوديو الصوت</string>
+    <string name="prefer_original">فضّل الصوت الأصلي دائمًا</string>
+    <string name="speed_normal">طبيعية</string>
+    <string name="pill_comments">التعليقات</string>
+    <string name="pitch_title">حدة الصوت</string>
 </resources>

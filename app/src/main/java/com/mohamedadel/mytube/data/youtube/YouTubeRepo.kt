@@ -16,7 +16,9 @@ data class VideoItem(val id: String? = null, val title: String? = null, val chan
 data class SubtitleItem(val url: String, val langTag: String, val label: String, val auto: Boolean, val mime: String)
 data class AudioTrackItem(val url: String, val bitrate: Int, val trackId: String?, val name: String?, val localeTag: String?, val type: String?)
 data class ChapterItem(val title: String, val startSec: Int)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList())
+data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
+data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList())
 data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false, val error: String? = null)
 
 object YouTubeRepo {
@@ -219,6 +221,8 @@ object YouTubeRepo {
             try { uAvatar = ext.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
             var lang: String? = null
             try { lang = ext.languageInfo?.toLanguageTag() } catch (_: Exception) {}
+            var chUrl: String? = null
+            try { chUrl = ext.uploaderUrl } catch (_: Exception) {}
             var chapters: List<ChapterItem> = emptyList()
             try { chapters = ext.streamSegments?.mapNotNull { seg ->
                 val t = try { seg.title } catch (_: Exception) { null }
@@ -241,7 +245,53 @@ object YouTubeRepo {
                     if (u != null) VideoItem(rid, nm, ch, th, d, vw, u) else null
                 } else null
             }?.take(20) ?: emptyList() } catch (_: Exception) {}
-            StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chapters, related)
+            StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chUrl, chapters, related)
         } catch (_: Exception) { StreamData() }
+    }
+
+    suspend fun channelDetail(channelUrl: String?): ChannelDetail = withContext(Dispatchers.IO) {
+        if (channelUrl.isNullOrBlank()) return@withContext ChannelDetail()
+        try {
+            val h = service().channelLHFactory.fromUrl(channelUrl)
+            val ext = service().getChannelExtractor(h)
+            ext.fetchPage()
+            var av: String? = null
+            try { av = ext.avatars.firstOrNull()?.url } catch (_: Exception) {}
+            var bn: String? = null
+            try { bn = ext.banners.firstOrNull()?.url } catch (_: Exception) {}
+            var sc: Long? = null
+            try { sc = ext.subscriberCount.takeIf { it >= 0 } } catch (_: Exception) {}
+            var ds: String? = null
+            try { ds = ext.description?.take(1000) } catch (_: Exception) {}
+            var vf = false
+            try { vf = ext.isVerified } catch (_: Exception) {}
+            var nm: String? = null
+            try { nm = ext.name } catch (_: Exception) {}
+            ChannelDetail(nm, av, bn, sc, ds, vf)
+        } catch (_: Exception) { ChannelDetail() }
+    }
+
+    suspend fun comments(videoUrl: String?): List<CommentItem> = withContext(Dispatchers.IO) {
+        if (videoUrl.isNullOrBlank()) return@withContext emptyList()
+        try {
+            val h = service().commentsLHFactory.fromUrl(videoUrl)
+            val ext = service().getCommentsExtractor(h)
+            ext.fetchPage()
+            val page = try { ext.initialPage } catch (_: Exception) { return@withContext emptyList() }
+            page.items.mapNotNull { c ->
+                try {
+                    val tx = try { c.commentText?.content?.take(500) } catch (_: Exception) { null }
+                    var av: String? = null
+                    try { av = c.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+                    CommentItem(
+                        try { c.uploaderName } catch (_: Exception) { null },
+                        tx,
+                        try { c.likeCount } catch (_: Exception) { 0 },
+                        av,
+                        try { c.textualUploadDate } catch (_: Exception) { null }
+                    )
+                } catch (_: Exception) { null }
+            }.take(30)
+        } catch (_: Exception) { emptyList() }
     }
 }

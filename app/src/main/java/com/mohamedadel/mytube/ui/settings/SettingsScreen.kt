@@ -94,6 +94,24 @@ fun SettingsScreen(
     onUiLang: (String) -> Unit,
     playMode: String,
     onPlayMode: (String) -> Unit,
+    subHideAuto: Boolean = false,
+    onSubHideAuto: (Boolean) -> Unit = {},
+    subFg: String = "white",
+    onSubFg: (String) -> Unit = {},
+    subBg: String = "transparent",
+    onSubBg: (String) -> Unit = {},
+    subEdge: String = "outline",
+    onSubEdge: (String) -> Unit = {},
+    subSize: String = "m",
+    onSubSize: (String) -> Unit = {},
+    subBold: Boolean = false,
+    onSubBold: (Boolean) -> Unit = {},
+    preferOriginal: Boolean = false,
+    onPreferOriginal: (Boolean) -> Unit = {},
+    speed: Float = 1.0f,
+    onSpeed: (Float) -> Unit = {},
+    pitch: Float = 1.0f,
+    onPitch: (Float) -> Unit = {},
     favCount: Int,
     histCount: Int,
     plCount: Int,
@@ -246,6 +264,81 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.sub_studio_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSubHideAuto(!subHideAuto) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (subHideAuto) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subHideAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.sub_hide_auto), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        items(listOf("s", "m", "l", "xl")) { code ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSubSize(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (subSize == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subSize == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(when (code) { "s" -> R.string.sub_size_s; "m" -> R.string.sub_size_m; "l" -> R.string.sub_size_l; else -> R.string.sub_size_xl }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        items(listOf("white", "yellow", "black", "cyan")) { code ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSubFg(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (subFg == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subFg == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(when (code) { "yellow" -> R.string.sub_fg_yellow; "black" -> R.string.sub_fg_black; "cyan" -> R.string.sub_fg_cyan; else -> R.string.sub_fg_white }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        items(listOf("transparent", "black", "white")) { code ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSubBg(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (subBg == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subBg == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(when (code) { "black" -> R.string.sub_bg_black; "white" -> R.string.sub_bg_white; else -> R.string.sub_bg_trans }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        items(listOf("outline", "none", "shadow", "raised")) { code ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSubEdge(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (subEdge == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subEdge == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(code, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSubBold(!subBold) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (subBold) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subBold) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.sub_bold), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.audio_studio_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onPreferOriginal(!preferOriginal) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (preferOriginal) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (preferOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.prefer_original), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        items(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)) { v ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSpeed(v) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (speed == v) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (speed == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(if (v == 1.0f) stringResource(R.string.speed_normal) else "${v}x", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.pitch_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(listOf(0.5f, 0.8f, 1.0f, 1.25f, 1.5f, 2.0f)) { v ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onPitch(v) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (pitch == v) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pitch == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(if (v == 1.0f) stringResource(R.string.speed_normal) else "${v}x", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {

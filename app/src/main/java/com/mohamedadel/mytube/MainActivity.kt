@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,6 +34,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -96,6 +98,7 @@ import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.player.MiniPlayer
 import com.mohamedadel.mytube.ui.player.PlayerArea
+import com.mohamedadel.mytube.ui.player.subStyleFromPrefs
 import com.mohamedadel.mytube.ui.player.SleepTimerDialog
 import com.mohamedadel.mytube.ui.playlists.FavoritesScreen
 import com.mohamedadel.mytube.ui.playlists.HistoryScreen
@@ -117,6 +120,8 @@ import com.mohamedadel.mytube.util.estimatedDownstreamKbps
 import com.mohamedadel.mytube.util.isBatteryExempt
 import com.mohamedadel.mytube.util.openInYoutubeCtx
 import com.mohamedadel.mytube.util.qualityHeight
+import androidx.compose.ui.draw.clip
+import com.mohamedadel.mytube.util.formatViews
 import com.mohamedadel.mytube.util.smartError
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.playback.PlaybackService
@@ -283,6 +288,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefUiLang by remember { mutableStateOf("ar") }
     // default video quality for every new video: audio-only | auto | saver | high
     var prefQuality by remember { mutableStateOf("audio-only") }
+    // subtitle studio: hide auto-generated, fg/bg/edge/size/bold (applied via CaptionStyleCompat)
+    var prefSubHideAuto by remember { mutableStateOf(false) }
+    var prefSubFg by remember { mutableStateOf("white") }
+    var prefSubBg by remember { mutableStateOf("transparent") }
+    var prefSubEdge by remember { mutableStateOf("outline") }
+    var prefSubSize by remember { mutableStateOf("m") }
+    var prefSubBold by remember { mutableStateOf(false) }
+    // audio studio: prefer original + playback speed/pitch
+    var prefPreferOriginal by remember { mutableStateOf(false) }
+    var prefSpeed by remember { mutableStateOf(1.0f) }
+    var prefPitch by remember { mutableStateOf(1.0f) }
     // standalone search screen (YouTube-style) + trending tabs
     var showSearch by remember { mutableStateOf(false) }
     var trendTab by remember { mutableStateOf(0) }
@@ -299,6 +315,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showSleep by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
+    var channelDetail by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.ChannelDetail?>(null) }
+    var showChannel by remember { mutableStateOf(false) }
+    var commentList by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.CommentItem>()) }
+    var showComments by remember { mutableStateOf(false) }
+    var commentsLoading by remember { mutableStateOf(false) }
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
     // persisted settings + recents (survive app restarts)
@@ -312,11 +333,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefUiLang = prefs.getString("pref_ui_lang", "ar") ?: "ar"
             prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
+            prefSubHideAuto = prefs.getBoolean("pref_sub_hide_auto", false)
+            prefSubFg = prefs.getString("pref_sub_fg", "white") ?: "white"
+            prefSubBg = prefs.getString("pref_sub_bg", "transparent") ?: "transparent"
+            prefSubEdge = prefs.getString("pref_sub_edge", "outline") ?: "outline"
+            prefSubSize = prefs.getString("pref_sub_size", "m") ?: "m"
+            prefSubBold = prefs.getBoolean("pref_sub_bold", false)
+            prefPreferOriginal = prefs.getBoolean("pref_prefer_original", false)
+            prefSpeed = prefs.getFloat("pref_speed", 1.0f)
+            prefPitch = prefs.getFloat("pref_pitch", 1.0f)
         } catch (_: Exception) { }
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
             if (raw.isNotBlank()) recentSearches = raw.split("\u001f").filter { it.isNotBlank() }.take(6)
         } catch (_: Exception) { }
+    }
+    // playback speed/pitch (ExoPlayer PlaybackParameters): applied live, persisted
+    LaunchedEffect(player, prefSpeed, prefPitch) {
+        try { player?.playbackParameters = androidx.media3.common.PlaybackParameters(prefSpeed.coerceIn(0.25f, 3f), prefPitch.coerceIn(0.5f, 2f)) } catch (_: Exception) { }
     }
     // language helpers: resolve "auto" to the device language; push prefs into the player.
     // Placed AFTER prefs/player/streamData declarations (Kotlin locals must precede use).
@@ -330,6 +364,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun pickAudioIdx(): Int {
         val tracks = streamData?.audioTracks ?: return 0
         if (tracks.isEmpty()) return 0
+        if (prefPreferOriginal) {
+            val i = tracks.indexOfFirst { (it.type ?: "").equals("ORIGINAL", ignoreCase = true) }
+            if (i >= 0) return i
+        }
         val ordered = listOf(resolveLang(prefAudioLang), resolveLang(prefAudioLang2)) +
             listOf(try { java.util.Locale.getDefault().language } catch (_: Exception) { null }, "en")
         for (want in ordered) {
@@ -367,10 +405,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (subs.isEmpty()) return -1
         val device = try { java.util.Locale.getDefault().language } catch (_: Exception) { null }
         val ordered = listOf(resolveLang(prefSubLang), resolveLang(prefSubLang2)) + listOf(device, "en")
+        val pool = if (prefSubHideAuto) subs.filter { !it.auto } else subs
         for (want in ordered) {
             if (want == null) break // "original": keep the player's own default
-            val i = subs.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
-            if (i >= 0) return i
+            var i = pool.indexOfFirst { !it.auto && it.langTag.startsWith(want, ignoreCase = true) }
+            if (i >= 0) return subs.indexOf(pool[i])
+            i = pool.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
+            if (i >= 0) return subs.indexOf(pool[i])
         }
         return -1
     }
@@ -852,6 +893,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // Smart back: exit fullscreen first; collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
     fun smartBack(): Boolean {
+        if (showChannel) {
+            showChannel = false
+            return true
+        }
+        if (showComments) {
+            showComments = false
+            return true
+        }
         if (isFullscreen) {
             setFullscreen(false)
             return true
@@ -904,7 +953,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showChannel || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -1172,7 +1221,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onToggleFullscreen = { setFullscreen(!isFullscreen) },
                     onSetMode = { setMode(it) },
                     onSetShuffle = { setShuffle(it) },
-                    subtitles = streamData?.subtitles ?: emptyList(),
+                    subtitles = (streamData?.subtitles ?: emptyList()).let { if (prefSubHideAuto) it.filter { t -> !t.auto } else it },
                     subIdx = subTrackIdx,
                     onSubtitleTrack = { i ->
                         // manual pick becomes the saved subtitle preference (applies to all future videos)
@@ -1223,8 +1272,103 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     chapters = streamData?.chapters ?: emptyList(),
                     related = streamData?.related ?: emptyList(),
                     onChapterSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
-                    onRelatedPlay = { rv -> playVideo(rv) }
+                    onRelatedPlay = { rv -> playVideo(rv) },
+                    onChannelClick = {
+                        showChannel = true
+                        channelDetail = null
+                        val url = streamData?.channelUrl
+                        scope.launch {
+                            try { channelDetail = YouTubeRepo.channelDetail(url) } catch (_: Exception) { }
+                        }
+                    },
+                    onCommentsClick = {
+                        showComments = true
+                        commentsLoading = true
+                        val url = playing?.url
+                        scope.launch {
+                            try { commentList = YouTubeRepo.comments(url) } catch (_: Exception) { }
+                            commentsLoading = false
+                        }
+                    },
+                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold)
                 )
+                // channel sheet (avatar/banner/subs/description/verified — no account needed)
+                if (showChannel) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showChannel = false },
+                        title = { Text(channelDetail?.name ?: (cur.channel ?: "")) },
+                        text = {
+                            val cd = channelDetail
+                            if (cd == null) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                }
+                            } else {
+                                LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    item {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (!cd.avatar.isNullOrBlank()) {
+                                                AsyncImage(model = cd.avatar, contentDescription = cd.name, modifier = Modifier.size(48.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                                                Spacer(Modifier.width(12.dp))
+                                            }
+                                            Column {
+                                                Text((cd.name ?: "") + if (cd.verified) " ✓" else "", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                                if (cd.subs != null && cd.subs > 0) Text(ctx.formatViews(cd.subs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                    }
+                                    if (!cd.banner.isNullOrBlank()) {
+                                        item {
+                                            AsyncImage(model = cd.banner, contentDescription = null, modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                                        }
+                                    }
+                                    if (!cd.description.isNullOrBlank()) {
+                                        item { Text(cd.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = { },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { showChannel = false }) { Text(stringResource(R.string.close)) } }
+                    )
+                }
+                // comments sheet (real CommentsExtractor, pageless first 30)
+                if (showComments) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showComments = false },
+                        title = { Text(stringResource(R.string.pill_comments)) },
+                        text = {
+                            if (commentsLoading) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                }
+                            } else if (commentList.isEmpty()) {
+                                Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    items(commentList) { c ->
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            if (!c.avatar.isNullOrBlank()) {
+                                                AsyncImage(model = c.avatar, contentDescription = c.author, modifier = Modifier.size(32.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    (c.author ?: "") + (if (!c.date.isNullOrBlank()) " • " + c.date else "") + (if (c.likes > 0) " • " + ctx.formatViews(c.likes.toLong()) else ""),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(c.text ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = { },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { showComments = false }) { Text(stringResource(R.string.close)) } }
+                    )
+                }
             }
 
             if (!isFullscreen) {
@@ -1324,6 +1468,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         dbSize = dbSizeLabel(),
                         onClearFavorites = { clearFavorites() },
                         onClearHistory = { clearHistory() },
+                        subHideAuto = prefSubHideAuto,
+                        onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
+                        subFg = prefSubFg,
+                        onSubFg = { v -> prefSubFg = v; try { prefs.edit().putString("pref_sub_fg", v).apply() } catch (_: Exception) { } },
+                        subBg = prefSubBg,
+                        onSubBg = { v -> prefSubBg = v; try { prefs.edit().putString("pref_sub_bg", v).apply() } catch (_: Exception) { } },
+                        subEdge = prefSubEdge,
+                        onSubEdge = { v -> prefSubEdge = v; try { prefs.edit().putString("pref_sub_edge", v).apply() } catch (_: Exception) { } },
+                        subSize = prefSubSize,
+                        onSubSize = { v -> prefSubSize = v; try { prefs.edit().putString("pref_sub_size", v).apply() } catch (_: Exception) { } },
+                        subBold = prefSubBold,
+                        onSubBold = { v -> prefSubBold = v; try { prefs.edit().putBoolean("pref_sub_bold", v).apply() } catch (_: Exception) { } },
+                        preferOriginal = prefPreferOriginal,
+                        onPreferOriginal = { v -> prefPreferOriginal = v; try { prefs.edit().putBoolean("pref_prefer_original", v).apply() } catch (_: Exception) { }; audioTrackIdx = pickAudioIdx() },
+                        speed = prefSpeed,
+                        onSpeed = { v -> prefSpeed = v; try { prefs.edit().putFloat("pref_speed", v).apply() } catch (_: Exception) { } },
+                        pitch = prefPitch,
+                        onPitch = { v -> prefPitch = v; try { prefs.edit().putFloat("pref_pitch", v).apply() } catch (_: Exception) { } },
                         theme = prefTheme,
                         onTheme = { v ->
                             prefTheme = v
