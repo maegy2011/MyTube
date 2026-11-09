@@ -133,6 +133,12 @@ fun SettingsScreen(
     onClearCache: () -> Unit = {},
     offlineMode: Boolean = false,
     onOfflineMode: (Boolean) -> Unit = {},
+    pinsCount: Int = 0,
+    pinsSize: String = "—",
+    pinsBytes: Long = 0L,
+    pinsWarnMb: Long = 1024L,
+    onPinsWarn: (Long) -> Unit = {},
+    onClearPins: () -> Unit = {},
     onClearFavorites: () -> Unit,
     onClearHistory: () -> Unit
 ) {
@@ -140,6 +146,7 @@ fun SettingsScreen(
     var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var confirmHist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var confirmCache by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var confirmPins by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     if (confirmFav) {
         AlertDialog(
             onDismissRequest = { confirmFav = false },
@@ -156,6 +163,15 @@ fun SettingsScreen(
             text = { Text(stringResource(R.string.del_hist_confirm_fmt, histCount)) },
             confirmButton = { TextButton(onClick = { onClearHistory(); confirmHist = false }) { Text(stringResource(R.string.clear)) } },
             dismissButton = { TextButton(onClick = { confirmHist = false }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
+    if (confirmPins) {
+        AlertDialog(
+            onDismissRequest = { confirmPins = false },
+            title = { Text(stringResource(R.string.clear_pins_title)) },
+            text = { Text(stringResource(R.string.clear_pins_fmt, pinsCount, pinsSize)) },
+            confirmButton = { TextButton(onClick = { onClearPins(); confirmPins = false }) { Text(stringResource(R.string.clear)) } },
+            dismissButton = { TextButton(onClick = { confirmPins = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (confirmCache) {
@@ -512,6 +528,46 @@ fun SettingsScreen(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedButton(onClick = { confirmCache = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_cache)) }
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.pins_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Text(
+                stringResource(R.string.pins_line_fmt, pinsCount, pinsSize),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        items(listOf(512L, 1024L, 2048L, 0L)) { mb ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onPinsWarn(mb) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (pinsWarnMb == mb) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinsWarnMb == mb) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                val label = when {
+                    mb == 0L -> stringResource(R.string.pins_warn_off)
+                    mb >= 1024 -> stringResource(R.string.pins_warn_gb_fmt, (mb / 1024).toInt())
+                    else -> stringResource(R.string.pins_warn_mb_fmt, mb.toInt())
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+        item {
+            if (pinsWarnMb > 0 && pinsCount > 0 && pinsBytes > pinsWarnMb * 1024 * 1024) {
+                // soft reminder only: honest byte comparison; never blocks pinning
+                Text(
+                    stringResource(R.string.pins_over_warn),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedButton(onClick = { confirmPins = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_pins)) }
             }
         }
         item {

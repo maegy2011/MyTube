@@ -318,6 +318,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefCacheMaxMb by remember { mutableStateOf(500L) }
     // Phase 4: offline mode — pinned items play from disk, unpinned show "pin first"
     var prefOffline by remember { mutableStateOf(false) }
+    // Phase 6: storage section — pins totals + soft-limit (reminder only, never blocks)
+    var prefPinWarnMb by remember { mutableStateOf(1024L) }
+    var pinsCount by remember { mutableStateOf(0) }
+    var pinsSizeLabel by remember { mutableStateOf("—") }
+    var pinsBytes by remember { mutableStateOf(0L) }
     var cacheSizeLabel by remember { mutableStateOf("—") }
     var prefSpeed by remember { mutableStateOf(1.0f) }
     var prefPitch by remember { mutableStateOf(1.0f) }
@@ -378,6 +383,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefSkipSilence = prefs.getBoolean("pref_skip_silence", false)
             prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
             prefOffline = prefs.getBoolean("pref_offline", false)
+            prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
             try { com.mohamedadel.mytube.playback.MediaCache.setMax(ctx.applicationContext, prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
             prefPitch = prefs.getFloat("pref_pitch", 1.0f)
@@ -591,6 +597,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             catch (_: Exception) { toast(ctx.getString(R.string.toast_hist_clear_fail)) }
         }
     }
+    fun refreshPinsLabel() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val n = try { pins.size } catch (_: Exception) { 0 }
+            val bytes = try { dao.pinsTotalSize() } catch (_: Exception) { 0L }
+            val label = try {
+                if (bytes < 1048576) ctx.getString(R.string.db_kb, (bytes / 1024).toInt())
+                else ctx.getString(R.string.db_mb, bytes / 1048576.0)
+            } catch (_: Exception) { "—" }
+            pinsCount = n
+            pinsSizeLabel = label
+            pinsBytes = bytes
+        }
+    }
+    fun clearAllPins() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                com.mohamedadel.mytube.data.local.PinFiles.clearAll(ctx.applicationContext)
+                try { dao.clearPins() } catch (_: Exception) { }
+                refreshPinsLabel()
+                toast(ctx.getString(R.string.toast_pins_cleared))
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+        }
+    }
     fun refreshCacheLabel() {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val bytes = try { com.mohamedadel.mytube.playback.MediaCache.bytesUsed(ctx.applicationContext) } catch (_: Exception) { 0L }
@@ -608,7 +637,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             toast(ctx.getString(R.string.toast_cache_cleared))
         }
     }
-    LaunchedEffect(showSettings) { if (showSettings) refreshCacheLabel() }
+    LaunchedEffect(showSettings) { if (showSettings) { refreshCacheLabel(); refreshPinsLabel() } }
 
     fun dbSizeLabel(): String {
         return try {
@@ -1780,6 +1809,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             prefOffline = v
                             try { prefs.edit().putBoolean("pref_offline", v).apply() } catch (_: Exception) { }
                         },
+                        pinsCount = pinsCount,
+                        pinsSize = pinsSizeLabel,
+                        pinsBytes = pinsBytes,
+                        pinsWarnMb = prefPinWarnMb,
+                        onPinsWarn = { mb ->
+                            prefPinWarnMb = mb
+                            try { prefs.edit().putLong("pref_pin_warn_mb", mb).apply() } catch (_: Exception) { }
+                        },
+                        onClearPins = { clearAllPins() },
                         subHideAuto = prefSubHideAuto,
                         onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
                         subFg = prefSubFg,

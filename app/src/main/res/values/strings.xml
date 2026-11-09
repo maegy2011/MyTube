@@ -294,4 +294,14 @@
     <string name="hist_tab_all">الكل</string>
     <string name="hist_tab_pinned">المثبتة</string>
     <string name="hist_tab_unpinned">غير المثبتة</string>
+    <string name="pins_title">المثبتات</string>
+    <string name="pins_line_fmt">%1$d عناصر • الإجمالي %2$s</string>
+    <string name="pins_warn_mb_fmt">تذكير فوق %1$d م.ب</string>
+    <string name="pins_warn_gb_fmt">تذكير فوق %1$d ج.ب</string>
+    <string name="pins_warn_off">بلا تذكير</string>
+    <string name="pins_over_warn">تجاوزت حدك الناعم — راجع المثبتات القديمة. لا منع ولا حذف تلقائي.</string>
+    <string name="clear_pins">حذف كل المثبتات</string>
+    <string name="clear_pins_title">حذف كل المثبتات؟</string>
+    <string name="clear_pins_fmt">سيحذف هذا %1$d مقاطع مثبتة (%2$s) من القرص. كاش الوسائط لا يتأثر.</string>
+    <string name="toast_pins_cleared">تم حذف كل المثبتات</string>
 </resources>

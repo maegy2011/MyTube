@@ -294,4 +294,14 @@
     <string name="hist_tab_all">All</string>
     <string name="hist_tab_pinned">Pinned</string>
     <string name="hist_tab_unpinned">Not pinned</string>
+    <string name="pins_title">Offline pins</string>
+    <string name="pins_line_fmt">%1$d items • %2$s total</string>
+    <string name="pins_warn_mb_fmt">Remind over %1$d MB</string>
+    <string name="pins_warn_gb_fmt">Remind over %1$d GB</string>
+    <string name="pins_warn_off">No reminder</string>
+    <string name="pins_over_warn">Over your soft limit — consider reviewing old pins. Nothing is blocked or deleted.</string>
+    <string name="clear_pins">Delete all pins</string>
+    <string name="clear_pins_title">Delete all offline pins?</string>
+    <string name="clear_pins_fmt">This deletes %1$d pinned videos (%2$s) from disk. The transient media cache is NOT affected.</string>
+    <string name="toast_pins_cleared">All pins deleted</string>
 </resources>
