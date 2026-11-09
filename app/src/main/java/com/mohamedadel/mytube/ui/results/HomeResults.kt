@@ -60,7 +60,8 @@ fun HomeEmptyState(
     onPlay: (VideoItem) -> Unit,
     isFav: (VideoItem) -> Boolean = { false },
     onFav: (VideoItem) -> Unit = {},
-    onAdd: ((VideoItem) -> Unit)? = null
+    onAdd: ((VideoItem) -> Unit)? = null,
+    onLongClick: (VideoItem) -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
@@ -104,7 +105,7 @@ fun HomeEmptyState(
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = onAdd, isFav = isFav(v), onFav = onFav)
+                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav)
                 }
             }
         }

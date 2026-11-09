@@ -2157,7 +2157,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
-                        onAdd = { enqueueLast(it) }
+                        onAdd = { enqueueLast(it) },
+                        onLongClick = { optionsFor = it }
                     )
                 }
                 results.isEmpty() && !loading -> {
