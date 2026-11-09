@@ -65,6 +65,7 @@ import androidx.media3.common.ForwardingPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.AudioTrackItem
+import com.mohamedadel.mytube.data.youtube.SubtitleItem
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.util.formatDuration
 import com.mohamedadel.mytube.util.formatMs
@@ -107,6 +108,9 @@ fun PlayerArea(
     audioTracks: List<AudioTrackItem> = emptyList(),
     audioIdx: Int = 0,
     onAudioTrack: (Int) -> Unit = {},
+    subtitles: List<SubtitleItem> = emptyList(),
+    subIdx: Int = -1,
+    onSubtitleTrack: (Int) -> Unit = {},
     isFullscreen: Boolean = false,
     onToggleFullscreen: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
@@ -118,6 +122,7 @@ fun PlayerArea(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var langExpanded by remember { mutableStateOf(false) }
+    var subExpanded by remember { mutableStateOf(false) }
     // TEMPORARY EXPERIMENT (native-controls test): hide all our custom bars, use the full native ExoPlayer controller.
     // Media3 ships Arabic strings (values-ar), so the native buttons appear Arabic on an Arabic device.
     // To revert: set nativeOnly = false.
@@ -424,6 +429,21 @@ fun PlayerArea(
                         FilterChip(selected = false, onClick = { expanded = true }, label = { Text(shortQuality(quality)) })
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             qualities.forEach { q -> DropdownMenuItem(text = { Text(q) }, onClick = { onQuality(q); expanded = false }) }
+                        }
+                    }
+                    // subtitle language picker (manual pick is saved as the preference)
+                    if (subtitles.isNotEmpty()) {
+                        val cur = subtitles.getOrNull(subIdx)
+                        Spacer(Modifier.width(8.dp))
+                        Box {
+                            FilterChip(selected = false, onClick = { subExpanded = true }, label = { Text(if (subIdx >= 0) (cur?.label?.takeIf { it.isNotBlank() } ?: cur?.langTag ?: "الترجمة") else "الترجمة") })
+                            DropdownMenu(expanded = subExpanded, onDismissRequest = { subExpanded = false }) {
+                                DropdownMenuItem(text = { Text(if (subIdx < 0) "✓ إيقاف" else "إيقاف") }, onClick = { onSubtitleTrack(-1); subExpanded = false })
+                                subtitles.forEachIndexed { i, s ->
+                                    val lbl = (s.label?.takeIf { it.isNotBlank() } ?: s.langTag) + if (s.auto) " (تلقائية)" else ""
+                                    DropdownMenuItem(text = { Text(if (i == subIdx) "✓ $lbl" else lbl) }, onClick = { onSubtitleTrack(i); subExpanded = false })
+                                }
+                            }
                         }
                     }
                     // dubbed/original audio language (only when the video offers several)

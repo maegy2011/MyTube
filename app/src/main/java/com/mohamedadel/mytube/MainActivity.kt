@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -109,6 +110,7 @@ import com.mohamedadel.mytube.ui.results.TREND_TABS
 import com.mohamedadel.mytube.ui.search.SearchScreen
 import com.mohamedadel.mytube.ui.queue.VideoOptionsDialog
 import com.mohamedadel.mytube.ui.settings.COUNTRY_OPTIONS
+import com.mohamedadel.mytube.ui.settings.LANG_OPTIONS
 import com.mohamedadel.mytube.ui.settings.SettingsScreen
 import com.mohamedadel.mytube.util.autoUrl
 import com.mohamedadel.mytube.util.batteryExemptionIntent
@@ -197,6 +199,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var streamData by remember { mutableStateOf<StreamData?>(null) }
     // selected dubbed/original audio track (auto-matched to the audio pref once prefs load below)
     var audioTrackIdx by remember { mutableStateOf(0) }
+    // selected subtitle track: -1 = off (real disable), else index into streamData.subtitles (auto-matched to sub prefs)
+    var subTrackIdx by remember { mutableStateOf(-1) }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
     var quality by remember { mutableStateOf("audio-only (default)") }
     var playerLoading by remember { mutableStateOf(false) }
@@ -313,15 +317,40 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun applyLangPrefs() {
         try {
             val p = player ?: return
-            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            val b = p.trackSelectionParameters.buildUpon()
                 .setPreferredAudioLanguage(resolveLang(prefAudioLang))
-                .setPreferredTextLanguage(resolveLang(prefSubLang))
-                .build()
+            if (prefSubLang == "off") {
+                // REAL off: disable the text renderer (null preference alone still allows auto captions)
+                b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                b.setPreferredTextLanguage(null)
+            } else {
+                b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                b.setPreferredTextLanguage(resolveLang(prefSubLang))
+            }
+            p.trackSelectionParameters = b.build()
         } catch (_: Exception) { }
+    }
+    // auto-match the subtitle chip along the fallback chain (primary -> secondary -> device -> en)
+    fun matchSubIdx(): Int {
+        if (prefSubLang == "off") return -1
+        val subs = streamData?.subtitles ?: return -1
+        if (subs.isEmpty()) return -1
+        val device = try { java.util.Locale.getDefault().language } catch (_: Exception) { null }
+        val ordered = listOf(resolveLang(prefSubLang), resolveLang(prefSubLang2)) + listOf(device, "en")
+        for (want in ordered) {
+            if (want == null) break // "original": keep the player's own default
+            val i = subs.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
+            if (i >= 0) return i
+        }
+        return -1
     }
     LaunchedEffect(streamData, prefAudioLang, prefAudioLang2) {
         // auto-pick the audio track along the fallback chain (primary -> secondary -> device -> en/original)
         audioTrackIdx = pickAudioIdx()
+    }
+    LaunchedEffect(streamData, prefSubLang, prefSubLang2) {
+        // auto-match the subtitle chip (off stays off)
+        subTrackIdx = matchSubIdx()
     }
     // (refreshTrending lives after `scope` below — Kotlin locals must precede use.)
     LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
@@ -1052,6 +1081,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onToggleFullscreen = { setFullscreen(!isFullscreen) },
                     onSetMode = { setMode(it) },
                     onSetShuffle = { setShuffle(it) },
+                    subtitles = streamData?.subtitles ?: emptyList(),
+                    subIdx = subTrackIdx,
+                    onSubtitleTrack = { i ->
+                        // manual pick becomes the saved subtitle preference (applies to all future videos)
+                        try {
+                            if (i < 0) {
+                                prefSubLang = "off"
+                                prefs.edit().putString("pref_sub_lang", "off").apply()
+                                subTrackIdx = -1
+                                toast("أُوقفت الترجمة")
+                            } else {
+                                val t = streamData?.subtitles?.getOrNull(i)
+                                val tag = t?.langTag?.substringBefore("-")?.takeIf { it.isNotBlank() }
+                                val code = tag?.let { c -> if (LANG_OPTIONS.any { o -> o.first == c }) c else "auto" } ?: "auto"
+                                prefSubLang = code
+                                prefs.edit().putString("pref_sub_lang", code).apply()
+                                subTrackIdx = i
+                                toast("لغة الترجمة: " + (t?.label?.takeIf { it.isNotBlank() } ?: code))
+                            }
+                        } catch (_: Exception) { toast("تعذّر تغيير الترجمة") }
+                        applyLangPrefs()
+                    },
                     audioTracks = streamData?.audioTracks ?: emptyList(),
                     audioIdx = audioTrackIdx,
                     onAudioTrack = { i ->
