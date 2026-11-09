@@ -37,7 +37,8 @@ fun HistoryScreen(
     onPlay: (VideoItem) -> Unit,
     onDelete: (VideoItem) -> Unit,
     onClear: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onLongClick: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -75,7 +76,7 @@ fun HistoryScreen(
                         isCurrent = false,
                         isPlaying = false,
                         onClick = { onPlay(v) },
-                        onLongClick = {},
+                        onLongClick = { onLongClick(it) },
                         onRemove = onDelete
                     )
                 }

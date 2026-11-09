@@ -1386,6 +1386,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     related = streamData?.related ?: emptyList(),
                     onChapterSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
                     onRelatedPlay = { rv -> playVideo(rv) },
+                    isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
+                    onSubscribe = { toggleSubscription(streamData?.channelUrl, cur.channel, channelDetail?.avatar) },
                     onChannelClick = {
                         showChannel = true
                         channelDetail = null
@@ -1544,6 +1546,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         items = feedItems,
                         loading = feedLoading,
                         onRefresh = { refreshFeed() },
+                        onLongClick = { optionsFor = it },
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
@@ -1659,7 +1662,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) } } },
                         onClear = { clearHistory() },
-                        onBack = { smartBack() }
+                        onBack = { smartBack() },
+                        onLongClick = { optionsFor = it }
                     )
                 }
                 showFavorites -> {
@@ -1669,7 +1673,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onToggleFav = { toggleFavorite(it) },
                         onAdd = { enqueueLast(it) },
                         onClear = { clearFavorites() },
-                        onBack = { smartBack() }
+                        onBack = { smartBack() },
+                        onLongClick = { optionsFor = it }
                     )
                 }
                 showPlaylists -> {
@@ -1939,6 +1944,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onPlayNext = { enqueueNext(v); optionsFor = null },
                     onQueueEnd = { enqueueLast(v); optionsFor = null },
                     onAddToPlaylist = { pickFor = v; optionsFor = null },
+                    onSubscribe = if (v.channelUrl != null) ({ toggleSubscription(v.channelUrl, v.channel, v.channelAvatar); optionsFor = null }) else null,
+                    isSubscribed = v.channelUrl != null && subscriptions.any { it.channelUrl == v.channelUrl },
                     onDismiss = { optionsFor = null }
                 )
             }

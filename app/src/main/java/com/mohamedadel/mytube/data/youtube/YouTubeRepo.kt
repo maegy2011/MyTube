@@ -12,7 +12,7 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 
-data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null, val channelAvatar: String? = null, val verified: Boolean = false, val uploadDate: String? = null, val isShort: Boolean = false)
+data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null, val channelAvatar: String? = null, val verified: Boolean = false, val uploadDate: String? = null, val isShort: Boolean = false, val channelUrl: String? = null)
 data class SubtitleItem(val url: String, val langTag: String, val label: String, val auto: Boolean, val mime: String)
 data class AudioTrackItem(val url: String, val bitrate: Int, val trackId: String?, val name: String?, val localeTag: String?, val type: String?)
 data class ChapterItem(val title: String, val startSec: Int)
@@ -65,7 +65,9 @@ object YouTubeRepo {
                     var isShort = false
                     try { isShort = info.isShortFormContent } catch (_: Exception) {}
                     val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
-                    out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort))
+                    var chUrl: String? = null
+                    try { chUrl = info.uploaderUrl } catch (_: Exception) {}
+                    out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort, chUrl))
                 }
             }
             out
@@ -142,7 +144,9 @@ object YouTubeRepo {
                     var isShort = false
                     try { isShort = info.isShortFormContent } catch (_: Exception) {}
                     val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
-                    out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort))
+                    var chUrl: String? = null
+                    try { chUrl = info.uploaderUrl } catch (_: Exception) {}
+                    out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort, chUrl))
                 }
             }
             val hasNext = try { lp.hasNextPage() } catch (_: Exception) { false }
@@ -255,7 +259,9 @@ object YouTubeRepo {
                     var vw: Long? = null
                     try { vw = info.viewCount } catch (_: Exception) {}
                     val rid: String? = u?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
-                    if (u != null) VideoItem(rid, nm, ch, th, d, vw, u) else null
+                    var rChUrl: String? = null
+                    try { rChUrl = info.uploaderUrl } catch (_: Exception) {}
+                    if (u != null) VideoItem(rid, nm, ch, th, d, vw, u, channelUrl = rChUrl) else null
                 } else null
             }?.take(20) ?: emptyList() } catch (_: Exception) {}
             var boards: List<Storyboard> = emptyList()
@@ -298,7 +304,9 @@ object YouTubeRepo {
                     var vw: Long? = null
                     try { vw = info.viewCount } catch (_: Exception) {}
                     val rid: String? = u.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
-                    VideoItem(rid, nm, ch, th, d, vw, u)
+                    var fChUrl: String? = null
+                    try { fChUrl = info.uploaderUrl } catch (_: Exception) {}
+                    VideoItem(rid, nm, ch, th, d, vw, u, channelUrl = fChUrl)
                 } catch (_: Exception) { null }
             }.take(15)
         } catch (_: Exception) { emptyList() }

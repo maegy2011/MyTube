@@ -33,6 +33,7 @@ fun FeedScreen(
     loading: Boolean,
     onRefresh: () -> Unit,
     onPlay: (VideoItem) -> Unit,
+    onLongClick: (VideoItem) -> Unit = {},
     isFav: (VideoItem) -> Boolean,
     onFav: (VideoItem) -> Unit,
     onAdd: (VideoItem) -> Unit
@@ -70,7 +71,7 @@ fun FeedScreen(
                         }
                     }
                     itemsIndexed(items = items, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
-                        SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = {}, onAdd = onAdd, isFav = isFav(v), onFav = onFav)
+                        SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav)
                     }
                 }
             }

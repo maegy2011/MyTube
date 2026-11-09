@@ -38,7 +38,8 @@ fun FavoritesScreen(
     onToggleFav: (VideoItem) -> Unit,
     onClear: () -> Unit,
     onBack: () -> Unit,
-    onAdd: ((VideoItem) -> Unit)? = null
+    onAdd: ((VideoItem) -> Unit)? = null,
+    onLongClick: (VideoItem) -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -76,7 +77,7 @@ fun FavoritesScreen(
                         isCurrent = false,
                         isPlaying = false,
                         onClick = { onPlay(v) },
-                        onLongClick = {},
+                        onLongClick = { onLongClick(it) },
                         onAdd = onAdd,
                         isFav = true,
                         onFav = onToggleFav

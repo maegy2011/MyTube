@@ -162,6 +162,8 @@ fun PlayerArea(
     subStyle: SubStyle = SubStyle(),
     onChannelClick: () -> Unit = {},
     onCommentsClick: () -> Unit = {},
+    isSubscribed: Boolean = false,
+    onSubscribe: () -> Unit = {},
     category: String? = null,
     tags: List<String> = emptyList(),
     storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList()
@@ -554,9 +556,9 @@ fun PlayerArea(
                     )
                 }
                 Spacer(Modifier.height(10.dp))
-                // channel row: avatar initial + name (no subscribe button — no accounts)
+                // channel row: avatar initial + name + local subscribe toggle
                 Row(
-                    modifier = Modifier.fillMaxWidth().clickable { onChannelClick() }.padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val initial = (video.channel?.trim()?.firstOrNull()?.uppercase() ?: "♪").toString()
@@ -567,14 +569,21 @@ fun PlayerArea(
                         Text(initial, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
                     }
                     Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = video.channel ?: "",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f).clickable { onChannelClick() }
+                    ) {
+                        Text(
+                            text = video.channel ?: "",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.TextButton(onClick = onSubscribe) {
+                        Text(stringResource(if (isSubscribed) R.string.unsubscribe else R.string.subscribe))
+                    }
                 }
                 Spacer(Modifier.height(10.dp))
                 // action pills (horizontal scroll): favorite / save / queue / sleep / pip / settings

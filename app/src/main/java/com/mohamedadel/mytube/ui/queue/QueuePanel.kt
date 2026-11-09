@@ -21,6 +21,8 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.AlertDialog
@@ -113,6 +115,8 @@ fun VideoOptionsDialog(
     onPlayNext: () -> Unit,
     onQueueEnd: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onSubscribe: (() -> Unit)? = null,
+    isSubscribed: Boolean = false,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -128,6 +132,24 @@ fun VideoOptionsDialog(
                     stringResource(R.string.cd_add_queue_end) to onQueueEnd,
                     stringResource(R.string.video_options_add_playlist) to onAddToPlaylist
                 )
+                if (onSubscribe != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onSubscribe).padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isSubscribed) Icons.Rounded.PersonRemove else Icons.Rounded.PersonAdd,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            stringResource(if (isSubscribed) R.string.unsubscribe else R.string.subscribe),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
                 items.forEach { (label, action) ->
                     Row(
                         modifier = Modifier.fillMaxWidth().clickable(onClick = action).padding(vertical = 12.dp),
