@@ -30,13 +30,16 @@ object MediaCache {
 
     // Takes effect for subsequently built sources; in-flight playback keeps the old
     // instance until the next play (caller toasts accordingly).
-    fun setMax(context: Context, bytes: Long) {
+    // Never warms here: SimpleCache init does disk I/O and this runs on the UI thread.
+    // Callers must warm via warmAsync() from a background thread.
+    fun setMax(bytes: Long) {
         maxBytes = bytes
         synchronized(lock) {
             try { cache?.release() } catch (_: Exception) { }
             cache = null
         }
-        // warm the new instance so size reads work immediately
+    }
+    fun warmAsync(context: Context) {
         try { get(context.applicationContext) } catch (_: Exception) { }
     }
 

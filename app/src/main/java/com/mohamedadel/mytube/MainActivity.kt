@@ -318,6 +318,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefCacheMaxMb by remember { mutableStateOf(500L) }
     // Phase 4: offline mode — pinned items play from disk, unpinned show "pin first"
     var prefOffline by remember { mutableStateOf(false) }
+    // Phase 4 fix: quality-switch/retry must reuse the local path for pinned playback,
+    // otherwise file:// bytes get needlessly duplicated into the transient cache.
+    var playingPinned by remember { mutableStateOf(false) }
     // Phase 6: storage section — pins totals + soft-limit (reminder only, never blocks)
     var prefPinWarnMb by remember { mutableStateOf(1024L) }
     var pinsCount by remember { mutableStateOf(0) }
@@ -384,7 +387,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
             prefOffline = prefs.getBoolean("pref_offline", false)
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
-            try { com.mohamedadel.mytube.playback.MediaCache.setMax(ctx.applicationContext, prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
+            // cap only (no disk I/O); the cache itself warms on a background thread after scope exists
+            try { com.mohamedadel.mytube.playback.MediaCache.setMax(prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
             prefPitch = prefs.getFloat("pref_pitch", 1.0f)
         } catch (_: Exception) { }
@@ -557,6 +561,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // no remove needed for composition lifetime
     }
     val scope = rememberCoroutineScope()
+    // SimpleCache init does disk I/O — warm it off the main thread (skill Rule 5)
+    LaunchedEffect(Unit) {
+        try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext) } } catch (_: Exception) { }
+    }
     // One-tap favorite toggle (needs scope, so it lives here).
     // Short user feedback for every silent success/failure in favorites/queue/playlists.
     fun toast(msg: String) {
@@ -610,16 +618,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             pinsBytes = bytes
         }
     }
-    fun clearAllPins() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                com.mohamedadel.mytube.data.local.PinFiles.clearAll(ctx.applicationContext)
-                try { dao.clearPins() } catch (_: Exception) { }
-                refreshPinsLabel()
-                toast(ctx.getString(R.string.toast_pins_cleared))
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
-        }
-    }
+
     fun refreshCacheLabel() {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val bytes = try { com.mohamedadel.mytube.playback.MediaCache.bytesUsed(ctx.applicationContext) } catch (_: Exception) { 0L }
@@ -816,6 +815,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 toast(ctx.getString(R.string.err_pin_first))
                 return@launch
             }
+            playingPinned = pinned
             if (pinned) {
                 // Phase 4: zero-network playback from the faithful snapshot
                 try {
@@ -844,7 +844,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         muxedQualities = if (hasAudio) emptySet() else setOf(label),
                         title = v.title,
                         subtitles = subs,
-                        channelUrl = null
+                        channelUrl = v.channelUrl
                     )
                     streamData = s
                     qualityList = listOf(label)
@@ -852,6 +852,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     audioTrackIdx = 0
                     subTrackIdx = if (hasSub) 0 else -1
                     applyQuality(label, s, player, autoplay = false, local = true)
+                    playingPinned = true
                 } catch (_: Exception) {
                     playerLoading = false
                     playerError = ctx.getString(R.string.toast_pin_fail)
@@ -1149,7 +1150,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val qq = q ?: pickStartQuality(s, kbps)
                 val ai = aIdx ?: pickAudioIdxFor(s)
                 val si = sIdx ?: matchSubIdxFor(s)
-                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si)
+                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps)
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 val est = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
                 pinConfirm = com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est)
@@ -1171,7 +1172,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             finally { pinningKeys = pinningKeys - key }
         }
     }
+    fun clearAllPins() {
+        try {
+            val cur = playing?.favKey()
+            if (cur != null && com.mohamedadel.mytube.data.local.PinFiles.isPinned(ctx.applicationContext, cur)) closePlayer()
+        } catch (_: Exception) { }
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                com.mohamedadel.mytube.data.local.PinFiles.clearAll(ctx.applicationContext)
+                try { dao.clearPins() } catch (_: Exception) { }
+                refreshPinsLabel()
+                toast(ctx.getString(R.string.toast_pins_cleared))
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+        }
+    }
     fun doUnpin(key: String) {
+        // never delete under an in-flight download (it would re-upsert after us)
+        if (pinningKeys.contains(key)) { toast(ctx.getString(R.string.pinning)); return }
+        try { if (playing?.favKey() == key) closePlayer() } catch (_: Exception) { }
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 com.mohamedadel.mytube.data.local.PinManager.unpin(ctx.applicationContext, dao, key)
@@ -1490,7 +1508,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onQuality = { q ->
                         quality = q
                         // user explicitly picked quality: resume only if it was already playing
-                        streamData?.let { applyQuality(q, it, player, autoplay = true) }
+                        streamData?.let { applyQuality(q, it, player, autoplay = true, local = playingPinned) }
                     },
                     onTogglePlay = {
                         playerError = null
@@ -1499,7 +1517,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
                     onRetry = {
                         playerError = null
-                        streamData?.let { applyQuality(quality, it, player, forceStart = true) }
+                        streamData?.let { applyQuality(quality, it, player, forceStart = true, local = playingPinned) }
                     },
                     queueOn = autoAdvance,
                     playMode = playMode,
@@ -1799,8 +1817,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onCacheMax = { mb ->
                             prefCacheMaxMb = mb
                             try { prefs.edit().putLong("pref_cache_max_mb", mb).apply() } catch (_: Exception) { }
-                            try { com.mohamedadel.mytube.playback.MediaCache.setMax(ctx.applicationContext, mb * 1024 * 1024) } catch (_: Exception) { }
-                            refreshCacheLabel()
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    com.mohamedadel.mytube.playback.MediaCache.setMax(mb * 1024 * 1024)
+                                    com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext)
+                                } catch (_: Exception) { }
+                                refreshCacheLabel()
+                            }
                             toast(ctx.getString(R.string.toast_cache_max))
                         },
                         onClearCache = { clearMediaCache() },

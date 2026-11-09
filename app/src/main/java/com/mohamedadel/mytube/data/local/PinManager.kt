@@ -32,12 +32,14 @@ object PinManager {
     )
 
     // Same URL math as MainActivity.applyQuality (muxed vs merged, auto mapping).
-    fun buildPlan(sd: StreamData, quality: String, audioIdx: Int, subIdx: Int): PinPlan? {
+    // kbps must be the live estimate (not 0): "auto" resolves differently per bandwidth,
+    // and pinning must capture exactly what the player would play.
+    fun buildPlan(sd: StreamData, quality: String, audioIdx: Int, subIdx: Int, kbps: Int = 0): PinPlan? {
         val selAudio = sd.audioTracks.getOrNull(audioIdx)?.url ?: sd.audioLowestUrl
         val audioTag = sd.audioTracks.getOrNull(audioIdx)?.let { it.localeTag ?: it.name }
         val url = when {
             quality == "audio-only (default)" -> selAudio
-            quality.startsWith("auto") -> autoUrl(sd, 0)
+            quality.startsWith("auto") -> autoUrl(sd, kbps)
             else -> sd.videoUrlByQuality[quality]
         } ?: return null
         if (quality == "audio-only (default)") {
@@ -63,18 +65,29 @@ object PinManager {
             .build()
     }
 
-    // Approximate total via HEAD content-length; -1 when any URL hides it.
+    // Approximate total via HEAD content-length, falling back to a 0-byte Range GET
+    // (some hosts reject HEAD); -1 when a URL hides its size either way.
     fun estimateBytes(urls: List<String?>): Long {
         var total = 0L
         for (u in urls) {
             if (u.isNullOrBlank()) continue
+            var len: Long? = null
             try {
-                val req = Request.Builder().url(u).head().build()
-                http.newCall(req).execute().use { resp ->
-                    val len = resp.header("Content-Length")?.toLongOrNull() ?: return -1L
-                    total += len
+                http.newCall(Request.Builder().url(u).head().build()).execute().use { resp ->
+                    len = resp.header("Content-Length")?.toLongOrNull()
                 }
-            } catch (_: Exception) { return -1L }
+            } catch (_: Exception) { }
+            if (len == null) {
+                try {
+                    http.newCall(Request.Builder().url(u).header("Range", "bytes=0-0").build()).execute().use { resp ->
+                        val cr = resp.header("Content-Range") // "bytes 0-0/12345"
+                        len = cr?.substringAfterLast("/")?.toLongOrNull()
+                            ?: resp.header("Content-Length")?.toLongOrNull()
+                    }
+                } catch (_: Exception) { }
+            }
+            if (len == null) return -1L
+            total += len!!
         }
         return total
     }

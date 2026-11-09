@@ -160,9 +160,9 @@ fun VideoOptionsDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            if (isPinned) Icons.Rounded.PushPin else Icons.Rounded.PushPin,
+                            Icons.Rounded.PushPin,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
