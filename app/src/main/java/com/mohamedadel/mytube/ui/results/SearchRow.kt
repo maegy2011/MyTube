@@ -8,21 +8,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Clear
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,83 +31,76 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.player.EqualizerBars
 import com.mohamedadel.mytube.util.formatDuration
-import com.mohamedadel.mytube.util.formatViews
 
-// Result row extracted from MainActivity (split step 6, final).
+// YouTube video card (design clone, existing data only):
+// full-bleed 16:9 thumbnail + duration badge, avatar circle (channel initial),
+// 2-line 14sp title, 12sp gray metadata, ⋮ menu (reuses the existing options dialog).
+// onAdd == null hides nothing here: ⋮ always opens the existing long-press menu.
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-// onAdd == null hides the + button entirely: no dead button that promises and does nothing.
 fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: ((VideoItem) -> Unit)? = null, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null) {
     val lctx = LocalContext.current
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) }),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.elevatedCardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
+    val meta = buildString {
+        append(v.channel ?: "")
+        if (v.viewCount != null && v.viewCount > 0) {
+            if (isNotEmpty()) append(" • ")
+            append(lctx.formatViews(v.viewCount))
+        }
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) })
     ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(132.dp, 74.dp)) {
-                AsyncImage(model = v.thumbnail, contentDescription = v.title, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-                // current row: animated equalizer (dances while playing, frozen while paused); others: plain play icon
+        // 16:9 full-bleed thumbnail (edge-to-edge, no rounding — like YouTube)
+        Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
+            AsyncImage(model = v.thumbnail, contentDescription = v.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (isCurrent) {
                 Box(
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.18f)),
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isCurrent) {
-                        EqualizerBars(playing = isPlaying)
-                    } else {
-                        Icon(
-                            Icons.Rounded.PlayArrow,
-                            contentDescription = stringResource(R.string.play),
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                    EqualizerBars(playing = isPlaying)
                 }
-                v.durationSec?.let { dur ->
-                    Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.75f)) {
-                        Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                    }
+            }
+            v.durationSec?.let { dur ->
+                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.8f)) {
+                    Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
+            }
+        }
+        // info row: avatar + title/meta + ⋮
+        Row(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
+            // channel avatar: initial letter circle (no new data — initial from the existing channel name)
+            val initial = (v.channel?.trim()?.firstOrNull()?.uppercase() ?: "♪").toString()
+            Box(
+                modifier = Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(initial, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = v.title ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
-                Text(text = v.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (v.viewCount != null && v.viewCount > 0) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(text = lctx.formatViews(v.viewCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = v.title ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (meta.isNotEmpty()) {
+                    Text(text = meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = onClick) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.cd_play_video), tint = MaterialTheme.colorScheme.primary)
-                }
-                if (onRemove != null || onAdd != null) {
-                    IconButton(onClick = { if (onRemove != null) onRemove(v) else onAdd?.invoke(v) }) {
-                        Icon(
-                            if (onRemove != null) Icons.Rounded.Clear else Icons.Rounded.Add,
-                            contentDescription = if (onRemove != null) stringResource(R.string.cd_remove_history) else stringResource(R.string.cd_add_queue_end),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                IconButton(onClick = { onFav(v) }) {
-                    Icon(
-                        if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = if (isFav) stringResource(R.string.cd_fav_remove) else stringResource(R.string.cd_fav_add),
-                        tint = if (isFav) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            IconButton(onClick = { onLongClick(v) }, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

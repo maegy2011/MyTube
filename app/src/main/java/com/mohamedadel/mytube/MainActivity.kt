@@ -1473,8 +1473,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
                     ) {
                         // results header: count only — "play all" is gone. The working queue is built
                         // explicitly (row + button, long-press) and started from the queue panel.
