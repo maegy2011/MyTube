@@ -439,7 +439,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         subTrackIdx = matchSubIdx()
     }
     // (refreshTrending lives after `scope` below — Kotlin locals must precede use.)
-    LaunchedEffect(player, prefSubLang, prefAudioLang) { applyLangPrefs() }
+    LaunchedEffect(player, prefSubLang, prefAudioLang, prefQuality) { applyLangPrefs() }
     // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
     fun setFullscreen(full: Boolean) {
@@ -618,6 +618,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             p.prepare()
         }
         p.playWhenReady = resume
+        applyLangPrefs() // re-assert caps/roles after every media set (quality switch)
     }
 
     // Auto-switch to audio-only (lowest quality) when app goes to background / screen locked
