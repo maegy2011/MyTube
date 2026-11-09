@@ -1380,7 +1380,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
         // Legal lines + version live at the very bottom in small type.
-        Box(Modifier.fillMaxSize().background(Color(0xFFD5392E)), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(com.mohamedadel.mytube.ui.theme.SplashScrim), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 androidx.compose.ui.res.painterResource(id = com.mohamedadel.mytube.R.drawable.ic_launcher_foreground)?.let { p ->
                     Icon(painter = p, contentDescription = "MyTube", tint = Color.White, modifier = Modifier.size(96.dp))
@@ -2138,9 +2138,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     )
                 }
                 loading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    }
+                    com.mohamedadel.mytube.ui.results.VideoListSkeleton(count = 5)
                 }
                 results.isEmpty() && query.isBlank() -> {
                     HomeEmptyState(
@@ -2217,7 +2215,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                     Text(
                                         if (searchCorrected) stringResource(R.string.did_you_mean_showing_fmt, searchSuggestion!!) else stringResource(R.string.did_you_mean_fmt, searchSuggestion!!),
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.tertiary
                                     )
                                 }
                             }

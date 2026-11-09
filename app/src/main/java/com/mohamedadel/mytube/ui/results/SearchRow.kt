@@ -107,7 +107,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     text = v.title ?: "",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    color = if (isCurrent) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -117,7 +117,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 // Phase 5: offline-pin badge (📌 quality • size) or in-progress state
                 if (pinning) {
                     Spacer(Modifier.height(4.dp))
-                    Text(text = stringResource(R.string.pinning), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                    Text(text = stringResource(R.string.pinning), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1)
                 } else if (!pinBadge.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(text = pinBadge, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)

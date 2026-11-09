@@ -19,7 +19,7 @@ fun myTubeLogo(): ImageVector = ImageVector.Builder(
         pathData = PathParser().parsePathString(
             "M6,2 h12 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 H6 a4,4 0 0 1 -4,-4 V6 a4,4 0 0 1 4,-4 z"
         ).toNodes(),
-        fill = SolidColor(Color(0xFFE53935))
+        fill = SolidColor(com.mohamedadel.mytube.ui.theme.BrandMark)
     )
     addPath(
         pathData = PathParser().parsePathString("M10,8.5 v7 l6,-3.5 z").toNodes(),

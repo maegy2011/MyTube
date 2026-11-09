@@ -653,7 +653,7 @@ fun PlayerArea(
                     Text(
                         stringResource(R.string.queue_now_fmt, playModeLabel) + if (shuffleOn) lctx.getString(R.string.queue_shuffle_suffix) else "",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
                 }

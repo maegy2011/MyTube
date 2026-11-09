@@ -125,7 +125,7 @@ fun HistoryScreen(
                                     }
                                 ),
                                 style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.tertiary,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                         }

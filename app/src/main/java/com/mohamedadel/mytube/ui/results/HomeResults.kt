@@ -82,9 +82,7 @@ fun HomeEmptyState(
         }
         // every tab is a real kiosk list (or labeled region-search for news); empty = honest fallback chips
         if (trendingLoading) {
-            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            }
+            VideoListSkeleton(count = 4)
         } else if (trendingItems.isEmpty()) {
             Text(
                 if (TREND_TABS.getOrNull(trendTab)?.third == true) stringResource(R.string.news_empty)

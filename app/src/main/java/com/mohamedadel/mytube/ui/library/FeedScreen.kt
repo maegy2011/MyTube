@@ -98,16 +98,14 @@ fun FeedScreen(
             ) {
                 Text(
                     stringResource(R.string.feed_filter_fmt, filterChannelName ?: filterChannelUrl),
-                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
         }
         Box(modifier = Modifier.fillMaxSize().weight(1f)) {
             when {
-                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
+                loading -> com.mohamedadel.mytube.ui.results.VideoListSkeleton(count = 4)
                 shown.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
                         Text(stringResource(R.string.feed_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
