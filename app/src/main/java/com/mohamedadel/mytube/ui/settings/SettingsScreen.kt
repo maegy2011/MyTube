@@ -108,6 +108,14 @@ fun SettingsScreen(
     onSubBold: (Boolean) -> Unit = {},
     preferOriginal: Boolean = false,
     onPreferOriginal: (Boolean) -> Unit = {},
+    subRole: String = "subtitle",
+    onSubRole: (String) -> Unit = {},
+    hideForced: Boolean = false,
+    onHideForced: (Boolean) -> Unit = {},
+    undetermined: Boolean = true,
+    onUndetermined: (Boolean) -> Unit = {},
+    audioRole: String = "auto",
+    onAudioRole: (String) -> Unit = {},
     speed: Float = 1.0f,
     onSpeed: (Float) -> Unit = {},
     pitch: Float = 1.0f,
@@ -312,6 +320,27 @@ fun SettingsScreen(
                 Text(stringResource(R.string.sub_bold), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
+        items(listOf("subtitle", "caption", "descriptive", "system")) { code ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSubRole(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (subRole == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subRole == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(when (code) { "caption" -> R.string.sub_role_caption; "descriptive" -> R.string.sub_role_descriptive; "system" -> R.string.sub_role_system; else -> R.string.sub_role_subtitle }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onHideForced(!hideForced) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (hideForced) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (hideForced) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.hide_forced_subs), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onUndetermined(!undetermined) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (undetermined) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (undetermined) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.undetermined_lang), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
         item {
             Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.audio_studio_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
@@ -321,6 +350,13 @@ fun SettingsScreen(
                 Icon(if (preferOriginal) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (preferOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(12.dp))
                 Text(stringResource(R.string.prefer_original), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        items(listOf("auto", "dubbed", "original", "commentary")) { code ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onAudioRole(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (audioRole == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (audioRole == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(when (code) { "dubbed" -> R.string.audio_role_dubbed; "original" -> R.string.audio_role_original; "commentary" -> R.string.audio_role_commentary; else -> R.string.audio_role_auto }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         items(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)) { v ->

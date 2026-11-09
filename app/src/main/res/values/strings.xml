@@ -245,4 +245,14 @@
     <string name="filter_playlists">قوائم</string>
     <string name="did_you_mean_fmt">هل تقصد: %1$s؟</string>
     <string name="did_you_mean_showing_fmt">عرض نتائج %1$s</string>
+    <string name="sub_role_subtitle">ترجمة الحوار</string>
+    <string name="sub_role_caption">ترجمة CC لضعاف السمع</string>
+    <string name="sub_role_descriptive">الوصف الصوتي للمكفوفين</string>
+    <string name="sub_role_system">اتبع النظام</string>
+    <string name="hide_forced_subs">إخفاء الترجمة المحروقة</string>
+    <string name="undetermined_lang">السماح بمسارات بلا لغة</string>
+    <string name="audio_role_auto">تلقائي</string>
+    <string name="audio_role_dubbed">مدبلج</string>
+    <string name="audio_role_original">أصلي</string>
+    <string name="audio_role_commentary">تعليق المخرج</string>
 </resources>

@@ -301,6 +301,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefSubBold by remember { mutableStateOf(false) }
     // audio studio: prefer original + playback speed/pitch
     var prefPreferOriginal by remember { mutableStateOf(false) }
+    // B2 precise track roles: sub role (subtitle/caption/descriptive/system) + forced-sub kill + undetermined
+    var prefSubRole by remember { mutableStateOf("subtitle") }
+    var prefHideForced by remember { mutableStateOf(false) }
+    var prefUndetermined by remember { mutableStateOf(true) }
+    var prefAudioRole by remember { mutableStateOf("auto") }
     var prefSpeed by remember { mutableStateOf(1.0f) }
     var prefPitch by remember { mutableStateOf(1.0f) }
     // standalone search screen (YouTube-style) + trending tabs
@@ -345,6 +350,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefSubSize = prefs.getString("pref_sub_size", "m") ?: "m"
             prefSubBold = prefs.getBoolean("pref_sub_bold", false)
             prefPreferOriginal = prefs.getBoolean("pref_prefer_original", false)
+            prefSubRole = prefs.getString("pref_sub_role", "subtitle") ?: "subtitle"
+            prefHideForced = prefs.getBoolean("pref_hide_forced", false)
+            prefUndetermined = prefs.getBoolean("pref_undetermined", true)
+            prefAudioRole = prefs.getString("pref_audio_role", "auto") ?: "auto"
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
             prefPitch = prefs.getFloat("pref_pitch", 1.0f)
         } catch (_: Exception) { }
@@ -398,8 +407,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 b.setPreferredTextLanguage(null)
             } else {
                 b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                b.setPreferredTextLanguage(resolveLang(prefSubLang))
+                if (prefSubRole == "system") {
+                    b.setPreferredTextLanguageAndRoleFlagsToCaptioningManagerSettings(ctx)
+                } else {
+                    b.setPreferredTextLanguage(resolveLang(prefSubLang))
+                    b.setPreferredTextRoleFlags(when (prefSubRole) {
+                        "caption" -> C.ROLE_FLAG_CAPTION
+                        "descriptive" -> C.ROLE_FLAG_DESCRIBES_VIDEO
+                        else -> C.ROLE_FLAG_SUBTITLE
+                    })
+                }
             }
+            if (prefHideForced) b.setIgnoredTextSelectionFlags(C.SELECTION_FLAG_FORCED)
+            b.setSelectUndeterminedTextLanguage(prefUndetermined)
+            b.setPreferredAudioRoleFlags(when (prefAudioRole) {
+                "dubbed" -> C.ROLE_FLAG_DUB
+                "original" -> C.ROLE_FLAG_MAIN
+                "commentary" -> C.ROLE_FLAG_COMMENTARY
+                else -> 0
+            })
             // B1 real data cap: saver = 480p + bitrate ceilings (applies to adaptive + fixed picks)
             if (prefQuality == "saver") {
                 b.setMaxVideoSize(854, 480)
@@ -439,7 +465,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         subTrackIdx = matchSubIdx()
     }
     // (refreshTrending lives after `scope` below — Kotlin locals must precede use.)
-    LaunchedEffect(player, prefSubLang, prefAudioLang, prefQuality) { applyLangPrefs() }
+    LaunchedEffect(player, prefSubLang, prefAudioLang, prefQuality, prefSubRole, prefHideForced, prefUndetermined, prefAudioRole) { applyLangPrefs() }
     // TRUE fullscreen: immersive mode (hide status+navigation, transient reveal by swipe)
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
     fun setFullscreen(full: Boolean) {
@@ -1505,6 +1531,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onSubBold = { v -> prefSubBold = v; try { prefs.edit().putBoolean("pref_sub_bold", v).apply() } catch (_: Exception) { } },
                         preferOriginal = prefPreferOriginal,
                         onPreferOriginal = { v -> prefPreferOriginal = v; try { prefs.edit().putBoolean("pref_prefer_original", v).apply() } catch (_: Exception) { }; audioTrackIdx = pickAudioIdx() },
+                        subRole = prefSubRole,
+                        onSubRole = { v -> prefSubRole = v; try { prefs.edit().putString("pref_sub_role", v).apply() } catch (_: Exception) { } },
+                        hideForced = prefHideForced,
+                        onHideForced = { v -> prefHideForced = v; try { prefs.edit().putBoolean("pref_hide_forced", v).apply() } catch (_: Exception) { } },
+                        undetermined = prefUndetermined,
+                        onUndetermined = { v -> prefUndetermined = v; try { prefs.edit().putBoolean("pref_undetermined", v).apply() } catch (_: Exception) { } },
+                        audioRole = prefAudioRole,
+                        onAudioRole = { v -> prefAudioRole = v; try { prefs.edit().putString("pref_audio_role", v).apply() } catch (_: Exception) { } },
                         speed = prefSpeed,
                         onSpeed = { v -> prefSpeed = v; try { prefs.edit().putFloat("pref_speed", v).apply() } catch (_: Exception) { } },
                         pitch = prefPitch,

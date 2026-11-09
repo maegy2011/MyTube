@@ -245,4 +245,14 @@
     <string name="filter_playlists">Playlists</string>
     <string name="did_you_mean_fmt">Did you mean: %1$s?</string>
     <string name="did_you_mean_showing_fmt">Showing results for %1$s</string>
+    <string name="sub_role_subtitle">Dialogue subtitles</string>
+    <string name="sub_role_caption">Closed captions (CC)</string>
+    <string name="sub_role_descriptive">Audio description track</string>
+    <string name="sub_role_system">Follow system</string>
+    <string name="hide_forced_subs">Hide forced/burnt-in subtitles</string>
+    <string name="undetermined_lang">Allow undetermined-language tracks</string>
+    <string name="audio_role_auto">Automatic</string>
+    <string name="audio_role_dubbed">Dubbed</string>
+    <string name="audio_role_original">Original</string>
+    <string name="audio_role_commentary">Director’s commentary</string>
 </resources>
