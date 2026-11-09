@@ -42,6 +42,12 @@ fun langLabel(code: String, deviceTag: String?): String = when (code) {
     else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second ?: code
 }
 
+val PLAYMODE_OPTIONS = listOf(
+    "order" to "بالترتيب (يقف عند نهاية القائمة)",
+    "repeatAll" to "تكرار الكل (يعيد القائمة من البداية)",
+    "repeatOne" to "تكرار واحد (يعيد نفس الفيديو)"
+)
+
 val THEME_OPTIONS = listOf(
     "dark" to "داكن (الافتراضي)",
     "light" to "فاتح (مريح لكبار السن)",
@@ -71,7 +77,9 @@ fun SettingsScreen(
     onCountry: (String) -> Unit,
     onQuality: (String) -> Unit,
     theme: String,
-    onTheme: (String) -> Unit
+    onTheme: (String) -> Unit,
+    playMode: String,
+    onPlayMode: (String) -> Unit
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     LazyColumn(
@@ -175,6 +183,25 @@ fun SettingsScreen(
                     if (quality == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
                     contentDescription = null,
                     tint = if (quality == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text("وضع التشغيل (للقوائم — الفيديو المفرد لا يتبعه شيء تلقائيًا)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(PLAYMODE_OPTIONS) { (code, label) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onPlayMode(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (playMode == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (playMode == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))

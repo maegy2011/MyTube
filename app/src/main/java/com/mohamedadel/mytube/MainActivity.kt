@@ -1225,6 +1225,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
                             toast("تُطبق الجودة على الفيديو التالي")
                         },
+                        playMode = playMode,
+                        onPlayMode = { v ->
+                            setMode(v)
+                            toast("وضع التشغيل: " + modeLabel(v))
+                        },
                         theme = prefTheme,
                         onTheme = { v ->
                             prefTheme = v
