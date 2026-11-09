@@ -400,6 +400,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 b.setPreferredTextLanguage(resolveLang(prefSubLang))
             }
+            // B1 real data cap: saver = 480p + bitrate ceilings (applies to adaptive + fixed picks)
+            if (prefQuality == "saver") {
+                b.setMaxVideoSize(854, 480)
+                b.setMaxVideoBitrate(1_000_000)
+                b.setMaxAudioBitrate(64_000)
+            } else {
+                b.setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+                b.setMaxVideoBitrate(Int.MAX_VALUE)
+                b.setMaxAudioBitrate(Int.MAX_VALUE)
+            }
             p.trackSelectionParameters = b.build()
         } catch (_: Exception) { }
     }
