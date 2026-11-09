@@ -91,6 +91,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.datasource.DefaultDataSource
@@ -236,6 +239,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var streamData by remember { mutableStateOf<StreamData?>(null) }
     // selected dubbed/original audio track (auto-matched to the audio pref once prefs load below)
     var audioTrackIdx by remember { mutableStateOf(0) }
+    var externalAudioHook by remember { mutableStateOf<Player.Listener?>(null) }
     // selected subtitle track: -1 = off (real disable), else index into streamData.subtitles (auto-matched to sub prefs)
     var subTrackIdx by remember { mutableStateOf(-1) }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
@@ -853,7 +857,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
         val resume = (autoplay && wasPlaying) || forceStart
         p.playWhenReady = false
-        if (q == "audio-only (default)" || isMuxed || selAudio == null) {
+        // Fix: muxed files bake their own audio, so a picked track was silently ignored there.
+        // Merged rebuild (muxed video + picked audio) + one-shot disable of the baked audio group.
+        val needExternalAudio = isMuxed && selAudio != null && audioTrackIdx != 0 && q != "audio-only (default)"
+        if (q == "audio-only (default)" || selAudio == null || (isMuxed && !needExternalAudio)) {
             p.setMediaItem(mediaItem)
             p.prepare()
         } else {
@@ -868,6 +875,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val merged = MergingMediaSource(videoSource, audioSource)
             p.setMediaSource(merged)
             p.prepare()
+            try { externalAudioHook?.let { p.removeListener(it) } } catch (_: Exception) { }
+            externalAudioHook = null
+            if (needExternalAudio) {
+                // MergingMediaSource concatenates groups in source order: [video, muxed-audio, picked-audio].
+                // Disabling the muxed-audio group leaves exactly the picked track playing.
+                p.addListener((object : Player.Listener {
+                    override fun onTracksChanged(tracks: Tracks) {
+                        try { p.removeListener(this) } catch (_: Exception) { }
+                        try {
+                            val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                            if (audioGroups.size >= 2) {
+                                val ts = p.trackSelector as? DefaultTrackSelector ?: return
+                                ts.setParameters(ts.buildUponParameters().setOverrideForType(
+                                    TrackSelectionOverride(audioGroups[0].mediaTrackGroup, emptyList())
+                                ))
+                            }
+                        } catch (_: Exception) { }
+                    }
+                }).also { externalAudioHook = it })
+            }
         }
         p.playWhenReady = resume
         applyLangPrefs() // re-assert caps/roles after every media set (quality switch)
