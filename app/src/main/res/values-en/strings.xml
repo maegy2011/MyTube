@@ -276,4 +276,15 @@
     <string name="clear_cache_fmt">This deletes %1$s of cached audio/video. Pinned (travel) files are NOT affected.</string>
     <string name="toast_cache_cleared">Media cache cleared</string>
     <string name="toast_cache_max">Cache limit applied to new playback</string>
+    <string name="pill_pin">Pin</string>
+    <string name="pin_action">Pin for offline</string>
+    <string name="unpin_action">Remove pin</string>
+    <string name="pinning">Pinning…</string>
+    <string name="pin_title">Pin video?</string>
+    <string name="pin_confirm_fmt">%1$s with current audio/subtitle — about %2$s. Plays with zero data afterwards.</string>
+    <string name="pin_size_fmt">%.1f MB</string>
+    <string name="pin_size_unknown">unknown size</string>
+    <string name="toast_pin_done">Pinned for offline</string>
+    <string name="toast_pin_fail">Pin failed — check connection</string>
+    <string name="toast_unpinned">Pin removed</string>
 </resources>

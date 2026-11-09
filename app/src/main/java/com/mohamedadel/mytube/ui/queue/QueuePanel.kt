@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
@@ -117,6 +118,9 @@ fun VideoOptionsDialog(
     onAddToPlaylist: () -> Unit,
     onSubscribe: (() -> Unit)? = null,
     isSubscribed: Boolean = false,
+    onPin: (() -> Unit)? = null,
+    isPinned: Boolean = false,
+    isPinning: Boolean = false,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -145,6 +149,28 @@ fun VideoOptionsDialog(
                         Spacer(Modifier.width(12.dp))
                         Text(
                             stringResource(if (isSubscribed) R.string.unsubscribe else R.string.subscribe),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                if (onPin != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !isPinning, onClick = onPin).padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isPinned) Icons.Rounded.PushPin else Icons.Rounded.PushPin,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            when {
+                                isPinning -> stringResource(R.string.pinning)
+                                isPinned -> stringResource(R.string.unpin_action)
+                                else -> stringResource(R.string.pin_action)
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.ThumbUp
@@ -164,6 +165,9 @@ fun PlayerArea(
     onCommentsClick: () -> Unit = {},
     isSubscribed: Boolean = false,
     onSubscribe: () -> Unit = {},
+    isPinned: Boolean = false,
+    isPinning: Boolean = false,
+    onPin: () -> Unit = {},
     category: String? = null,
     tags: List<String> = emptyList(),
     storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList()
@@ -603,6 +607,12 @@ fun PlayerArea(
                         label = stringResource(R.string.pill_save),
                         selected = false,
                         onClick = onSave
+                    )
+                    ActionPill(
+                        icon = { Icon(Icons.Rounded.PushPin, contentDescription = null, tint = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                        label = if (isPinning) stringResource(R.string.pinning) else stringResource(R.string.pill_pin),
+                        selected = isPinned,
+                        onClick = onPin
                     )
                     ActionPill(
                         icon = { Icon(Icons.Rounded.QueueMusic, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
