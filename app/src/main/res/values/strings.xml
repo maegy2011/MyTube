@@ -97,7 +97,6 @@
     <string name="playlist_new_title">قائمة تشغيل جديدة</string>
     <string name="playlist_new">قائمة جديدة</string>
     <string name="nav_playlists">قوائم التشغيل</string>
-    <string name="pl_drawer_fmt">قوائم التشغيل (${playlists.size})</string>
     <string name="cd_mute">كتم الصوت</string>
     <string name="hist_empty_hint">كل فيديو تشغّله يظهر هنا</string>
     <string name="move_down_short">لأسفل</string>
