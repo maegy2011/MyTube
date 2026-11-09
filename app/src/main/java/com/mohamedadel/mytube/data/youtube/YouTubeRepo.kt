@@ -441,6 +441,34 @@ object YouTubeRepo {
         }
     }
 
+    // Title localization: video title rendered in the video's FIRST subtitle language.
+    // Uses the free Google Translate endpoint (no key); auto-detects source and returns
+    // the original when it already matches the target. In-memory cache, silent on failure.
+    private val titleCache = java.util.Collections.synchronizedMap(mutableMapOf<String, String>())
+    suspend fun localizedTitle(title: String?, targetLang: String?): String? = withContext(Dispatchers.IO) {
+        val t = targetLang?.substringBefore("-")?.substringBefore("_")?.lowercase()?.takeIf { it.length in 2..3 }
+        if (title.isNullOrBlank() || t.isNullOrBlank()) return@withContext null
+        val key = "$t|$title"
+        titleCache[key]?.let { return@withContext it }
+        try {
+            val q = java.net.URLEncoder.encode(title.take(500), "UTF-8")
+            val req = okhttp3.Request.Builder()
+                .url("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$t&dt=t&q=$q")
+                .header("User-Agent", "Mozilla/5.0").build()
+            val body = client.newCall(req).execute().use { it.body?.string() } ?: return@withContext null
+            val arr = org.json.JSONArray(body)
+            val segs = arr.optJSONArray(0) ?: return@withContext null
+            val sb = StringBuilder()
+            for (i in 0 until segs.length()) sb.append(segs.optJSONArray(i)?.optString(0) ?: "")
+            val out = sb.toString().takeIf { it.isNotBlank() } ?: return@withContext null
+            val detected = arr.optString(2, "").lowercase()
+            val final = if (detected == t || detected.startsWith("$t-")) title else out
+            if (titleCache.size > 200) titleCache.clear()
+            titleCache[key] = final
+            final
+        } catch (_: Exception) { null }
+    }
+
     suspend fun comments(videoUrl: String?): List<CommentItem> = CommentPager.first(videoUrl)
 
 }

@@ -612,6 +612,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // no remove needed for composition lifetime
     }
     val scope = rememberCoroutineScope()
+    // Title localization: displayed title follows the video's FIRST subtitle language.
+    var translatedTitle by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(playing?.url, streamData?.subtitles) {
+        translatedTitle = null
+        try {
+            val sd = streamData
+            val target = sd?.subtitles?.firstOrNull()?.langTag
+            val t = playing?.title
+            if (!t.isNullOrBlank() && !target.isNullOrBlank()) {
+                translatedTitle = YouTubeRepo.localizedTitle(t, target)?.takeIf { it != t }
+            }
+        } catch (_: Exception) { }
+    }
     // comments pagination: first page + page-walk with single-flight guard
     var commentsHasMore by remember { mutableStateOf(false) }
     var commentsLoadingMore by remember { mutableStateOf(false) }
@@ -1528,6 +1541,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (!isInPip && !isFullscreen && playing != null && !playerExpanded) {
                 MiniPlayer(
                     video = playing!!,
+                    titleOverride = translatedTitle,
                     isPlaying = isPlaying,
                     positionMs = playerPositionMs,
                     durationMs = playerDurationMs,
@@ -1666,6 +1680,178 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 )
             }
+
+            }
+
+            val cur = playing
+            if (cur != null && (playerExpanded || isFullscreen)) {
+                PlayerArea(
+                    video = cur,
+                    player = player,
+                    quality = quality,
+                    qualities = qualityList,
+                    isPlaying = isPlaying,
+                    playerLoading = playerLoading,
+                    positionMs = playerPositionMs,
+                    durationMs = playerDurationMs,
+                    bufferedPct = playerBufferedPct,
+                    errorMsg = playerError,
+                    onQuality = { q ->
+                        quality = q
+                        // user explicitly picked quality: resume only if it was already playing
+                        streamData?.let { applyQuality(q, it, player, autoplay = true, local = playingPinned) }
+                    },
+                    onTogglePlay = {
+                        playerError = null
+                        if (player?.isPlaying == true) player?.pause() else player?.play()
+                    },
+                    onSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
+                    onRetry = {
+                        playerError = null
+                        streamData?.let { applyQuality(quality, it, player, forceStart = true, local = playingPinned) }
+                    },
+                    queueOn = autoAdvance,
+                    playMode = playMode,
+                    playModeLabel = modeLabel(playMode),
+                    shuffleOn = shuffleOn,
+                    onCycleMode = { cycleMode() },
+                    onToggleShuffle = { setShuffle(!shuffleOn) },
+                    onQueue = { showQueue = true },
+                    onClose = { closePlayer() },
+                    onCollapse = { playerExpanded = false },
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = { setFullscreen(!isFullscreen) },
+                    onSetMode = { setMode(it) },
+                    onSetShuffle = { setShuffle(it) },
+                    subtitles = (streamData?.subtitles ?: emptyList()).let { if (prefSubHideAuto) it.filter { t -> !t.auto } else it },
+                    subIdx = subTrackIdx,
+                    onSubtitleTrack = { i ->
+                        // manual pick becomes the saved subtitle preference (applies to all future videos)
+                        try {
+                            if (i < 0) {
+                                prefSubLang = "off"
+                                prefs.edit().putString("pref_sub_lang", "off").apply()
+                                subTrackIdx = -1
+                                toast(ctx.getString(R.string.toast_sub_off))
+                            } else {
+                                val t = streamData?.subtitles?.getOrNull(i)
+                                val tag = t?.langTag?.substringBefore("-")?.takeIf { it.isNotBlank() }
+                                val code = tag?.let { c -> if (LANG_OPTIONS.any { o -> o.first == c }) c else "auto" } ?: "auto"
+                                prefSubLang = code
+                                prefs.edit().putString("pref_sub_lang", code).apply()
+                                subTrackIdx = i
+                                toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
+                            }
+                        } catch (_: Exception) { toast(ctx.getString(R.string.toast_sub_fail)) }
+                        applyLangPrefs()
+                    },
+                    audioTracks = streamData?.audioTracks ?: emptyList(),
+                    audioIdx = audioTrackIdx,
+                    onAudioTrack = { i ->
+                        audioTrackIdx = i
+                        // manual pick becomes the saved preference (applies to all future videos)
+                        try {
+                            val t = streamData?.audioTracks?.getOrNull(i)
+                            val tag = t?.localeTag?.substringBefore("-") ?: t?.name
+                            if (!tag.isNullOrBlank()) {
+                                prefAudioLang = tag
+                                prefs.edit().putString("pref_audio_lang", tag).apply()
+                            }
+                        } catch (_: Exception) { }
+                        streamData?.let { sd -> applyQuality(quality, sd, player, autoplay = true) }
+                    },
+                    onNext = { playNextInQueue() },
+                    onPrev = { playPrevInQueue() },
+                    onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
+                    onEnterPip = onEnterPip,
+                    sleepLabel = sleepLeft.ifBlank { null },
+                    onSleepClick = { showSleep = true },
+                    isFav = cur.favKey() in favoriteSet,
+                    onToggleFav = { toggleFavorite(cur) },
+                    onSave = { pickFor = cur },
+                    likeCount = streamData?.likeCount,
+                    description = streamData?.description,
+                    chapters = streamData?.chapters ?: emptyList(),
+                    related = streamData?.related ?: emptyList(),
+                    onChapterSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
+                    onRelatedPlay = { rv -> playVideo(rv) },
+                    isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
+                    isPinned = pinKeys.contains(cur.favKey()),
+                    isPinning = pinningKeys.contains(cur.favKey()),
+                    onPin = {
+                        if (pinKeys.contains(cur.favKey())) doUnpin(cur.favKey())
+                        else requestPin(cur, streamData, quality, audioTrackIdx, subTrackIdx)
+                    },
+                    onSubscribe = { toggleSubscription(streamData?.channelUrl, cur.channel, channelDetail?.avatar) },
+                    onChannelClick = { openChannel(streamData?.channelUrl) },
+                    onCommentsClick = {
+                        showComments = true
+                        commentsLoading = true
+                        val url = playing?.url
+                        scope.launch {
+                            try {
+                                commentList = YouTubeRepo.comments(url)
+                                commentsHasMore = YouTubeRepo.CommentPager.hasMore
+                            } catch (_: Exception) { }
+                            commentsLoading = false
+                        }
+                    },
+                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold),
+                    category = streamData?.category,
+                    tags = streamData?.tags ?: emptyList(),
+                    titleOverride = translatedTitle,
+                    onTagClick = { q -> try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) },
+                    storyboards = streamData?.storyboards ?: emptyList()
+                )
+                // comments sheet (real CommentsExtractor, pageless first 30)
+                if (showComments) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showComments = false },
+                        title = { Text(stringResource(R.string.pill_comments)) },
+                        text = {
+                            if (commentsLoading) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                }
+                            } else if (commentList.isEmpty()) {
+                                Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    items(commentList, key = { c -> (c.author ?: "") + "|" + (c.text?.take(24) ?: "") + "|" + (c.date ?: "") }) { c ->
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            if (!c.avatar.isNullOrBlank()) {
+                                                AsyncImage(model = c.avatar, contentDescription = c.author, modifier = Modifier.size(32.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    (c.author ?: "") + (if (!c.date.isNullOrBlank()) " • " + c.date else "") + (if (c.likes > 0) " • " + ctx.formatViews(c.likes.toLong()) else ""),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(c.text ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                                            }
+                                        }
+                                    }
+                                    // page-walk: reaching the end auto-fetches the next comments page
+                                    if (commentsHasMore || commentsLoadingMore) {
+                                        item {
+                                            androidx.compose.runtime.LaunchedEffect(commentList.size) { loadMoreComments() }
+                                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
+                                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = { },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { showComments = false }) { Text(stringResource(R.string.close)) } }
+                    )
+                }
+            }
+
+            if (!isFullscreen) {
 
             when {
                 // Fix 3: full channel screen with tabs (header + Videos/About)

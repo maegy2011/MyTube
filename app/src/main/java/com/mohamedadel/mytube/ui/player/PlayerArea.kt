@@ -177,6 +177,7 @@ fun PlayerArea(
     category: String? = null,
     tags: List<String> = emptyList(),
     onTagClick: (String) -> Unit = {},
+    titleOverride: String? = null,
     storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList()
 ) {
     val lctx = LocalContext.current
@@ -559,7 +560,7 @@ fun PlayerArea(
             Column(modifier = Modifier.padding(bottom = 8.dp)) {
                 // title (16sp semi-bold, 2 lines) + views meta (12sp gray)
                 Text(
-                    text = video.title ?: "",
+                    text = titleOverride ?: video.title ?: "",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,

@@ -82,6 +82,7 @@ fun MiniPlayer(
     onClose: () -> Unit = {},
     onNext: (() -> Unit)? = null,
     onPrev: (() -> Unit)? = null,
+    titleOverride: String? = null,
     hasNext: Boolean = false,
     hasPrev: Boolean = false
 ) {
@@ -115,7 +116,7 @@ fun MiniPlayer(
                 AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.size(48.dp, 32.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = video.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = titleOverride ?: video.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(text = video.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 EqualizerBars(playing = isPlaying)
