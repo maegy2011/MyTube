@@ -546,7 +546,7 @@ fun PlayerArea(
                 )
                 val meta = buildString {
                     video.viewCount?.takeIf { it > 0 }?.let { append(lctx.formatViews(it)) }
-                    video.durationSec?.let { if (isNotEmpty()) append(" • "); append(formatDuration(it)) }
+                    video.durationSec?.takeIf { it > 0 }?.let { if (isNotEmpty()) append(" • "); append(formatDuration(it)) }
                 }
                 if (meta.isNotEmpty()) {
                     Spacer(Modifier.height(2.dp))

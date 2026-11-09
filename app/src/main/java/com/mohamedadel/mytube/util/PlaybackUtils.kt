@@ -96,8 +96,9 @@ fun formatMs(ms: Long): String {
 }
 
 fun formatDuration(sec: Long): String {
-    val m = sec / 60
-    val s = sec % 60
+    val safe = sec.coerceAtLeast(0)
+    val m = safe / 60
+    val s = safe % 60
     return if (m >= 60) {
         val h = m / 60
         String.format("%d:%02d:%02d", h, m % 60, s)
