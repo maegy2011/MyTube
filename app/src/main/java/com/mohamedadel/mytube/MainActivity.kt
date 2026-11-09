@@ -133,6 +133,7 @@ import com.mohamedadel.mytube.data.local.MIGRATION_1_2
 import com.mohamedadel.mytube.data.local.MIGRATION_2_3
 import com.mohamedadel.mytube.data.local.MIGRATION_3_4
 import com.mohamedadel.mytube.data.local.MIGRATION_4_5
+import com.mohamedadel.mytube.data.local.MIGRATION_5_6
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
@@ -264,7 +265,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }

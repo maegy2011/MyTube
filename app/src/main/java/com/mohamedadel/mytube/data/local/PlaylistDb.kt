@@ -91,6 +91,25 @@ data class SubscriptionEntity(
     val addedAt: Long = System.currentTimeMillis()
 )
 
+// Offline pins ("download for offline mode"): faithful snapshot descriptor.
+// Bytes live in filesDir/travel/<sha256(videoKey)>/ (video.mp4/audio.m4a/sub.vtt/meta.json).
+// This row is the index: size + labels for the storage UI, badges and filter tabs.
+@Entity(tableName = "pins", indices = [Index(value = ["videoKey"], unique = true)])
+data class PinEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val videoKey: String,
+    val videoId: String?,
+    val title: String?,
+    val channel: String?,
+    val url: String?,
+    val kind: String = "audio", // "audio" | "video"
+    val quality: String?,
+    val audioTag: String?,
+    val subTag: String?,
+    val sizeBytes: Long = 0,
+    val pinnedAt: Long = System.currentTimeMillis()
+)
+
 // Playlist row + item count for the management screen.
 data class PlaylistWithCount(
     val id: Long,
@@ -196,9 +215,31 @@ interface PlaylistDao {
 
     @Query("DELETE FROM subscriptions WHERE channelUrl = :url")
     suspend fun deleteSubscription(url: String)
+
+    // ---- Offline pins ----
+    @Query("SELECT * FROM pins ORDER BY pinnedAt DESC")
+    fun observePins(): Flow<List<PinEntity>>
+
+    @Query("SELECT videoKey FROM pins")
+    fun observePinKeys(): Flow<List<String>>
+
+    @Query("SELECT COUNT(*) FROM pins WHERE videoKey = :key")
+    suspend fun pinCount(key: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertPin(p: PinEntity): Long
+
+    @Query("DELETE FROM pins WHERE videoKey = :key")
+    suspend fun deletePin(key: String)
+
+    @Query("DELETE FROM pins")
+    suspend fun clearPins()
+
+    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM pins")
+    suspend fun pinsTotalSize(): Long
 }
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class], version = 5, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class], version = 6, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -224,6 +265,14 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, channelUrl TEXT NOT NULL, name TEXT, avatar TEXT, addedAt INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_subscriptions_channelUrl ON subscriptions (channelUrl)")
+    }
+}
+
+// v5 -> v6: offline pins index (non-destructive; bytes live in filesDir/travel/).
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS pins (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, videoKey TEXT NOT NULL, videoId TEXT, title TEXT, channel TEXT, url TEXT, kind TEXT NOT NULL DEFAULT 'audio', quality TEXT, audioTag TEXT, subTag TEXT, sizeBytes INTEGER NOT NULL DEFAULT 0, pinnedAt INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_pins_videoKey ON pins (videoKey)")
     }
 }
 
