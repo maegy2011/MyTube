@@ -265,4 +265,6 @@
     <string name="feed_title">Subscription feed</string>
     <string name="feed_refresh">Refresh</string>
     <string name="feed_empty">No subscriptions yet — subscribe from a channel page or import a file.</string>
+    <string name="skip_silence">Skip silence (rebuilds playback)</string>
+    <string name="toast_skip_restart">Playback restarts with the new setting</string>
 </resources>

@@ -309,6 +309,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefHideForced by remember { mutableStateOf(false) }
     var prefUndetermined by remember { mutableStateOf(true) }
     var prefAudioRole by remember { mutableStateOf("auto") }
+    // B3 silence skipping (ExoPlayer SilenceSkippingAudioProcessor via custom RenderersFactory)
+    var prefSkipSilence by remember { mutableStateOf(false) }
     var prefSpeed by remember { mutableStateOf(1.0f) }
     var prefPitch by remember { mutableStateOf(1.0f) }
     // standalone search screen (YouTube-style) + trending tabs
@@ -360,6 +362,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefHideForced = prefs.getBoolean("pref_hide_forced", false)
             prefUndetermined = prefs.getBoolean("pref_undetermined", true)
             prefAudioRole = prefs.getString("pref_audio_role", "auto") ?: "auto"
+            prefSkipSilence = prefs.getBoolean("pref_skip_silence", false)
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
             prefPitch = prefs.getFloat("pref_pitch", 1.0f)
         } catch (_: Exception) { }
@@ -1625,6 +1628,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onUndetermined = { v -> prefUndetermined = v; try { prefs.edit().putBoolean("pref_undetermined", v).apply() } catch (_: Exception) { } },
                         audioRole = prefAudioRole,
                         onAudioRole = { v -> prefAudioRole = v; try { prefs.edit().putString("pref_audio_role", v).apply() } catch (_: Exception) { } },
+                        skipSilence = prefSkipSilence,
+                        onSkipSilence = { v ->
+                            prefSkipSilence = v
+                            try { prefs.edit().putBoolean("pref_skip_silence", v).apply() } catch (_: Exception) { }
+                            toast(ctx.getString(R.string.toast_skip_restart))
+                            try {
+                                // processor chain is fixed at player build: restart service so the new
+                                // RenderersFactory takes effect, then recreate to rebind the new player
+                                ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java))
+                            } catch (_: Exception) { }
+                            try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
+                        },
                         speed = prefSpeed,
                         onSpeed = { v -> prefSpeed = v; try { prefs.edit().putFloat("pref_speed", v).apply() } catch (_: Exception) { } },
                         pitch = prefPitch,

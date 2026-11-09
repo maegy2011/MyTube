@@ -116,6 +116,8 @@ fun SettingsScreen(
     onUndetermined: (Boolean) -> Unit = {},
     audioRole: String = "auto",
     onAudioRole: (String) -> Unit = {},
+    skipSilence: Boolean = false,
+    onSkipSilence: (Boolean) -> Unit = {},
     speed: Float = 1.0f,
     onSpeed: (Float) -> Unit = {},
     pitch: Float = 1.0f,
@@ -357,6 +359,13 @@ fun SettingsScreen(
                 Icon(if (audioRole == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (audioRole == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(12.dp))
                 Text(stringResource(when (code) { "dubbed" -> R.string.audio_role_dubbed; "original" -> R.string.audio_role_original; "commentary" -> R.string.audio_role_commentary; else -> R.string.audio_role_auto }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSkipSilence(!skipSilence) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (skipSilence) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (skipSilence) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.skip_silence), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         items(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)) { v ->

@@ -265,4 +265,6 @@
     <string name="feed_title">خلاصة الاشتراكات</string>
     <string name="feed_refresh">تحديث</string>
     <string name="feed_empty">لا اشتراكات بعد — اشترك من صفحة قناة أو استورد ملفًا.</string>
+    <string name="skip_silence">تخطي الصمت (يعيد بناء التشغيل)</string>
+    <string name="toast_skip_restart">يعاد التشغيل بالإعداد الجديد</string>
 </resources>

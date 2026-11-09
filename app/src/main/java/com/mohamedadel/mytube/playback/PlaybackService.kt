@@ -58,7 +58,11 @@ class PlaybackService : MediaSessionService() {
             .setChannelId(CHANNEL_ID)
             .build()
         setMediaNotificationProvider(provider)
-        val p = ExoPlayer.Builder(this).build()
+        // B3: custom renderers factory so SilenceSkippingAudioProcessor rides the audio sink.
+        // Pref is read at service creation; toggling rebuilds via service restart (recreate route).
+        val skip = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_skip_silence", false) } catch (_: Exception) { false }
+        val rf = SilenceSkippingRenderersFactory(this).apply { skipSilence = skip }
+        val p = ExoPlayer.Builder(this, rf).build()
         player = p
         val activityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
