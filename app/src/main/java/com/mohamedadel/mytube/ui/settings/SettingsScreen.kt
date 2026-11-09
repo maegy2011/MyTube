@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.settings
 
+import com.mohamedadel.mytube.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -30,39 +32,45 @@ import androidx.compose.ui.unit.dp
 // Settings screen extracted from MainActivity (split step 2).
 // Pure UI: all state comes in via params, all writes go out via callbacks.
 
-val LANG_OPTIONS = listOf("ar" to "العربية", "en" to "الإنجليزية", "fr" to "الفرنسية", "es" to "الإسبانية", "de" to "الألمانية")
+val LANG_OPTIONS = listOf("ar" to R.string.lang_ar, "en" to R.string.lang_en, "fr" to R.string.lang_fr, "es" to R.string.lang_es, "de" to R.string.lang_de)
 
 val COUNTRY_OPTIONS = listOf(
-    "EG" to "🇪🇬 مصر", "SA" to "🇸🇦 السعودية", "AE" to "🇦🇪 الإمارات",
-    "KW" to "🇰🇼 الكويت", "QA" to "🇶🇦 قطر", "MA" to "🇲🇦 المغرب",
-    "DZ" to "🇩🇿 الجزائر", "JO" to "🇯🇴 الأردن", "IQ" to "🇮🇶 العراق",
-    "US" to "🇺🇸 أمريكا", "GB" to "🇬🇧 بريطانيا", "global" to "🌍 عالمي"
+    "EG" to R.string.country_eg, "SA" to R.string.country_sa, "AE" to R.string.country_ae,
+    "KW" to R.string.country_kw, "QA" to R.string.country_qa, "MA" to R.string.country_ma,
+    "DZ" to R.string.country_dz, "JO" to R.string.country_jo, "IQ" to R.string.country_iq,
+    "US" to R.string.country_us, "GB" to R.string.country_gb, "global" to R.string.country_global
 )
 
-fun langLabel(code: String, deviceTag: String?): String = when (code) {
-    "auto" -> "تلقائي (لغة الجهاز" + (deviceTag?.let { ": $it" } ?: "") + ")"
-    "off" -> "إيقاف"
-    "original" -> "الأصلية (لغة الفيديو أيا كانت)"
-    else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second ?: code
+@Composable
+fun langText(code: String, deviceTag: String): String = when (code) {
+    "auto" -> stringResource(R.string.auto_device_fmt, deviceTag)
+    "off" -> stringResource(R.string.stop)
+    "original" -> stringResource(R.string.lang_original_opt)
+    else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second?.let { stringResource(it) } ?: code
 }
 
+val UI_LANG_OPTIONS = listOf(
+    "ar" to "العربية",
+    "en" to "English"
+)
+
 val PLAYMODE_OPTIONS = listOf(
-    "order" to "بالترتيب (يقف عند نهاية القائمة)",
-    "repeatAll" to "تكرار الكل (يعيد القائمة من البداية)",
-    "repeatOne" to "تكرار واحد (يعيد نفس الفيديو)"
+    "order" to R.string.mode_order_desc,
+    "repeatAll" to R.string.mode_repeat_all_desc,
+    "repeatOne" to R.string.mode_repeat_one_desc
 )
 
 val THEME_OPTIONS = listOf(
-    "dark" to "داكن (الافتراضي)",
-    "light" to "فاتح (مريح لكبار السن)",
-    "system" to "حسب النظام"
+    "dark" to R.string.theme_dark,
+    "light" to R.string.theme_light,
+    "system" to R.string.theme_system
 )
 
 val QUALITY_OPTIONS = listOf(
-    "audio-only" to "صوت فقط (الأخف — الافتراضي)",
-    "auto" to "تلقائي حسب السرعة",
-    "saver" to "توفير بيانات (أدنى دقة)",
-    "high" to "عالية (أعلى دقة)"
+    "audio-only" to R.string.quality_audio,
+    "auto" to R.string.quality_auto,
+    "saver" to R.string.quality_saver,
+    "high" to R.string.quality_high
 )
 
 @Composable
@@ -82,6 +90,8 @@ fun SettingsScreen(
     onQuality: (String) -> Unit,
     theme: String,
     onTheme: (String) -> Unit,
+    uiLang: String,
+    onUiLang: (String) -> Unit,
     playMode: String,
     onPlayMode: (String) -> Unit,
     favCount: Int,
@@ -97,19 +107,19 @@ fun SettingsScreen(
     if (confirmFav) {
         AlertDialog(
             onDismissRequest = { confirmFav = false },
-            title = { Text("مسح المفضلة؟") },
-            text = { Text("سيتم حذف كل عناصر المفضلة ($favCount) نهائيًا.") },
-            confirmButton = { TextButton(onClick = { onClearFavorites(); confirmFav = false }) { Text("مسح") } },
-            dismissButton = { TextButton(onClick = { confirmFav = false }) { Text("إلغاء") } }
+            title = { Text(stringResource(R.string.clear_favorites_title)) },
+            text = { Text(stringResource(R.string.del_fav_confirm_fmt, favCount)) },
+            confirmButton = { TextButton(onClick = { onClearFavorites(); confirmFav = false }) { Text(stringResource(R.string.clear)) } },
+            dismissButton = { TextButton(onClick = { confirmFav = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (confirmHist) {
         AlertDialog(
             onDismissRequest = { confirmHist = false },
-            title = { Text("مسح السجل؟") },
-            text = { Text("سيتم حذف كل عناصر السجل ($histCount) نهائيًا.") },
-            confirmButton = { TextButton(onClick = { onClearHistory(); confirmHist = false }) { Text("مسح") } },
-            dismissButton = { TextButton(onClick = { confirmHist = false }) { Text("إلغاء") } }
+            title = { Text(stringResource(R.string.clear_history_title)) },
+            text = { Text(stringResource(R.string.del_hist_confirm_fmt, histCount)) },
+            confirmButton = { TextButton(onClick = { onClearHistory(); confirmHist = false }) { Text(stringResource(R.string.clear)) } },
+            dismissButton = { TextButton(onClick = { confirmHist = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     LazyColumn(
@@ -117,16 +127,16 @@ fun SettingsScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item { Text("الإعدادات", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface) }
+        item { Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface) }
         item {
             Text(
-                "لغة الجهاز الحالية: ${deviceLang?.displayLanguage ?: deviceTag} ($deviceTag) — تُستخدم تلقائيًا ما لم تختر غيرها. اختياراتك تُحفظ دائمًا وتُطبق على كل فيديو.",
+                stringResource(R.string.device_line_fmt, deviceLang?.displayLanguage ?: deviceTag, deviceTag),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         item {
-            Text("لغة الترجمة المفضلة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.sub_primary_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(listOf("auto", "off") + LANG_OPTIONS.map { it.first }) { code ->
             Row(
@@ -140,12 +150,12 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("لغة الترجمة البديلة (عند غياب المفضلة)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.sub_fallback_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
             Row(
@@ -159,12 +169,12 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("لغة الصوت المفضلة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.audio_primary_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(listOf("auto") + LANG_OPTIONS.map { it.first }) { code ->
             Row(
@@ -178,12 +188,12 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("لغة الصوت البديلة (عند غياب المفضلة)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.audio_fallback_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
             Row(
@@ -197,12 +207,12 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("جودة الفيديو الافتراضية (تُطبق على كل فيديو جديد)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.quality_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(QUALITY_OPTIONS) { (code, label) ->
             Row(
@@ -216,12 +226,31 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
+                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.ui_lang_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(UI_LANG_OPTIONS) { (code, label) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onUiLang(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (uiLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (uiLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
                 Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("وضع التشغيل (للقوائم — الفيديو المفرد لا يتبعه شيء تلقائيًا)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.playmode_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(PLAYMODE_OPTIONS) { (code, label) ->
             Row(
@@ -235,12 +264,12 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("مظهر التطبيق", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.theme_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(THEME_OPTIONS) { (code, label) ->
             Row(
@@ -254,12 +283,12 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("بلد المحتوى (يحدد الرائج والبحث — اختيار يدوي فقط، بلا تتبع)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.country_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         items(COUNTRY_OPTIONS) { (code, label) ->
             Row(
@@ -273,29 +302,29 @@ fun SettingsScreen(
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Text("بياناتي (على هذا الجهاز فقط — تُمسح بالكامل بحذف التطبيق)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.data_note), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
         item {
             Text(
-                "المفضلة: $favCount • السجل: $histCount • القوائم: $plCount • حجم القاعدة: $dbSize",
+                stringResource(R.string.settings_data_line, favCount, histCount, plCount, dbSize),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.OutlinedButton(onClick = { confirmFav = true }, modifier = Modifier.weight(1f)) { Text("مسح المفضلة") }
-                androidx.compose.material3.OutlinedButton(onClick = { confirmHist = true }, modifier = Modifier.weight(1f)) { Text("مسح السجل") }
+                androidx.compose.material3.OutlinedButton(onClick = { confirmFav = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_favorites)) }
+                androidx.compose.material3.OutlinedButton(onClick = { confirmHist = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_history)) }
             }
         }
         item {
             Text(
-                "ملاحظة: الترجمة تُختار تلقائيًا عند توفرها بلغة التفضيل (اليدوية قبل المولّدة آليًا)، والصوت المدبلج/الأصلي يُطابق اللغة نفسها — ويمكن تغييرهما لأي فيديو من أزرار المشغل، فيُحفظ الاختيار الجديد تلقائيًا.",
+                stringResource(R.string.settings_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

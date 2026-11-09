@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.player
 
+import com.mohamedadel.mytube.R
 import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,6 +46,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -97,7 +100,7 @@ fun PlayerArea(
     onNext: () -> Unit = {},
     onPrev: () -> Unit = {},
     playMode: String = "order",
-    playModeLabel: String = "بالترتيب",
+    playModeLabel: String = "",
     shuffleOn: Boolean = false,
     onSetMode: (String) -> Unit = {},
     onSetShuffle: (Boolean) -> Unit = {},
@@ -120,6 +123,7 @@ fun PlayerArea(
     isFav: Boolean = false,
     onToggleFav: () -> Unit = {}
 ) {
+    val lctx = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     var langExpanded by remember { mutableStateOf(false) }
     var subExpanded by remember { mutableStateOf(false) }
@@ -272,15 +276,15 @@ fun PlayerArea(
                 when {
                     errorMsg != null -> {
                         Column(modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Rounded.Clear, contentDescription = "خطأ", tint = Color.White, modifier = Modifier.size(48.dp))
+                            Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.error_title), tint = Color.White, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("تعذّر التشغيل", style = MaterialTheme.typography.titleSmall, color = Color.White)
+                            Text(stringResource(R.string.err_playback), style = MaterialTheme.typography.titleSmall, color = Color.White)
                             Spacer(Modifier.height(2.dp))
                             Text(errorMsg, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f))
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                androidx.compose.material3.Button(onClick = onRetry) { Text("إعادة المحاولة") }
-                                androidx.compose.material3.OutlinedButton(onClick = onFallbackYoutube) { Text("يوتيوب", color = Color.White) }
+                                androidx.compose.material3.Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+                                androidx.compose.material3.OutlinedButton(onClick = onFallbackYoutube) { Text(stringResource(R.string.youtube), color = Color.White) }
                             }
                         }
                     }
@@ -289,7 +293,7 @@ fun PlayerArea(
                             CircularProgressIndicator(color = Color.White, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                if (bufferedPct > 0) "تحميل… $bufferedPct%" else "تحميل…",
+                                if (bufferedPct > 0) stringResource(R.string.loading_pct, bufferedPct) else stringResource(R.string.loading),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = Color.White
                             )
@@ -304,7 +308,7 @@ fun PlayerArea(
                         ) {
                             Icon(
                                 if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل",
+                                contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play),
                                 tint = Color.White,
                                 modifier = Modifier.size(44.dp)
                             )
@@ -314,7 +318,7 @@ fun PlayerArea(
                 // live badge while playing audio-only
                 if (isPlaying && quality == "audio-only (default)" && errorMsg == null && !playerLoading) {
                     Surface(modifier = Modifier.align(Alignment.TopStart).padding(10.dp), shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.65f)) {
-                        Text("▶ يعمل الآن", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        Text(stringResource(R.string.now_playing), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
                 // bottom control bar: play/pause + time + volume/mute — fades in on tap, auto-hides while playing
@@ -339,7 +343,7 @@ fun PlayerArea(
                             ) {
                                 Icon(
                                     if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                    contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل",
+                                    contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play),
                                     tint = Color.White,
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -362,7 +366,7 @@ fun PlayerArea(
                                     if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
                                     else if (volume < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown
                                     else Icons.AutoMirrored.Rounded.VolumeUp,
-                                    contentDescription = if (muted) "إلغاء الكتم" else "كتم الصوت",
+                                    contentDescription = if (muted) stringResource(R.string.cd_unmute) else stringResource(R.string.cd_mute),
                                     tint = Color.White,
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -402,7 +406,7 @@ fun PlayerArea(
                 Spacer(Modifier.height(2.dp))
                 Text(text = video.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val meta = buildString {
-                    video.viewCount?.takeIf { it > 0 }?.let { append(formatViews(it)) }
+                    video.viewCount?.takeIf { it > 0 }?.let { append(lctx.formatViews(it)) }
                     video.durationSec?.let { if (isNotEmpty()) append(" • "); append(formatDuration(it)) }
                 }
                 if (meta.isNotEmpty()) {
@@ -413,7 +417,7 @@ fun PlayerArea(
                 if (queueOn) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "▶ تعمل • $playModeLabel" + if (shuffleOn) " • عشوائي" else "",
+                        stringResource(R.string.queue_now_fmt, playModeLabel) + if (shuffleOn) lctx.getString(R.string.queue_shuffle_suffix) else "",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -426,7 +430,7 @@ fun PlayerArea(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box {
-                        FilterChip(selected = false, onClick = { expanded = true }, label = { Text(shortQuality(quality)) })
+                        FilterChip(selected = false, onClick = { expanded = true }, label = { Text(lctx.shortQuality(quality)) })
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             qualities.forEach { q -> DropdownMenuItem(text = { Text(q) }, onClick = { onQuality(q); expanded = false }) }
                         }
@@ -436,11 +440,11 @@ fun PlayerArea(
                         val cur = subtitles.getOrNull(subIdx)
                         Spacer(Modifier.width(8.dp))
                         Box {
-                            FilterChip(selected = false, onClick = { subExpanded = true }, label = { Text(if (subIdx >= 0) (cur?.label?.takeIf { it.isNotBlank() } ?: cur?.langTag ?: "الترجمة") else "الترجمة") })
+                            FilterChip(selected = false, onClick = { subExpanded = true }, label = { Text(if (subIdx >= 0) (cur?.label?.takeIf { it.isNotBlank() } ?: cur?.langTag ?: stringResource(R.string.subtitles)) else stringResource(R.string.subtitles)) })
                             DropdownMenu(expanded = subExpanded, onDismissRequest = { subExpanded = false }) {
-                                DropdownMenuItem(text = { Text(if (subIdx < 0) "✓ إيقاف" else "إيقاف") }, onClick = { onSubtitleTrack(-1); subExpanded = false })
+                                DropdownMenuItem(text = { Text(if (subIdx < 0) stringResource(R.string.sub_off_check) else stringResource(R.string.stop)) }, onClick = { onSubtitleTrack(-1); subExpanded = false })
                                 subtitles.forEachIndexed { i, s ->
-                                    val lbl = (s.label?.takeIf { it.isNotBlank() } ?: s.langTag) + if (s.auto) " (تلقائية)" else ""
+                                    val lbl = (s.label?.takeIf { it.isNotBlank() } ?: s.langTag) + if (s.auto) lctx.getString(R.string.sub_auto_suffix) else ""
                                     DropdownMenuItem(text = { Text(if (i == subIdx) "✓ $lbl" else lbl) }, onClick = { onSubtitleTrack(i); subExpanded = false })
                                 }
                             }
@@ -451,10 +455,10 @@ fun PlayerArea(
                         Spacer(Modifier.width(8.dp))
                         Box {
                             val cur = audioTracks.getOrNull(audioIdx)
-                            FilterChip(selected = false, onClick = { langExpanded = true }, label = { Text(cur?.name?.takeIf { it.isNotBlank() } ?: cur?.localeTag ?: "الصوت") })
+                            FilterChip(selected = false, onClick = { langExpanded = true }, label = { Text(cur?.name?.takeIf { it.isNotBlank() } ?: cur?.localeTag ?: stringResource(R.string.audio_generic)) })
                             DropdownMenu(expanded = langExpanded, onDismissRequest = { langExpanded = false }) {
                                 audioTracks.forEachIndexed { i, t ->
-                                    val lbl = listOfNotNull(t.name?.takeIf { it.isNotBlank() }, t.localeTag, t.type?.let { if (it == "DUBBED") "مدبلج" else if (it == "ORIGINAL") "أصلي" else it }, t.bitrate.takeIf { it > 0 }?.let { "${it / 1000}k" }).joinToString(" • ")
+                                    val lbl = listOfNotNull(t.name?.takeIf { it.isNotBlank() }, t.localeTag, t.type?.let { if (it == "DUBBED") stringResource(R.string.track_dubbed) else if (it == "ORIGINAL") stringResource(R.string.track_original) else it }, t.bitrate.takeIf { it > 0 }?.let { "${it / 1000}k" }).joinToString(" • ")
                                     DropdownMenuItem(text = { Text(if (i == audioIdx) "✓ $lbl" else lbl) }, onClick = { onAudioTrack(i); langExpanded = false })
                                 }
                             }
@@ -462,23 +466,23 @@ fun PlayerArea(
                     }
                     Spacer(Modifier.width(8.dp))
                     IconButton(onClick = onPrev) {
-                        Icon(Icons.Rounded.SkipPrevious, contentDescription = "السابق", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.SkipPrevious, contentDescription = stringResource(R.string.prev), tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = onNext) {
-                        Icon(Icons.Rounded.SkipNext, contentDescription = "التالي", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.SkipNext, contentDescription = stringResource(R.string.next), tint = MaterialTheme.colorScheme.primary)
                     }
                     // current queue: manage / reorder / save
                     IconButton(onClick = onQueue) {
-                        Icon(Icons.Rounded.QueueMusic, contentDescription = "إدارة القائمة الحالية", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.QueueMusic, contentDescription = stringResource(R.string.cd_manage_queue), tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = onEnterPip) {
-                        Icon(Icons.Rounded.PictureInPicture, contentDescription = "صورة داخل صورة", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.PictureInPicture, contentDescription = stringResource(R.string.pip), tint = MaterialTheme.colorScheme.primary)
                     }
                     // favorite: heart the now-playing video without leaving the player
                     IconButton(onClick = onToggleFav) {
                         Icon(
                             if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            contentDescription = if (isFav) "إزالة من المفضلة" else "إضافة للمفضلة",
+                            contentDescription = if (isFav) stringResource(R.string.cd_fav_remove) else stringResource(R.string.cd_fav_add),
                             tint = if (isFav) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
                         )
                     }
@@ -487,7 +491,7 @@ fun PlayerArea(
                         if (sleepLabel != null) {
                             Text(sleepLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         } else {
-                            Icon(Icons.Rounded.Timer, contentDescription = "مؤقت النوم", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Rounded.Timer, contentDescription = stringResource(R.string.sleep_timer), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                     // in-player volume (the native controller has no volume button)
@@ -496,7 +500,7 @@ fun PlayerArea(
                             if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
                             else if (volume < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown
                             else Icons.AutoMirrored.Rounded.VolumeUp,
-                            contentDescription = if (muted) "إلغاء الكتم" else "كتم الصوت",
+                            contentDescription = if (muted) stringResource(R.string.cd_unmute) else stringResource(R.string.cd_mute),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(22.dp)
                         )
@@ -509,10 +513,10 @@ fun PlayerArea(
                     )
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onFallbackYoutube) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "فتح في يوتيوب", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = stringResource(R.string.open_youtube), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = onClose) {
-                        Icon(Icons.Rounded.Clear, contentDescription = "إغلاق المشغل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.cd_close_player), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

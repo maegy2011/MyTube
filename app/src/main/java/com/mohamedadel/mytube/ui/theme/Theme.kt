@@ -60,7 +60,7 @@ val MyTubeShapes = Shapes(
 )
 
 @Composable
-fun MyTubeTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun MyTubeTheme(darkTheme: Boolean = isSystemInDarkTheme(), rtl: Boolean = true, content: @Composable () -> Unit) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -71,8 +71,8 @@ fun MyTubeTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
-    // Arabic-first app: force RTL layout direction on every device language (full RTL).
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    // Arabic UI forces RTL; English UI uses LTR. Direction follows the ui-language pref.
+    CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
         MaterialTheme(colorScheme = colorScheme, typography = MyTubeTypography, shapes = MyTubeShapes, content = content)
     }
 }

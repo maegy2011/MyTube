@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.util
 
+import com.mohamedadel.mytube.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -58,31 +59,31 @@ fun qualityHeight(label: String): Int? {
     return l.filter { it.isDigit() }.toIntOrNull()
 }
 
-fun shortQuality(q: String): String {
+fun Context.shortQuality(q: String): String {
     return when {
-        q.startsWith("audio-only") -> "🔊 صوت"
-        q.startsWith("auto") -> "⚡ تلقائي"
+        q.startsWith("audio-only") -> getString(R.string.sq_audio)
+        q.startsWith("auto") -> getString(R.string.sq_auto)
         else -> q.substringBefore(" • ").ifBlank { q }
     }
 }
 
 // Smart Arabic error messages: raw ExoPlayer/NewPipe errors are English codes —
 // map them to something the user can act on (retry vs. open in YouTube).
-fun smartError(error: PlaybackException?): String {
-    if (error == null) return "حدث خطأ غير معروف — جرّب مجددًا أو شاهده في يوتيوب."
+fun Context.smartError(error: PlaybackException?): String {
+    if (error == null) return getString(R.string.err_unknown)
     return when (error.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-        PlaybackException.ERROR_CODE_TIMEOUT -> "انقطع الاتصال أثناء التحميل — تحقق من الإنترنت ثم أعد المحاولة."
+        PlaybackException.ERROR_CODE_TIMEOUT -> getString(R.string.err_io)
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
-        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "المصدر غير متاح (رُبما حُذف الفيديو أو قيّده الناشر) — جرّب مجددًا أو شاهده في يوتيوب."
-        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "هذا بث مباشر انتهت نافذته — شاهده في يوتيوب."
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> getString(R.string.err_source_gone)
+        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> getString(R.string.err_live_ended)
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> "جهازك تعذّر عليه فك تشفير هذا الفيديو — جرّب جودة أقل أو شاهده في يوتيوب."
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> getString(R.string.err_decoder)
         PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> "محتوى محمي لا يمكن تشغيله هنا — شاهده في يوتيوب."
-        PlaybackException.ERROR_CODE_REMOTE_ERROR -> "خطأ من جهة الخادم — أعد المحاولة بعد قليل أو شاهده في يوتيوب."
-        else -> "تعذّر التشغيل (خطأ ${error.errorCode}) — أعد المحاولة أو شاهده في يوتيوب."
+        PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> getString(R.string.err_drm)
+        PlaybackException.ERROR_CODE_REMOTE_ERROR -> getString(R.string.err_remote)
+        else -> getString(R.string.err_playback_code, error.errorCode)
     }
 }
 
@@ -105,11 +106,11 @@ fun formatDuration(sec: Long): String {
     }
 }
 
-fun formatViews(n: Long): String {
+fun Context.formatViews(n: Long): String {
     return when {
-        n >= 1_000_000 -> String.format("%.1f مليون مشاهدة", n / 1_000_000.0)
-        n >= 1_000 -> String.format("%.1f ألف مشاهدة", n / 1_000.0)
-        else -> "$n مشاهدة"
+        n >= 1_000_000 -> getString(R.string.views_m, n / 1_000_000.0)
+        n >= 1_000 -> getString(R.string.views_k, n / 1_000.0)
+        else -> getString(R.string.views_count, n)
     }
 }
 

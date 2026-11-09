@@ -60,6 +60,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -146,18 +147,27 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
-        // theme preference is read here (before composition) so it survives restarts;
+        // theme + ui-language prefs are read here (before composition) so they survive restarts;
         // changes apply via activity.recreate() from the settings screen.
         val themePref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_theme", "dark") ?: "dark" } catch (_: Exception) { "dark" }
+        val uiLangPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { "ar" }
         setContent {
             MyTubeTheme(
                 darkTheme = when (themePref) {
                     "light" -> false
                     "system" -> androidx.compose.foundation.isSystemInDarkTheme()
                     else -> true
-                }
+                },
+                rtl = uiLangPref != "en"
             ) { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }, pipMode = pipMode) }
         }
+    }
+    // apply the saved UI language before anything inflates (needs no extra dependency)
+    override fun attachBaseContext(newBase: Context) {
+        val lang = try { newBase.getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { "ar" }
+        val config = android.content.res.Configuration(newBase.resources.configuration)
+        config.setLocale(java.util.Locale(lang))
+        super.attachBaseContext(newBase.createConfigurationContext(config))
     }
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
@@ -269,6 +279,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefCountry by remember { mutableStateOf("EG") }
     // app theme: dark (default) | light (large-type friendly) | system
     var prefTheme by remember { mutableStateOf("dark") }
+    // UI language: ar (default, RTL) | en (LTR). Applies via recreate().
+    var prefUiLang by remember { mutableStateOf("ar") }
     // default video quality for every new video: audio-only | auto | saver | high
     var prefQuality by remember { mutableStateOf("audio-only") }
     // standalone search screen (YouTube-style) + trending tabs
@@ -298,6 +310,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
+            prefUiLang = prefs.getString("pref_ui_lang", "ar") ?: "ar"
             prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
         } catch (_: Exception) { }
         try {
@@ -437,22 +450,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // data management (reused by the favorites/history screens AND the settings screen)
     fun clearFavorites() {
         scope.launch {
-            try { dao.clearFavorites(); toast("مُسحت المفضلة") }
-            catch (_: Exception) { toast("تعذّر مسح المفضلة") }
+            try { dao.clearFavorites(); toast(ctx.getString(R.string.toast_fav_cleared)) }
+            catch (_: Exception) { toast(ctx.getString(R.string.toast_fav_clear_fail)) }
         }
     }
     fun clearHistory() {
         scope.launch {
-            try { dao.clearHistory(); toast("مُسح السجل") }
-            catch (_: Exception) { toast("تعذّر مسح السجل") }
+            try { dao.clearHistory(); toast(ctx.getString(R.string.toast_hist_cleared)) }
+            catch (_: Exception) { toast(ctx.getString(R.string.toast_hist_clear_fail)) }
         }
     }
     fun dbSizeLabel(): String {
         return try {
             val f = ctx.getDatabasePath("mytube.db")
             if (!f.exists()) "—"
-            else if (f.length() < 1048576) "${f.length() / 1024} ك.ب"
-            else "%.1f م.ب".format(f.length() / 1048576.0)
+            else if (f.length() < 1048576) ctx.getString(R.string.db_kb, (f.length() / 1024).toInt())
+            else ctx.getString(R.string.db_mb, f.length() / 1048576.0)
         } catch (_: Exception) { "—" }
     }
     fun toggleFavorite(v: VideoItem) {
@@ -461,12 +474,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val key = v.favKey()
                 if (dao.favoriteCount(key) > 0) {
                     dao.deleteFavorite(key)
-                    toast("أُزيل من المفضلة")
+                    toast(ctx.getString(R.string.toast_fav_removed))
                 } else {
                     dao.insertFavorite(v.toFavorite())
-                    toast("أُضيف للمفضلة ♡")
+                    toast(ctx.getString(R.string.toast_fav_added))
                 }
-            } catch (_: Exception) { toast("تعذّر حفظ المفضلة") }
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_fav_fail)) }
         }
     }
     // Listening history: every explicit play lands here (dedupe by key, capped at 100).
@@ -512,7 +525,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
             else -> s.videoUrlByQuality[q]
         } ?: run {
-            playerError = "الجودة المطلوبة غير متاحة لهذا الفيديو — اختر جودة أخرى أو شاهده في يوتيوب."
+            playerError = ctx.getString(R.string.err_quality_unavailable)
             playerLoading = false
             return
         }
@@ -592,7 +605,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // Detect it here and report a smart message instead.
             if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
                 playerLoading = false
-                playerError = "تعذّر جلب مصادر هذا الفيديو — قد يكون محذوفًا أو مقيّدًا أو محميًا. جرّب مجددًا أو شاهده في يوتيوب."
+                playerError = ctx.getString(R.string.err_no_sources)
                 return@launch
             }
             streamData = s
@@ -646,24 +659,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun isQueued(v: VideoItem): Boolean =
         queue.any { it.favKey() == v.favKey() }
     fun enqueueNext(v: VideoItem) {
-        if (isQueued(v)) { toast("موجود مسبقًا في القائمة"); return }
+        if (isQueued(v)) { toast(ctx.getString(R.string.toast_already_queued)); return }
         val q = queue.toMutableList()
         val at = if (queueIndex >= 0) queueIndex + 1 else q.size
         q.add(at.coerceIn(0, q.size), v)
         queue = q
-        toast("أُضيف للقائمة الحالية")
+        toast(ctx.getString(R.string.toast_added_queue))
         if (playing == null) { queueIndex = 0; playVideo(v, inQueue = true, expand = true) }
     }
     fun enqueueLast(v: VideoItem) {
-        if (isQueued(v)) { toast("موجود مسبقًا في القائمة"); return }
+        if (isQueued(v)) { toast(ctx.getString(R.string.toast_already_queued)); return }
         queue = queue + v
-        toast("أُضيف للقائمة الحالية")
+        toast(ctx.getString(R.string.toast_added_queue))
         if (playing == null) playVideo(v, inQueue = true, expand = true)
     }
     fun modeLabel(m: String): String = when (m) {
-        "repeatAll" -> "تكرار الكل"
-        "repeatOne" -> "تكرار واحد"
-        else -> "بالترتيب"
+        "repeatAll" -> ctx.getString(R.string.mode_repeat_all)
+        "repeatOne" -> ctx.getString(R.string.mode_repeat_one)
+        else -> ctx.getString(R.string.mode_order)
     }
     fun cycleMode() = setMode(when (playMode) { "order" -> "repeatAll"; "repeatAll" -> "repeatOne"; else -> "order" })
 
@@ -745,7 +758,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 isPlaying = playingFlag
             }
             override fun onPlayerError(error: PlaybackException) {
-                playerError = smartError(error)
+                playerError = ctx.smartError(error)
                 playerLoading = false
                 isPlaying = false
             }
@@ -771,7 +784,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         sleepLeft = ""
                     } else {
                         val m = (left / 60000).toInt()
-                        sleepLeft = if (m >= 1) "$m د" else "${(left / 1000).toInt()} ث"
+                        sleepLeft = if (m >= 1) ctx.getString(R.string.sleep_left_min, m) else ctx.getString(R.string.sleep_left_sec, (left / 1000).toInt())
                     }
                 }
                 kotlinx.coroutines.delay(500)
@@ -799,7 +812,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try {
                 val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry)
                 if (page.error != null && page.items.isEmpty()) {
-                    searchError = "تعذّر البحث — تحقق من الاتصال ثم أعد المحاولة."
+                    searchError = ctx.getString(R.string.err_search)
                     results = emptyList()
                     hasMore = false
                 } else {
@@ -808,7 +821,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     hasMore = page.hasNext
                 }
             } catch (_: Exception) {
-                searchError = "تعذّر البحث — تحقق من الاتصال ثم أعد المحاولة."
+                searchError = ctx.getString(R.string.err_search)
                 results = emptyList()
                 hasMore = false
             } finally {
@@ -913,11 +926,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ModalDrawerSheet {
                 Text("MyTube", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                NavigationDrawerItem(label = { Text("الرئيسية") }, selected = !showPlaylists && !showSettings && !showFavorites && !showHistory, onClick = { showPlaylists = false; showSettings = false; showFavorites = false; showHistory = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
-                NavigationDrawerItem(label = { Text(if (favoriteKeys.isNotEmpty()) "المفضلة (${favoriteKeys.size})" else "المفضلة") }, selected = showFavorites, onClick = { playerExpanded = false; showFavorites = true; showHistory = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Favorite, null) })
-                NavigationDrawerItem(label = { Text("السجل") }, selected = showHistory, onClick = { playerExpanded = false; showHistory = true; showFavorites = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.History, null) })
-                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) "قوائم التشغيل (${playlists.size})" else "قوائم التشغيل") }, selected = showPlaylists, onClick = { playerExpanded = false; showPlaylists = true; showSettings = false; showFavorites = false; showHistory = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
-                NavigationDrawerItem(label = { Text("الإعدادات") }, selected = showSettings, onClick = { showSettings = true; showFavorites = false; showHistory = false; showPlaylists = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Settings, null) })
+                NavigationDrawerItem(label = { Text(stringResource(R.string.nav_home)) }, selected = !showPlaylists && !showSettings && !showFavorites && !showHistory, onClick = { showPlaylists = false; showSettings = false; showFavorites = false; showHistory = false; openPlaylistId = null; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Home, null) })
+                NavigationDrawerItem(label = { Text(if (favoriteKeys.isNotEmpty()) ctx.getString(R.string.fav_drawer_fmt, favoriteKeys.size) else stringResource(R.string.nav_favorites)) }, selected = showFavorites, onClick = { playerExpanded = false; showFavorites = true; showHistory = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Favorite, null) })
+                NavigationDrawerItem(label = { Text(stringResource(R.string.nav_history)) }, selected = showHistory, onClick = { playerExpanded = false; showHistory = true; showFavorites = false; showPlaylists = false; showSettings = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.History, null) })
+                NavigationDrawerItem(label = { Text(if (playlists.isNotEmpty()) stringResource(R.string.pl_drawer_fmt, playlists.size) else stringResource(R.string.nav_playlists)) }, selected = showPlaylists, onClick = { playerExpanded = false; showPlaylists = true; showSettings = false; showFavorites = false; showHistory = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.QueueMusic, null) })
+                NavigationDrawerItem(label = { Text(stringResource(R.string.settings_title)) }, selected = showSettings, onClick = { showSettings = true; showFavorites = false; showHistory = false; showPlaylists = false; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Rounded.Settings, null) })
             }
         }
     ) {
@@ -984,14 +997,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "السماح بتشغيل الصوت في الخلفية بلا انقطاع",
+                            stringResource(R.string.battery_banner),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(Modifier.width(8.dp))
                         androidx.compose.material3.Button(onClick = { ensureBatteryExemption() }) {
-                            Text("سماح")
+                            Text(stringResource(R.string.allow))
                         }
                     }
                 }
@@ -1007,11 +1020,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ) {
                 if (playerExpanded || playing != null || showPlaylists || showSettings || showSearch || results.isNotEmpty()) {
                     IconButton(onClick = { smartBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 } else {
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Rounded.Menu, contentDescription = "القائمة")
+                        Icon(Icons.Rounded.Menu, contentDescription = stringResource(R.string.queue_title))
                     }
                 }
                 Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(30.dp))
@@ -1020,7 +1033,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = { showSearch = true; showSuggestions = true }) {
-                    Icon(Icons.Rounded.Search, contentDescription = "بحث")
+                    Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.search_action))
                 }
             }
             // Standalone search screen: full search UI lives here, results stay in the main list.
@@ -1051,11 +1064,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("عمليات بحث سابقة", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                                Text(stringResource(R.string.recent_searches), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                                 androidx.compose.material3.TextButton(onClick = {
                                     recentSearches = emptyList()
                                     try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
-                                }) { Text("مسح الكل") }
+                                }) { Text(stringResource(R.string.clear_all)) }
                             }
                         }
                         dropRecents.forEach { s ->
@@ -1135,7 +1148,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 prefSubLang = "off"
                                 prefs.edit().putString("pref_sub_lang", "off").apply()
                                 subTrackIdx = -1
-                                toast("أُوقفت الترجمة")
+                                toast(ctx.getString(R.string.toast_sub_off))
                             } else {
                                 val t = streamData?.subtitles?.getOrNull(i)
                                 val tag = t?.langTag?.substringBefore("-")?.takeIf { it.isNotBlank() }
@@ -1143,9 +1156,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 prefSubLang = code
                                 prefs.edit().putString("pref_sub_lang", code).apply()
                                 subTrackIdx = i
-                                toast("لغة الترجمة: " + (t?.label?.takeIf { it.isNotBlank() } ?: code))
+                                toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
                             }
-                        } catch (_: Exception) { toast("تعذّر تغيير الترجمة") }
+                        } catch (_: Exception) { toast(ctx.getString(R.string.toast_sub_fail)) }
                         applyLangPrefs()
                     },
                     audioTracks = streamData?.audioTracks ?: emptyList(),
@@ -1244,12 +1257,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onQuality = { v ->
                             prefQuality = v
                             try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
-                            toast("تُطبق الجودة على الفيديو التالي")
+                            toast(ctx.getString(R.string.toast_quality_next))
+                        },
+                        uiLang = prefUiLang,
+                        onUiLang = { v ->
+                            prefUiLang = v
+                            try { prefs.edit().putString("pref_ui_lang", v).apply() } catch (_: Exception) { }
+                            toast(ctx.getString(R.string.toast_lang_restart))
+                            try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
                         },
                         playMode = playMode,
                         onPlayMode = { v ->
                             setMode(v)
-                            toast("وضع التشغيل: " + modeLabel(v))
+                            toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
                         },
                         favCount = favoriteKeys.size,
                         histCount = history.size,
@@ -1261,7 +1281,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onTheme = { v ->
                             prefTheme = v
                             try { prefs.edit().putString("pref_theme", v).apply() } catch (_: Exception) { }
-                            toast("يُطبق المظهر بعد إعادة فتح التطبيق")
+                            toast(ctx.getString(R.string.toast_theme_restart))
                             try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
                         }
                     )
@@ -1270,7 +1290,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     HistoryScreen(
                         items = history,
                         onPlay = { playVideo(it) },
-                        onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast("تعذّر حذف العنصر") } } },
+                        onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) } } },
                         onClear = { clearHistory() },
                         onBack = { smartBack() }
                     )
@@ -1323,8 +1343,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             scope.launch {
                                 try {
                                     dao.savePlaylistEdits(pid, name, emoji, orderedIds)
-                                    toast("حُفظت القائمة")
-                                } catch (_: Exception) { toast("تعذّر حفظ القائمة") }
+                                    toast(ctx.getString(R.string.toast_playlist_saved))
+                                } catch (_: Exception) { toast(ctx.getString(R.string.toast_playlist_save_fail)) }
                             }
                         },
                         onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
@@ -1345,19 +1365,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             scope.launch {
                                 try {
                                     val row = dao.itemsOnce(pid).firstOrNull { it.id == iid }
-                                    if (row == null) { toast("تعذّر النقل"); return@launch }
+                                    if (row == null) { toast(ctx.getString(R.string.toast_move_fail)); return@launch }
                                     val v = VideoItem(id = row.videoId, title = row.title, channel = row.channel, thumbnail = row.thumbnail, durationSec = row.durationSec, viewCount = row.viewCount, url = row.url)
                                     val key = v.favKey()
                                     val exists = dao.itemsOnce(targetPid).any { e ->
                                         VideoItem(id = e.videoId, title = e.title, channel = e.channel, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == key
                                     }
-                                    if (exists) { toast("موجود مسبقًا في القائمة الهدف") }
+                                    if (exists) { toast(ctx.getString(R.string.toast_already_target)) }
                                     else {
                                         dao.insertItems(listOf(v.toEntity(targetPid, dao.itemCount(targetPid))))
                                         dao.deleteItem(pid, iid)
-                                        toast("نُقل إلى القائمة")
+                                        toast(ctx.getString(R.string.toast_moved))
                                     }
-                                } catch (_: Exception) { toast("تعذّر النقل") }
+                                } catch (_: Exception) { toast(ctx.getString(R.string.toast_move_fail)) }
                             }
                         },
                         onBack = { showPlaylists = false; openPlaylistId = null }
@@ -1378,7 +1398,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         },
                         trendingItems = trendingItems,
                         trendingLoading = trendingLoading,
-                        countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second ?: prefCountry,
+                        countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry,
                         onSearch = { q -> query = q; doSearch(q) },
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
@@ -1392,19 +1412,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                if (searchError != null) searchError!! else "لا توجد نتائج",
+                                if (searchError != null) searchError!! else stringResource(R.string.no_results),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                if (searchError != null) "تحقق من الاتصال بالإنترنت" else "جرّب كلمة مختلفة أو تحقق من الاتصال بالإنترنت",
+                                if (searchError != null) stringResource(R.string.check_connection) else stringResource(R.string.search_try_other),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (searchError != null && currentQuery.isNotBlank()) {
                                 Spacer(Modifier.height(12.dp))
-                                androidx.compose.material3.Button(onClick = { doSearch(currentQuery) }) { Text("إعادة المحاولة") }
+                                androidx.compose.material3.Button(onClick = { doSearch(currentQuery) }) { Text(stringResource(R.string.retry)) }
                             }
                         }
                     }
@@ -1419,7 +1439,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         // results header: count only — "play all" is gone. The working queue is built
                         // explicitly (row + button, long-press) and started from the queue panel.
                         item {
-                            Text("وجدنا ${results.size} نتيجة", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.results_found_fmt, results.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         itemsIndexed(items = results, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
                             SearchRow(
@@ -1460,7 +1480,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                                 loadingMore = false
                                             }
                                         }
-                                    }) { Text("عرض المزيد") }
+                                    }) { Text(stringResource(R.string.show_more)) }
                                 }
                             }
                         }
@@ -1478,8 +1498,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             try {
                                 val pid = dao.insertPlaylist(PlaylistEntity(name = name))
                                 dao.insertItems(listOf(v.toEntity(pid, 0)))
-                                toast("أُنشئت القائمة وأُضيف الفيديو")
-                            } catch (_: Exception) { toast("تعذّر إنشاء القائمة") }
+                                toast(ctx.getString(R.string.toast_playlist_created))
+                            } catch (_: Exception) { toast(ctx.getString(R.string.toast_playlist_create_fail)) }
                             pickFor = null
                         }
                     },
@@ -1493,9 +1513,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             if (!exists) {
                                 val pos = dao.itemCount(pid)
                                 dao.insertItems(listOf(v.toEntity(pid, pos)))
-                                toast("أُضيف للقائمة")
+                                toast(ctx.getString(R.string.toast_added_playlist))
                             } else {
-                                toast("موجود مسبقًا في القائمة")
+                                toast(ctx.getString(R.string.toast_already_queued))
                             }
                             pickFor = null
                         }

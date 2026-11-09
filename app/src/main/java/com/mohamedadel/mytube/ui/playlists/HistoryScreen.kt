@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.playlists
 
+import com.mohamedadel.mytube.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -40,17 +42,17 @@ fun HistoryScreen(
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
             }
             Text(
-                if (items.isNotEmpty()) "السجل (${items.size})" else "السجل",
+                if (items.isNotEmpty()) stringResource(R.string.hist_title_fmt, items.size) else stringResource(R.string.nav_history),
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
             if (items.isNotEmpty()) {
                 IconButton(onClick = onClear) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "مسح السجل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.clear_history), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -60,9 +62,9 @@ fun HistoryScreen(
                 Spacer(Modifier.height(48.dp))
                 Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("لا يوجد سجل بعد", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.hist_empty), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(4.dp))
-                Text("كل فيديو تشغّله يظهر هنا", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.hist_empty_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {

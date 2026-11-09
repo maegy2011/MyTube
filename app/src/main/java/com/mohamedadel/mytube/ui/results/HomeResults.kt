@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.results
 
+import com.mohamedadel.mytube.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -34,13 +36,13 @@ import com.mohamedadel.mytube.data.youtube.VideoItem
 
 // Real YouTube kiosk sections (null = default Trending). "news" has no kiosk: region search, labeled.
 val TREND_TABS = listOf(
-    Triple("عام", null, false),
-    Triple("موسيقى", "trending_music", false),
-    Triple("ألعاب", "trending_gaming", false),
-    Triple("أفلام", "trending_movies_and_shows", false),
-    Triple("بودكاست", "trending_podcasts_episodes", false),
-    Triple("مباشر", "live", false),
-    Triple("أخبار", "news", true)
+    Triple(R.string.tab_general, null, false),
+    Triple(R.string.tab_music, "trending_music", false),
+    Triple(R.string.tab_gaming, "trending_gaming", false),
+    Triple(R.string.tab_movies, "trending_movies_and_shows", false),
+    Triple(R.string.tab_podcasts, "trending_podcasts_episodes", false),
+    Triple(R.string.tab_live, "live", false),
+    Triple(R.string.tab_news, "news", true)
 )
 
 // Real per-country trending (kiosk) in "عام"; category tabs search within the same country.
@@ -63,7 +65,7 @@ fun HomeEmptyState(
     Column(modifier = Modifier.fillMaxSize()) {
         ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
             TREND_TABS.forEachIndexed { i, (label, _, _) ->
-                Tab(selected = trendTab == i, onClick = { onTrendTab(i) }, text = { Text(label) })
+                Tab(selected = trendTab == i, onClick = { onTrendTab(i) }, text = { Text(stringResource(label)) })
             }
         }
         Row(
@@ -72,7 +74,7 @@ fun HomeEmptyState(
         ) {
             Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("رائج الآن", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.trending_now), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                 Text(countryName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
@@ -84,8 +86,8 @@ fun HomeEmptyState(
             }
         } else if (trendingItems.isEmpty()) {
             Text(
-                if (TREND_TABS.getOrNull(trendTab)?.third == true) "لا توجد نتائج إخبارية لهذا البلد — جرّب بلدًا آخر من الإعدادات."
-                else "تعذّر جلب هذا القسم لبلدك حاليًا — جرّب لاحقًا أو غيّر البلد من الإعدادات.",
+                if (TREND_TABS.getOrNull(trendTab)?.third == true) stringResource(R.string.news_empty)
+                else stringResource(R.string.err_kiosk),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)

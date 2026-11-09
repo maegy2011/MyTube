@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.playlists
 
+import com.mohamedadel.mytube.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,10 +100,10 @@ fun PlaylistsScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { if (openId != null) onCloseItems() else onBack() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                 }
                 Text(
-                    if (openId != null) "بنود: ${if (editMode) editName else openName}" else "قوائم التشغيل",
+                    if (openId != null) stringResource(R.string.items_title_fmt, if (editMode) editName else openName) else stringResource(R.string.nav_playlists),
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
@@ -110,7 +112,7 @@ fun PlaylistsScreen(
                 )
                 if (openId == null) {
                     IconButton(onClick = { showCreate = true; createEmoji = "🎵" }) {
-                        Icon(Icons.Rounded.Add, contentDescription = "قائمة جديدة", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.playlist_new), tint = MaterialTheme.colorScheme.primary)
                     }
                 } else if (editMode) {
                     androidx.compose.material3.TextButton(onClick = {
@@ -118,15 +120,15 @@ fun PlaylistsScreen(
                         val stagedRows = staged ?: items
                         onSaveEdits(pid, editName.trim().ifBlank { openName }, editEmoji, stagedRows.map { it.id })
                         editMode = false
-                    }) { Text("حفظ") }
-                    androidx.compose.material3.TextButton(onClick = { staged = null; editMode = false }) { Text("إلغاء") }
+                    }) { Text(stringResource(R.string.save)) }
+                    androidx.compose.material3.TextButton(onClick = { staged = null; editMode = false }) { Text(stringResource(R.string.cancel)) }
                 } else {
                     androidx.compose.material3.TextButton(onClick = {
                         editName = openName
                         editEmoji = openPl?.emoji ?: "🎵"
                         staged = items
                         editMode = true
-                    }) { Text("تعديل") }
+                    }) { Text(stringResource(R.string.edit)) }
                 }
             }
         }
@@ -136,9 +138,9 @@ fun PlaylistsScreen(
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Rounded.QueueMusic, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(12.dp))
-                        Text("لا توجد قوائم بعد", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.playlists_empty), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.height(4.dp))
-                        Text("احفظ نتائج البحث أو أي فيديو في قائمة تشغيل", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.playlists_empty_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -153,13 +155,13 @@ fun PlaylistsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f).clickable { onOpen(p.id) }) {
                             Text(p.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${p.count} عنصر", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.pl_count_fmt, p.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { onPlayAll(p.id) }) {
-                            Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل القائمة", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.cd_play_playlist), tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = { deleteTarget = p }) {
-                            Icon(Icons.Rounded.Delete, contentDescription = "حذف القائمة", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete_playlist), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -167,7 +169,7 @@ fun PlaylistsScreen(
         } else {
             if (editMode) {
                 item {
-                    OutlinedTextField(value = editName, onValueChange = { editName = it }, placeholder = { Text("اسم القائمة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = editName, onValueChange = { editName = it }, placeholder = { Text(stringResource(R.string.playlist_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -187,7 +189,7 @@ fun PlaylistsScreen(
             if (rows.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                        Text("القائمة فارغة — أضف فيديوهات من نتائج البحث", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.playlist_empty_items), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -207,7 +209,7 @@ fun PlaylistsScreen(
                         if (!editMode) {
                             // move to another playlist (copy-then-delete = true move)
                             IconButton(onClick = { moveRow = r }) {
-                                Icon(Icons.Rounded.DriveFileMove, contentDescription = "نقل لقائمة أخرى", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Rounded.DriveFileMove, contentDescription = stringResource(R.string.cd_move_playlist), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         if (editMode) {
@@ -217,7 +219,7 @@ fun PlaylistsScreen(
                                     if (idx in l.indices && j in l.indices) { val t = l[idx]; l[idx] = l[j]; l[j] = t }
                                 }
                             }, enabled = idx > 0) {
-                                Icon(Icons.Rounded.ArrowUpward, contentDescription = "تحريك لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Rounded.ArrowUpward, contentDescription = stringResource(R.string.move_up), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             IconButton(onClick = {
                                 staged = staged?.toMutableList()?.also { l ->
@@ -225,10 +227,10 @@ fun PlaylistsScreen(
                                     if (idx in l.indices && j in l.indices) { val t = l[idx]; l[idx] = l[j]; l[j] = t }
                                 }
                             }, enabled = idx < rows.size - 1) {
-                                Icon(Icons.Rounded.ArrowDownward, contentDescription = "تحريك لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Rounded.ArrowDownward, contentDescription = stringResource(R.string.move_down), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             IconButton(onClick = { staged = staged?.filter { it.id != r.id } }) {
-                                Icon(Icons.Rounded.Delete, contentDescription = "حذف البند", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete_item), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -237,10 +239,10 @@ fun PlaylistsScreen(
             if (!editMode && rows.isNotEmpty()) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${rows.size} عنصر", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.rows_count_fmt, rows.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.weight(1f))
-                        androidx.compose.material3.TextButton(onClick = { openId?.let { onPlayAll(it) } }) { Text("تشغيل الكل") }
-                        androidx.compose.material3.TextButton(onClick = { openId?.let { onClearItems(it) } }) { Text("تفريغ") }
+                        androidx.compose.material3.TextButton(onClick = { openId?.let { onPlayAll(it) } }) { Text(stringResource(R.string.play_all)) }
+                        androidx.compose.material3.TextButton(onClick = { openId?.let { onClearItems(it) } }) { Text(stringResource(R.string.clear_items)) }
                     }
                 }
             }
@@ -250,10 +252,10 @@ fun PlaylistsScreen(
     if (showCreate) {
         AlertDialog(
             onDismissRequest = { showCreate = false },
-            title = { Text("قائمة تشغيل جديدة") },
+            title = { Text(stringResource(R.string.playlist_new_title)) },
             text = {
                 Column {
-                    OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("اسم القائمة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text(stringResource(R.string.playlist_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(12.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         items(PLAYLIST_EMOJIS) { e ->
@@ -272,9 +274,9 @@ fun PlaylistsScreen(
                 androidx.compose.material3.TextButton(onClick = {
                     val n = nameDraft.trim()
                     if (n.isNotEmpty()) { onCreate(n, createEmoji); nameDraft = ""; showCreate = false }
-                }) { Text("إنشاء") }
+                }) { Text(stringResource(R.string.create)) }
             },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { showCreate = false }) { Text("إلغاء") } }
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showCreate = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     // move target picker: other playlists only; picking one performs the true move
@@ -282,13 +284,13 @@ fun PlaylistsScreen(
         val targets = playlists.filter { it.id != openId }
         AlertDialog(
             onDismissRequest = { moveRow = null },
-            title = { Text("نقل إلى…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            title = { Text(stringResource(R.string.move_to), maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(r.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(8.dp))
                     if (targets.isEmpty()) {
-                        Text("لا توجد قائمة أخرى — أنشئ واحدة أولًا", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.move_no_target), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(targets, key = { it.id }) { p ->
@@ -304,19 +306,19 @@ fun PlaylistsScreen(
                 }
             },
             confirmButton = { },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { moveRow = null }) { Text("إلغاء") } }
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { moveRow = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     // delete confirm
     deleteTarget?.let { p ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("حذف القائمة؟") },
-            text = { Text("سيتم حذف \"${p.name}\" نهائيًا مع كل بنودها.") },
+            title = { Text(stringResource(R.string.delete_playlist_title)) },
+            text = { Text(stringResource(R.string.del_playlist_confirm_fmt, p.name)) },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { onDelete(p.id); deleteTarget = null }) { Text("حذف") }
+                androidx.compose.material3.TextButton(onClick = { onDelete(p.id); deleteTarget = null }) { Text(stringResource(R.string.delete)) }
             },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteTarget = null }) { Text("إلغاء") } }
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }
@@ -333,13 +335,13 @@ fun PlaylistPickerDialog(
     var nameDraft by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة إلى قائمة تشغيل", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        title = { Text(stringResource(R.string.picker_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(8.dp))
                 if (playlists.isEmpty()) {
-                    Text("لا توجد قوائم بعد — أنشئ واحدة بالاسم أدناه", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.picker_empty_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(playlists, key = { it.id }) { p ->
@@ -353,15 +355,15 @@ fun PlaylistPickerDialog(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("أو قائمة جديدة باسم…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text(stringResource(R.string.picker_new_hint)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = {
                 val n = nameDraft.trim()
                 if (n.isNotEmpty()) { onCreateAndAdd(n); nameDraft = "" }
-            }) { Text("إنشاء وإضافة") }
+            }) { Text(stringResource(R.string.create_and_add)) }
         },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إلغاء") } }
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }

@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.search
 
+import com.mohamedadel.mytube.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -45,12 +47,12 @@ fun SearchScreen(
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
             }
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
-                placeholder = { Text("ابحث عن فيديو أو قناة…") },
+                placeholder = { Text(stringResource(R.string.search_hint)) },
                 leadingIcon = {
                     if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                 },
@@ -58,11 +60,11 @@ fun SearchScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (!loading && query.isNotEmpty()) {
                             IconButton(onClick = onClear) {
-                                Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
+                                Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.search_clear))
                             }
                         }
                         IconButton(onClick = { onSearch(query) }) {
-                            Icon(Icons.Rounded.Search, contentDescription = "بحث")
+                            Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.search_action))
                         }
                     }
                 },
@@ -85,7 +87,7 @@ fun SearchScreen(
             )
         }
         Spacer(Modifier.height(8.dp))
-        Text("اكتب ثم اضغط بحث — الاقتراحات والسجل يظهران أسفل الحقل.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.search_guide), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

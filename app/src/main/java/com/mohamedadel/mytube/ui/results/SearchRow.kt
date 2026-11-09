@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.results
 
+import com.mohamedadel.mytube.R
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -28,6 +29,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +50,7 @@ import com.mohamedadel.mytube.util.formatViews
 @OptIn(ExperimentalFoundationApi::class)
 // onAdd == null hides the + button entirely: no dead button that promises and does nothing.
 fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: ((VideoItem) -> Unit)? = null, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null) {
+    val lctx = LocalContext.current
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) }),
         shape = MaterialTheme.shapes.medium,
@@ -65,7 +69,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     } else {
                         Icon(
                             Icons.Rounded.PlayArrow,
-                            contentDescription = "تشغيل",
+                            contentDescription = stringResource(R.string.play),
                             tint = Color.White,
                             modifier = Modifier.size(32.dp)
                         )
@@ -84,18 +88,18 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 Text(text = v.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (v.viewCount != null && v.viewCount > 0) {
                     Spacer(Modifier.height(2.dp))
-                    Text(text = formatViews(v.viewCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = lctx.formatViews(v.viewCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(onClick = onClick) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل الفيديو", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.cd_play_video), tint = MaterialTheme.colorScheme.primary)
                 }
                 if (onRemove != null || onAdd != null) {
                     IconButton(onClick = { if (onRemove != null) onRemove(v) else onAdd?.invoke(v) }) {
                         Icon(
                             if (onRemove != null) Icons.Rounded.Clear else Icons.Rounded.Add,
-                            contentDescription = if (onRemove != null) "حذف من السجل" else "إضافة لآخر القائمة الحالية",
+                            contentDescription = if (onRemove != null) stringResource(R.string.cd_remove_history) else stringResource(R.string.cd_add_queue_end),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )
@@ -104,7 +108,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 IconButton(onClick = { onFav(v) }) {
                     Icon(
                         if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = if (isFav) "إزالة من المفضلة" else "إضافة للمفضلة",
+                        contentDescription = if (isFav) stringResource(R.string.cd_fav_remove) else stringResource(R.string.cd_fav_add),
                         tint = if (isFav) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )

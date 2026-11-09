@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.queue
 
+import com.mohamedadel.mytube.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,12 +63,12 @@ fun QueuePanel(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("القائمة الحالية (${items.size})", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") }
+                Text(stringResource(R.string.queue_title_fmt, items.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
             }
             Spacer(Modifier.height(4.dp))
             if (items.isEmpty()) {
-                Text("لا توجد عناصر في القائمة الحالية", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.queue_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     itemsIndexed(items, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { idx, v ->
@@ -75,16 +77,16 @@ fun QueuePanel(
                             Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
                             // explicit "play from here": sequential playback starts ONLY from this button
                             IconButton(onClick = { onPlayFrom(idx) }, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Rounded.PlayArrow, contentDescription = "تشغيل من هنا", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play_from_here), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
                             IconButton(onClick = { onMove(idx, -1) }, enabled = idx > 0, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Rounded.ArrowUpward, contentDescription = "لأعلى", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Rounded.ArrowUpward, contentDescription = stringResource(R.string.move_up_short), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
                             IconButton(onClick = { onMove(idx, 1) }, enabled = idx < items.size - 1, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Rounded.ArrowDownward, contentDescription = "لأسفل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Rounded.ArrowDownward, contentDescription = stringResource(R.string.move_down_short), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
                             IconButton(onClick = { onRemove(idx) }, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Rounded.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -92,12 +94,12 @@ fun QueuePanel(
             }
             Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text("احفظ القائمة باسم…") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text(stringResource(R.string.queue_save_hint)) }, singleLine = true, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 androidx.compose.material3.Button(onClick = {
                     val n = nameDraft.trim()
                     if (n.isNotEmpty() && items.isNotEmpty()) { onSave(n); nameDraft = "" }
-                }) { Text("حفظ") }
+                }) { Text(stringResource(R.string.save)) }
             }
         }
     }
@@ -115,16 +117,16 @@ fun VideoOptionsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("خيارات الفيديو", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        title = { Text(stringResource(R.string.video_options_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(8.dp))
                 val items = listOf(
-                    "تشغيل الآن" to onPlayNow,
-                    "تشغيل التالي" to onPlayNext,
-                    "إضافة لآخر القائمة الحالية" to onQueueEnd,
-                    "إضافة إلى قائمة تشغيل…" to onAddToPlaylist
+                    stringResource(R.string.play_now) to onPlayNow,
+                    stringResource(R.string.play_next_opt) to onPlayNext,
+                    stringResource(R.string.cd_add_queue_end) to onQueueEnd,
+                    stringResource(R.string.video_options_add_playlist) to onAddToPlaylist
                 )
                 items.forEach { (label, action) ->
                     Row(
@@ -132,9 +134,9 @@ fun VideoOptionsDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val icon = when (label) {
-                            "تشغيل الآن" -> Icons.Rounded.PlayArrow
-                            "تشغيل التالي" -> Icons.Rounded.SkipNext
-                            "إضافة لآخر القائمة الحالية" -> Icons.Rounded.QueueMusic
+                            stringResource(R.string.play_now) -> Icons.Rounded.PlayArrow
+                            stringResource(R.string.play_next_opt) -> Icons.Rounded.SkipNext
+                            stringResource(R.string.cd_add_queue_end) -> Icons.Rounded.QueueMusic
                             else -> Icons.Rounded.PlaylistAdd
                         }
                         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -145,6 +147,6 @@ fun VideoOptionsDialog(
             }
         },
         confirmButton = { },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") } }
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } }
     )
 }

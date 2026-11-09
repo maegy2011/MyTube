@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.player
 
+import com.mohamedadel.mytube.R
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -30,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,10 +98,10 @@ fun MiniPlayer(
                 EqualizerBars(playing = isPlaying)
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onToggle) {
-                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل", tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play), tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Rounded.Clear, contentDescription = "إغلاق المشغل", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.cd_close_player), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
             }
             if (durationMs > 0) {
@@ -121,10 +123,10 @@ fun SleepTimerDialog(
     val options = listOf(5, 10, 15, 30, 45, 60)
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (currentLabel != null) "مؤقت النوم يعمل ($currentLabel)" else "مؤقت النوم", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        title = { Text(if (currentLabel != null) stringResource(R.string.sleep_running_fmt, currentLabel) else stringResource(R.string.sleep_timer), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text("سيتوقف التشغيل تلقائيًا بعد المدة المختارة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.sleep_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 options.forEach { m ->
                     Row(
@@ -133,7 +135,7 @@ fun SleepTimerDialog(
                     ) {
                         Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
-                        Text("بعد $m دقيقة", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.sleep_in_fmt, m), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 if (currentLabel != null) {
@@ -143,12 +145,12 @@ fun SleepTimerDialog(
                     ) {
                         Icon(Icons.Rounded.Clear, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(12.dp))
-                        Text("إيقاف المؤقت", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.sleep_stop), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
         },
         confirmButton = { },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("إغلاق") } }
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } }
     )
 }
