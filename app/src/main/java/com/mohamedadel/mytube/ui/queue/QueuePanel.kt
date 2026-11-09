@@ -19,10 +19,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
@@ -55,7 +57,8 @@ fun QueuePanel(
     onRemove: (Int) -> Unit,
     onPlayFrom: (Int) -> Unit,
     onSave: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOptions: (VideoItem) -> Unit = {}
 ) {
     var nameDraft by remember { mutableStateOf("") }
     Surface(
@@ -91,6 +94,9 @@ fun QueuePanel(
                             IconButton(onClick = { onRemove(idx) }, modifier = Modifier.size(32.dp)) {
                                 Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
+                            IconButton(onClick = { onOptions(v) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                 }
@@ -121,6 +127,7 @@ fun VideoOptionsDialog(
     onPin: (() -> Unit)? = null,
     isPinned: Boolean = false,
     isPinning: Boolean = false,
+    onShare: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -152,6 +159,16 @@ fun VideoOptionsDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+                if (onShare != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onShare).padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.share), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 if (onPin != null) {

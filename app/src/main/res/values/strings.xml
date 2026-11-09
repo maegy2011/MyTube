@@ -331,4 +331,5 @@
     <string name="subs_count_fmt">%1$,d مشترك</string>
     <string name="tab_suggestions">اقتراحات</string>
     <string name="sugg_based">مقترحات لك بناءً على نشاطك (اقتراحات NewPipe)</string>
+    <string name="share">مشاركة</string>
 </resources>

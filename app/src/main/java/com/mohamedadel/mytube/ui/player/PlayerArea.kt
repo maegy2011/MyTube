@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Favorite
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.Timer
@@ -178,6 +180,8 @@ fun PlayerArea(
     tags: List<String> = emptyList(),
     onTagClick: (String) -> Unit = {},
     titleOverride: String? = null,
+    onShare: () -> Unit = {},
+    onRelatedOptions: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
     storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList()
 ) {
     val lctx = LocalContext.current
@@ -650,6 +654,12 @@ fun PlayerArea(
                         onClick = onQueue
                     )
                     ActionPill(
+                        icon = { Icon(Icons.Rounded.Share, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                        label = stringResource(R.string.share),
+                        selected = false,
+                        onClick = onShare
+                    )
+                    ActionPill(
                         icon = {
                             if (sleepLabel != null) Text(sleepLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                             else Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -757,6 +767,9 @@ fun PlayerArea(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(rv.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     Text((rv.channel ?: "") + if (rv.viewCount != null && rv.viewCount > 0) " • " + lctx.formatViews(rv.viewCount) else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                IconButton(onClick = { onRelatedOptions(rv) }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }

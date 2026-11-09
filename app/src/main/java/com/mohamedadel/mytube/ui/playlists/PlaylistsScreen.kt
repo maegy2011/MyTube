@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -81,7 +82,8 @@ fun PlaylistsScreen(
     onClearItems: (Long) -> Unit,
     onMoveToPlaylist: (Long, Long, Long) -> Unit = { _, _, _ -> },
     onBack: () -> Unit,
-    pinBadges: Map<String, String> = emptyMap()
+    pinBadges: Map<String, String> = emptyMap(),
+    onLongClick: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {}
 ) {
     var nameDraft by remember { mutableStateOf("") }
     var showCreate by remember { mutableStateOf(false) }
@@ -221,6 +223,9 @@ fun PlaylistsScreen(
                             }
                         }
                         if (!editMode) {
+                            IconButton(onClick = { onLongClick(r.toVideoItem()) }, modifier = Modifier.size(40.dp)) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             // move to another playlist (copy-then-delete = true move)
                             IconButton(onClick = { moveRow = r }) {
                                 Icon(Icons.Rounded.DriveFileMove, contentDescription = stringResource(R.string.cd_move_playlist), tint = MaterialTheme.colorScheme.onSurfaceVariant)

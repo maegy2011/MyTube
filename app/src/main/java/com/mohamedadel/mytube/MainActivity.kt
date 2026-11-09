@@ -128,6 +128,7 @@ import com.mohamedadel.mytube.util.batteryExemptionIntent
 import com.mohamedadel.mytube.util.estimatedDownstreamKbps
 import com.mohamedadel.mytube.util.isBatteryExempt
 import com.mohamedadel.mytube.util.openInYoutubeCtx
+import com.mohamedadel.mytube.util.shareVideoCtx
 import com.mohamedadel.mytube.util.qualityHeight
 import androidx.compose.ui.draw.clip
 import com.mohamedadel.mytube.util.formatViews
@@ -1773,7 +1774,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     description = streamData?.description,
                     chapters = streamData?.chapters ?: emptyList(),
                     related = streamData?.related ?: emptyList(),
-                    onChapterSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
+                    // Fix: chapter tap starts playback too — seeking a never-started player left silence.
+                    onChapterSeek = { pos -> try { player?.seekTo(pos); playerError = null; player?.play() } catch (_: Exception) { } },
                     onRelatedPlay = { rv -> playVideo(rv) },
                     isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
                     isPinned = pinKeys.contains(cur.favKey()),
@@ -1801,6 +1803,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     tags = streamData?.tags ?: emptyList(),
                     titleOverride = translatedTitle,
                     onTagClick = { q -> try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) },
+                    onShare = { try { ctx.shareVideoCtx(cur) } catch (_: Exception) { } },
+                    onRelatedOptions = { optionsFor = it },
                     storyboards = streamData?.storyboards ?: emptyList()
                 )
                 // comments sheet (real CommentsExtractor, pageless first 30)
@@ -1893,6 +1897,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             }
                         },
                         onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
+                        onOptions = { optionsFor = it },
                         onSave = { name ->
                             scope.launch {
                                 // new playlist: dedupe the working queue before saving
@@ -2198,7 +2203,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             }
                         },
                         onBack = { showPlaylists = false; openPlaylistId = null },
-                        pinBadges = pinBadges
+                        pinBadges = pinBadges,
+                        onLongClick = { optionsFor = it }
                     )
                 }
                 loading -> {
@@ -2423,6 +2429,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     isPinned = pinKeys.contains(v.favKey()),
                     isPinning = pinningKeys.contains(v.favKey()),
                     onSubscribe = if (v.channelUrl != null) ({ toggleSubscription(v.channelUrl, v.channel, v.channelAvatar); optionsFor = null }) else null,
+                    onShare = { try { ctx.shareVideoCtx(v) } catch (_: Exception) { }; optionsFor = null },
                     isSubscribed = v.channelUrl != null && subscriptions.any { it.channelUrl == v.channelUrl },
                     onDismiss = { optionsFor = null }
                 )

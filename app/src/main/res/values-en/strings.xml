@@ -331,4 +331,5 @@
     <string name="subs_count_fmt">%1$,d subscribers</string>
     <string name="tab_suggestions">Suggestions</string>
     <string name="sugg_based">Suggested for you, based on your activity (NewPipe suggestions)</string>
+    <string name="share">Share</string>
 </resources>
