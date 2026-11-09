@@ -42,7 +42,10 @@ fun LibraryScreen(
     subscriptions: List<com.mohamedadel.mytube.data.local.SubscriptionEntity> = emptyList(),
     onOpenFeed: () -> Unit = {},
     onUnsubscribe: (String) -> Unit = {},
-    onImportSubs: () -> Unit = {}
+    onImportSubs: () -> Unit = {},
+    // R3: per-channel counts from the live in-memory feed (zero DB/network) + tap-to-filter.
+    feedCounts: Map<String, Int> = emptyMap(),
+    onOpenChannel: (String) -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -104,14 +107,21 @@ fun LibraryScreen(
         }
         items(subscriptions, key = { it.channelUrl }) { sub ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth().clickable { onOpenChannel(sub.channelUrl) }.padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (!sub.avatar.isNullOrBlank()) {
                     coil.compose.AsyncImage(model = sub.avatar, contentDescription = sub.name, modifier = Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
                 }
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
-                Text(sub.name ?: sub.channelUrl, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
+                    Text(sub.name ?: sub.channelUrl, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    val n = feedCounts[sub.channelUrl]
+                    Text(
+                        if (n != null) stringResource(R.string.lib_channel_count_fmt, n) else stringResource(R.string.lib_channel_count_none),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1
+                    )
+                }
                 androidx.compose.material3.TextButton(onClick = { onUnsubscribe(sub.channelUrl) }) { Text(stringResource(R.string.unsubscribe)) }
             }
         }

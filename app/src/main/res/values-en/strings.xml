@@ -317,4 +317,7 @@
     <string name="hist_bucket_yesterday">Yesterday</string>
     <string name="hist_bucket_week">This week</string>
     <string name="hist_bucket_older">Older</string>
+    <string name="lib_channel_count_fmt">%1$d videos in latest refresh</string>
+    <string name="lib_channel_count_none">Not in latest refresh</string>
+    <string name="feed_filter_fmt">%1$s — tap to show all</string>
 </resources>

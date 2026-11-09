@@ -317,4 +317,7 @@
     <string name="hist_bucket_yesterday">أمس</string>
     <string name="hist_bucket_week">هذا الأسبوع</string>
     <string name="hist_bucket_older">أقدم</string>
+    <string name="lib_channel_count_fmt">%1$d مقاطع في آخر تحديث</string>
+    <string name="lib_channel_count_none">ليست في آخر تحديث</string>
+    <string name="feed_filter_fmt">%1$s — انقر لعرض الكل</string>
 </resources>

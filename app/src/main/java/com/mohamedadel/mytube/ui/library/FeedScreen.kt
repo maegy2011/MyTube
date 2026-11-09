@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube.ui.library
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -17,9 +18,24 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.youtube.VideoItem
@@ -36,15 +52,63 @@ fun FeedScreen(
     onLongClick: (VideoItem) -> Unit = {},
     isFav: (VideoItem) -> Boolean,
     onFav: (VideoItem) -> Unit,
-    onAdd: (VideoItem) -> Unit
+    onAdd: (VideoItem) -> Unit,
+    // R3: channel filter (tap a library row); R4: manual pull-to-refresh (no PullToRefreshBox in M3 1.3.0)
+    filterChannelUrl: String? = null,
+    filterChannelName: String? = null,
+    onClearFilter: () -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    val shown = remember(items, filterChannelUrl) {
+        if (filterChannelUrl == null) items else items.filter { it.channelUrl == filterChannelUrl }
+    }
+    // R4: nested-scroll pull gesture — only when the list rests at the very top.
+    var pullPx by remember { mutableStateOf(0f) }
+    var pullFired by remember { mutableStateOf(false) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pullConn = remember(loading) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (loading) return androidx.compose.ui.geometry.Offset.Zero
+                val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                if (available.y > 0 && atTop && !pullFired) {
+                    pullPx += available.y
+                    if (pullPx >= 360f) { pullFired = true; onRefresh() }
+                    return available
+                }
+                if (available.y < 0) pullPx = 0f
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+            override suspend fun onPostFling(consumed: androidx.compose.ui.unit.Velocity, available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                pullPx = 0f; pullFired = false
+                return super.onPostFling(consumed, available)
+            }
+        }
+    }
+    LaunchedEffect(loading) { if (!loading) { pullPx = 0f; pullFired = false } }
+    Column(modifier = Modifier.fillMaxSize().nestedScroll(pullConn)) {
+        if (pullPx > 24f && !loading) {
+            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+        }
+        if (filterChannelUrl != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onClearFilter() }.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.feed_filter_fmt, filterChannelName ?: filterChannelUrl),
+                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         Box(modifier = Modifier.fillMaxSize().weight(1f)) {
             when {
                 loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
-                items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                shown.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
                         Text(stringResource(R.string.feed_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(12.dp))
@@ -54,6 +118,7 @@ fun FeedScreen(
                     }
                 }
                 else -> LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
@@ -70,7 +135,7 @@ fun FeedScreen(
                             }
                         }
                     }
-                    itemsIndexed(items = items, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
+                    itemsIndexed(items = shown, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
                         SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav)
                     }
                 }

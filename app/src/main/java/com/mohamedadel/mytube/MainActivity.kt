@@ -646,6 +646,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     // R2: history local search (Room LIKE, capped 200, off-main)
     var histSearchQuery by remember { mutableStateOf("") }
+    // R3: per-channel feed filter (tap a library row). Counts derive from live feedItems.
+    var feedFilter by remember { mutableStateOf<String?>(null) }
+    val feedCounts = remember(feedItems) { feedItems.groupingBy { it.channelUrl ?: "" }.eachCount().filterKeys { it.isNotEmpty() } }
     var histSearchResults by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.local.HistoryEntity>()) }
     fun runHistSearch(q: String) {
         histSearchQuery = q
@@ -1844,7 +1847,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         subscriptions = subscriptions,
                         onOpenFeed = { showLibrary = false; fromLibrary = true; showFeed = true; if (feedItems.isEmpty()) refreshFeed() },
                         onUnsubscribe = { url -> scope.launch { try { dao.deleteSubscription(url) } catch (_: Exception) { } } },
-                        onImportSubs = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } }
+                        onImportSubs = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } },
+                        feedCounts = feedCounts,
+                        onOpenChannel = { url -> feedFilter = url; showLibrary = false; fromLibrary = true; showFeed = true; if (feedItems.isEmpty()) refreshFeed() }
                     )
                 }
                 showFeed -> {
@@ -1852,6 +1857,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         items = feedItems,
                         loading = feedLoading,
                         onRefresh = { refreshFeed() },
+                        filterChannelUrl = feedFilter,
+                        filterChannelName = feedFilter?.let { u -> subscriptions.firstOrNull { it.channelUrl == u }?.name },
+                        onClearFilter = { feedFilter = null },
                         onLongClick = { optionsFor = it },
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
