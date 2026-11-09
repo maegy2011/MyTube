@@ -382,14 +382,15 @@ object YouTubeRepo {
         } catch (_: Exception) { ChannelDetail() }
     }
 
-    suspend fun comments(videoUrl: String?): List<CommentItem> = withContext(Dispatchers.IO) {
-        if (videoUrl.isNullOrBlank()) return@withContext emptyList()
-        try {
-            val h = service().commentsLHFactory.fromUrl(videoUrl)
-            val ext = service().getCommentsExtractor(h)
-            ext.fetchPage()
-            val page = try { ext.initialPage } catch (_: Exception) { return@withContext emptyList() }
-            page.items.mapNotNull { c ->
+    // CommentPager: stateful page-walking over CommentsExtractor (first + getPage chain).
+    // Keeps the extractor + next Page between calls; survives rotation? No — reset per open.
+    object CommentPager {
+        private var ext: org.schabi.newpipe.extractor.comments.CommentsExtractor? = null
+        private var next: org.schabi.newpipe.extractor.Page? = null
+        var hasMore: Boolean = false
+            private set
+        private fun map(items: List<org.schabi.newpipe.extractor.InfoItem>): List<CommentItem> {
+            return items.filterIsInstance<org.schabi.newpipe.extractor.comments.CommentsInfoItem>().mapNotNull { c ->
                 try {
                     val tx = try { c.commentText?.content?.take(500) } catch (_: Exception) { null }
                     var av: String? = null
@@ -402,7 +403,36 @@ object YouTubeRepo {
                         try { c.textualUploadDate } catch (_: Exception) { null }
                     )
                 } catch (_: Exception) { null }
-            }.take(30)
-        } catch (_: Exception) { emptyList() }
+            }
+        }
+        suspend fun first(videoUrl: String?): List<CommentItem> = withContext(Dispatchers.IO) {
+            ext = null; next = null; hasMore = false
+            if (videoUrl.isNullOrBlank()) return@withContext emptyList()
+            try {
+                val h = service().commentsLHFactory.fromUrl(videoUrl)
+                val e = service().getCommentsExtractor(h)
+                e.fetchPage()
+                ext = e
+                val page = try { e.initialPage } catch (_: Exception) { return@withContext emptyList() }
+                next = try { page.nextPage } catch (_: Exception) { null }
+                hasMore = next != null && (try { !page.items.isNullOrEmpty() } catch (_: Exception) { false })
+                map(page.items).take(30)
+            } catch (_: Exception) { emptyList() }
+        }
+        suspend fun more(): List<CommentItem> = withContext(Dispatchers.IO) {
+            val e = ext ?: return@withContext emptyList()
+            val p = next ?: run { hasMore = false; return@withContext emptyList() }
+            try {
+                val page = e.getPage(p)
+                next = try { page.nextPage } catch (_: Exception) { null }
+                val items = map(page.items)
+                hasMore = next != null && items.isNotEmpty()
+                if (!hasMore) { ext = null; next = null }
+                items
+            } catch (_: Exception) { hasMore = false; emptyList() }
+        }
     }
+
+    suspend fun comments(videoUrl: String?): List<CommentItem> = CommentPager.first(videoUrl)
+
 }

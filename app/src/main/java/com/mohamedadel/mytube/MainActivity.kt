@@ -376,6 +376,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var feedLoading by remember { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var commentsLoading by remember { mutableStateOf(false) }
+
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     // Phase 3: offline pins (faithful snapshot: current quality + audio + subtitle)
     val pins by remember { dao.observePins() }.collectAsState(initial = emptyList())
@@ -607,6 +608,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // no remove needed for composition lifetime
     }
     val scope = rememberCoroutineScope()
+    // comments pagination: first page + page-walk with single-flight guard
+    var commentsHasMore by remember { mutableStateOf(false) }
+    var commentsLoadingMore by remember { mutableStateOf(false) }
+    fun loadMoreComments() {
+        if (commentsLoadingMore || !commentsHasMore) return
+        commentsLoadingMore = true
+        scope.launch {
+            try {
+                val more = YouTubeRepo.CommentPager.more()
+                if (more.isNotEmpty()) commentList = commentList + more
+                commentsHasMore = YouTubeRepo.CommentPager.hasMore
+            } catch (_: Exception) { commentsHasMore = false }
+            finally { commentsLoadingMore = false }
+        }
+    }
     // Fix 3: full channel screen with tabs (replaces the dialog sheet)
     var channelScreenUrl by remember { mutableStateOf<String?>(null) }
     var channelScreenVideos by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
@@ -1768,7 +1784,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         commentsLoading = true
                         val url = playing?.url
                         scope.launch {
-                            try { commentList = YouTubeRepo.comments(url) } catch (_: Exception) { }
+                            try {
+                                commentList = YouTubeRepo.comments(url)
+                                commentsHasMore = YouTubeRepo.CommentPager.hasMore
+                            } catch (_: Exception) { }
                             commentsLoading = false
                         }
                     },
@@ -1792,7 +1811,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             } else {
                                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    items(commentList) { c ->
+                                    items(commentList, key = { c -> (c.author ?: "") + "|" + (c.text?.take(24) ?: "") + "|" + (c.date ?: "") }) { c ->
                                         Row(verticalAlignment = Alignment.Top) {
                                             if (!c.avatar.isNullOrBlank()) {
                                                 AsyncImage(model = c.avatar, contentDescription = c.author, modifier = Modifier.size(32.dp).clip(CircleShape), contentScale = ContentScale.Crop)
@@ -1805,6 +1824,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(c.text ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                                            }
+                                        }
+                                    }
+                                    // page-walk: reaching the end auto-fetches the next comments page
+                                    if (commentsHasMore || commentsLoadingMore) {
+                                        item {
+                                            androidx.compose.runtime.LaunchedEffect(commentList.size) { loadMoreComments() }
+                                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
+                                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                                             }
                                         }
                                     }
