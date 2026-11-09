@@ -51,9 +51,14 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
     val lctx = LocalContext.current
     val meta = buildString {
         append(v.channel ?: "")
+        if (v.verified) append(" ✓")
         if (v.viewCount != null && v.viewCount > 0) {
             if (isNotEmpty()) append(" • ")
             append(v.viewCount.let { lctx.formatViews(it) })
+        }
+        if (!v.uploadDate.isNullOrBlank()) {
+            if (isNotEmpty()) append(" • ")
+            append(v.uploadDate)
         }
     }
     Column(
@@ -70,6 +75,11 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     EqualizerBars(playing = isPlaying)
                 }
             }
+            if (v.isShort) {
+                Surface(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.8f)) {
+                    Text(text = "Shorts", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+            }
             v.durationSec?.let { dur ->
                 Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.8f)) {
                     Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
@@ -78,13 +88,17 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
         }
         // info row: avatar + title/meta + ⋮
         Row(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
-            // channel avatar: initial letter circle (no new data — initial from the existing channel name)
-            val initial = (v.channel?.trim()?.firstOrNull()?.uppercase() ?: "♪").toString()
-            Box(
-                modifier = Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(initial, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
+            // channel avatar: real uploader image when available, initial-letter fallback
+            if (!v.channelAvatar.isNullOrBlank()) {
+                AsyncImage(model = v.channelAvatar, contentDescription = v.channel, modifier = Modifier.size(36.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+            } else {
+                val initial = (v.channel?.trim()?.firstOrNull()?.uppercase() ?: "♪").toString()
+                Box(
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(initial, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {

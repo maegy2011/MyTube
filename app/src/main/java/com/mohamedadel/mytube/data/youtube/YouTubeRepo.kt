@@ -12,10 +12,11 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 
-data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null)
+data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null, val channelAvatar: String? = null, val verified: Boolean = false, val uploadDate: String? = null, val isShort: Boolean = false)
 data class SubtitleItem(val url: String, val langTag: String, val label: String, val auto: Boolean, val mime: String)
 data class AudioTrackItem(val url: String, val bitrate: Int, val trackId: String?, val name: String?, val localeTag: String?, val type: String?)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList())
+data class ChapterItem(val title: String, val startSec: Int)
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList())
 data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false, val error: String? = null)
 
 object YouTubeRepo {
@@ -52,8 +53,16 @@ object YouTubeRepo {
                     try { dur = info.duration } catch (_: Exception) {}
                     var views: Long? = null
                     try { views = info.viewCount } catch (_: Exception) {}
+                    var avatar: String? = null
+                    try { avatar = info.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+                    var verified = false
+                    try { verified = info.isUploaderVerified } catch (_: Exception) {}
+                    var upDate: String? = null
+                    try { upDate = info.textualUploadDate } catch (_: Exception) {}
+                    var isShort = false
+                    try { isShort = info.isShortFormContent } catch (_: Exception) {}
                     val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
-                    out.add(VideoItem(id, name, up, thumb, dur, views, url))
+                    out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort))
                 }
             }
             out
@@ -116,8 +125,16 @@ object YouTubeRepo {
                     try { dur = info.duration } catch (_: Exception) {}
                     var views: Long? = null
                     try { views = info.viewCount } catch (_: Exception) {}
+                    var avatar: String? = null
+                    try { avatar = info.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+                    var verified = false
+                    try { verified = info.isUploaderVerified } catch (_: Exception) {}
+                    var upDate: String? = null
+                    try { upDate = info.textualUploadDate } catch (_: Exception) {}
+                    var isShort = false
+                    try { isShort = info.isShortFormContent } catch (_: Exception) {}
                     val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
-                    out.add(VideoItem(id, name, up, thumb, dur, views, url))
+                    out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort))
                 }
             }
             val hasNext = try { lp.hasNextPage() } catch (_: Exception) { false }
@@ -184,7 +201,47 @@ object YouTubeRepo {
             // ensure uniqueness: if duplicate keys slipped, re-key
             var title: String? = null
             try { title = ext.name } catch (_: Exception) {}
-            StreamData(audioUrl, map, muxed, title, subs, tracks)
+            var likeCount: Long? = null
+            try { likeCount = ext.likeCount.takeIf { it >= 0 } } catch (_: Exception) {}
+            var desc: String? = null
+            try { desc = ext.description?.content?.take(2000) } catch (_: Exception) {}
+            var upDate: String? = null
+            try { upDate = ext.textualUploadDate } catch (_: Exception) {}
+            var category: String? = null
+            try { category = ext.category } catch (_: Exception) {}
+            var tags: List<String> = emptyList()
+            try { tags = ext.tags?.take(15) ?: emptyList() } catch (_: Exception) {}
+            var uVerified = false
+            try { uVerified = ext.isUploaderVerified } catch (_: Exception) {}
+            var subCount: Long? = null
+            try { subCount = ext.uploaderSubscriberCount.takeIf { it >= 0 } } catch (_: Exception) {}
+            var uAvatar: String? = null
+            try { uAvatar = ext.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+            var lang: String? = null
+            try { lang = ext.languageInfo?.toLanguageTag() } catch (_: Exception) {}
+            var chapters: List<ChapterItem> = emptyList()
+            try { chapters = ext.streamSegments?.mapNotNull { seg ->
+                val t = try { seg.title } catch (_: Exception) { null }
+                val st = try { seg.startTimeSeconds } catch (_: Exception) { -1 }
+                if (t != null && st >= 0) ChapterItem(t, st) else null
+            } ?: emptyList() } catch (_: Exception) {}
+            var related: List<VideoItem> = emptyList()
+            try { related = ext.relatedStreams?.getItems()?.mapNotNull { info ->
+                if (true) {
+                    val u: String? = try { info.url } catch (_: Exception) { null }
+                    val nm: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
+                    val ch: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { null }
+                    var th: String? = null
+                    try { th = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    var d: Long? = null
+                    try { d = info.duration } catch (_: Exception) {}
+                    var vw: Long? = null
+                    try { vw = info.viewCount } catch (_: Exception) {}
+                    val rid: String? = u?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                    if (u != null) VideoItem(rid, nm, ch, th, d, vw, u) else null
+                } else null
+            }?.take(20) ?: emptyList() } catch (_: Exception) {}
+            StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chapters, related)
         } catch (_: Exception) { StreamData() }
     }
 }
