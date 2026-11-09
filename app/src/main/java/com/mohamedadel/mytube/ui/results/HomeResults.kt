@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.results
 
+import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,7 +62,9 @@ fun HomeEmptyState(
     isFav: (VideoItem) -> Boolean = { false },
     onFav: (VideoItem) -> Unit = {},
     onAdd: ((VideoItem) -> Unit)? = null,
-    onLongClick: (VideoItem) -> Unit = {}
+    onLongClick: (VideoItem) -> Unit = {},
+    pinBadges: Map<String, String> = emptyMap(),
+    pinningKeys: Set<String> = emptySet()
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
@@ -103,7 +106,7 @@ fun HomeEmptyState(
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav)
+                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
                 }
             }
         }

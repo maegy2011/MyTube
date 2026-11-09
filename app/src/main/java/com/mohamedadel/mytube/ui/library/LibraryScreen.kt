@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.UploadFile
@@ -116,6 +117,11 @@ fun LibraryScreen(
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
                 androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
                     Text(sub.name ?: sub.channelUrl, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(14.dp))
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.sub_badge), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, maxLines = 1)
+                    }
                     val n = feedCounts[sub.channelUrl]
                     Text(
                         if (n != null) stringResource(R.string.lib_channel_count_fmt, n) else stringResource(R.string.lib_channel_count_none),

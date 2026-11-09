@@ -379,6 +379,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Phase 3: offline pins (faithful snapshot: current quality + audio + subtitle)
     val pins by remember { dao.observePins() }.collectAsState(initial = emptyList())
     val pinKeys = remember(pins) { pins.map { it.videoKey }.toSet() }
+    // B: precomputed pin badge texts shared by every list (history builds its own in-screen)
+    val pinBadges = remember(pins) {
+        pins.associate { p ->
+            p.videoKey to ("📌 " + (p.quality ?: "") + (if (p.sizeBytes > 0) {
+                val sz = if (p.sizeBytes < 1048576) ctx.getString(R.string.db_kb, (p.sizeBytes / 1024).toInt())
+                else ctx.getString(R.string.db_mb, p.sizeBytes / 1048576.0)
+                " • $sz"
+            } else ""))
+        }
+    }
     var pinningKeys by remember { mutableStateOf(setOf<String>()) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
     val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
@@ -1870,6 +1880,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         filterChannelUrl = feedFilter,
                         filterChannelName = feedFilter?.let { u -> subscriptions.firstOrNull { it.channelUrl == u }?.name },
                         onClearFilter = { feedFilter = null },
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys,
                         onLongClick = { optionsFor = it },
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
@@ -2045,7 +2057,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onSearchQuery = { runHistSearch(it) },
                         searchResults = histSearchResults,
                         pinInfo = remember(pins) { pins.associateBy { it.videoKey } },
-                        pinningKeys = pinningKeys
+                        pinningKeys = pinningKeys,
+                        isFav = { v -> v.favKey() in favoriteSet },
+                        onFav = { toggleFavorite(it) }
                     )
                 }
                 showFavorites -> {
@@ -2056,7 +2070,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onAdd = { enqueueLast(it) },
                         onClear = { clearFavorites() },
                         onBack = { smartBack() },
-                        onLongClick = { optionsFor = it }
+                        onLongClick = { optionsFor = it },
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys
                     )
                 }
                 showPlaylists -> {
@@ -2134,7 +2150,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 } catch (_: Exception) { toast(ctx.getString(R.string.toast_move_fail)) }
                             }
                         },
-                        onBack = { showPlaylists = false; openPlaylistId = null }
+                        onBack = { showPlaylists = false; openPlaylistId = null },
+                        pinBadges = pinBadges
                     )
                 }
                 loading -> {
@@ -2156,7 +2173,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
                         onAdd = { enqueueLast(it) },
-                        onLongClick = { optionsFor = it }
+                        onLongClick = { optionsFor = it },
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys
                     )
                 }
                 results.isEmpty() && !loading -> {
@@ -2232,7 +2251,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 onClick = { playVideo(v) },
                                 onLongClick = { optionsFor = it },
                                 onAdd = { enqueueLast(it) },
-                                onFav = { toggleFavorite(it) }
+                                onFav = { toggleFavorite(it) },
+                                pinBadge = pinBadges[v.favKey()],
+                                pinning = pinningKeys.contains(v.favKey())
                             )
                         }
                         if (loadingMore) {

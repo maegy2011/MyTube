@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.data.local.FavoriteEntity
+import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toVideoItem
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.results.SearchRow
@@ -39,7 +40,9 @@ fun FavoritesScreen(
     onClear: () -> Unit,
     onBack: () -> Unit,
     onAdd: ((VideoItem) -> Unit)? = null,
-    onLongClick: (VideoItem) -> Unit = {}
+    onLongClick: (VideoItem) -> Unit = {},
+    pinBadges: Map<String, String> = emptyMap(),
+    pinningKeys: Set<String> = emptySet()
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -80,7 +83,9 @@ fun FavoritesScreen(
                         onLongClick = { onLongClick(it) },
                         onAdd = onAdd,
                         isFav = true,
-                        onFav = onToggleFav
+                        onFav = onToggleFav,
+                        pinBadge = pinBadges[v.favKey()],
+                        pinning = pinningKeys.contains(v.favKey())
                     )
                 }
             }

@@ -322,4 +322,5 @@
     <string name="feed_filter_fmt">%1$s — انقر لعرض الكل</string>
     <string name="perf_preload_wifi">التجهيز على واي فاي فقط</string>
     <string name="perf_preload_wifi_desc">بيانات الهاتف لا تُجهّز أبدًا.</string>
+    <string name="sub_badge">مشترك ✓</string>
 </resources>

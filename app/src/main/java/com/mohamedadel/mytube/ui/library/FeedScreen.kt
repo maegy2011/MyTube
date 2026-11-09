@@ -37,6 +37,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.results.SearchRow
@@ -56,7 +57,9 @@ fun FeedScreen(
     // R3: channel filter (tap a library row); R4: manual pull-to-refresh (no PullToRefreshBox in M3 1.3.0)
     filterChannelUrl: String? = null,
     filterChannelName: String? = null,
-    onClearFilter: () -> Unit = {}
+    onClearFilter: () -> Unit = {},
+    pinBadges: Map<String, String> = emptyMap(),
+    pinningKeys: Set<String> = emptySet()
 ) {
     val shown = remember(items, filterChannelUrl) {
         if (filterChannelUrl == null) items else items.filter { it.channelUrl == filterChannelUrl }
@@ -134,7 +137,7 @@ fun FeedScreen(
                         }
                     }
                     itemsIndexed(items = shown, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
-                        SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav)
+                        SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
                     }
                 }
             }

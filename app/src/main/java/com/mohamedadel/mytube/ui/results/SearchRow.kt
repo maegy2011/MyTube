@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -122,6 +124,13 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     Spacer(Modifier.height(4.dp))
                     Text(text = pinBadge, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+            }
+            IconButton(onClick = { onFav(v) }, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    contentDescription = stringResource(if (isFav) R.string.cd_fav_remove else R.string.cd_fav_add),
+                    tint = if (isFav) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             IconButton(onClick = { onLongClick(v) }, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant)

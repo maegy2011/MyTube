@@ -53,6 +53,8 @@ fun HistoryScreen(
     // Phase 5: offline-pin badges (zero network)
     pinInfo: Map<String, com.mohamedadel.mytube.data.local.PinEntity> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
+    isFav: (VideoItem) -> Boolean = { false },
+    onFav: (VideoItem) -> Unit = {},
     totalCount: Int = 0,
     // R2: local search (blank = paged tabs). Results grouped by recency buckets; zero network.
     searchQuery: String = "",
@@ -137,6 +139,8 @@ fun HistoryScreen(
                             v = v, isCurrent = false, isPlaying = false,
                             onClick = { onPlay(v) },
                             onLongClick = { onLongClick(it) },
+                        isFav = isFav(v),
+                        onFav = onFav,
                             onRemove = onDelete,
                             pinBadge = pin?.let { pp -> "📌 " + (pp.quality ?: "") + (if (pp.sizeBytes > 0) " • " + sizeLabel(pp.sizeBytes) else "") },
                             pinning = pinningKeys.contains(h.videoKey)
@@ -190,6 +194,8 @@ fun HistoryScreen(
                         isPlaying = false,
                         onClick = { onPlay(v) },
                         onLongClick = { onLongClick(it) },
+                        isFav = isFav(v),
+                        onFav = onFav,
                         onRemove = onDelete,
                         pinBadge = badge,
                         pinning = pinningKeys.contains(h.videoKey)

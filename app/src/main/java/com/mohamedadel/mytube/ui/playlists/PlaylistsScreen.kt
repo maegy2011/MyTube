@@ -3,6 +3,7 @@ package com.mohamedadel.mytube.ui.playlists
 import com.mohamedadel.mytube.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +53,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.local.PlaylistItemEntity
+import com.mohamedadel.mytube.data.local.favKey
+import com.mohamedadel.mytube.data.local.toVideoItem
 import com.mohamedadel.mytube.data.local.PlaylistWithCount
 import com.mohamedadel.mytube.data.youtube.VideoItem
 
@@ -77,7 +80,8 @@ fun PlaylistsScreen(
     onDeleteItem: (Long, Long) -> Unit,
     onClearItems: (Long) -> Unit,
     onMoveToPlaylist: (Long, Long, Long) -> Unit = { _, _, _ -> },
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    pinBadges: Map<String, String> = emptyMap()
 ) {
     var nameDraft by remember { mutableStateOf("") }
     var showCreate by remember { mutableStateOf(false) }
@@ -200,11 +204,21 @@ fun PlaylistsScreen(
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(model = r.thumbnail, contentDescription = r.title, modifier = Modifier.size(72.dp, 42.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                        Box(modifier = Modifier.size(72.dp, 42.dp).clip(RoundedCornerShape(8.dp))) {
+                            AsyncImage(model = r.thumbnail, contentDescription = r.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            if ((r.durationSec ?: 0) > 0) {
+                                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), shape = RoundedCornerShape(4.dp), color = Color.Black.copy(alpha = 0.8f)) {
+                                    Text(text = com.mohamedadel.mytube.util.formatDuration(r.durationSec!!), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 4.dp))
+                                }
+                            }
+                        }
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f).clickable { if (!editMode) onPlayFrom(idx) }) {
                             Text(r.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(r.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            pinBadges[r.toVideoItem().favKey()]?.let { b ->
+                                Text(b, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                         if (!editMode) {
                             // move to another playlist (copy-then-delete = true move)
