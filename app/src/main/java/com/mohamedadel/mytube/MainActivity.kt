@@ -1775,6 +1775,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold),
                     category = streamData?.category,
                     tags = streamData?.tags ?: emptyList(),
+                    onTagClick = { q -> try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) },
                     storyboards = streamData?.storyboards ?: emptyList()
                 )
                 // comments sheet (real CommentsExtractor, pageless first 30)

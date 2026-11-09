@@ -176,6 +176,7 @@ fun PlayerArea(
     onPin: () -> Unit = {},
     category: String? = null,
     tags: List<String> = emptyList(),
+    onTagClick: (String) -> Unit = {},
     storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList()
 ) {
     val lctx = LocalContext.current
@@ -717,10 +718,10 @@ fun PlayerArea(
                     Spacer(Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!category.isNullOrBlank()) {
-                            androidx.compose.material3.AssistChip(onClick = {}, label = { Text(category) })
+                            androidx.compose.material3.AssistChip(onClick = { onTagClick(category) }, label = { Text(category) })
                         }
                         tags.take(8).forEach { t ->
-                            androidx.compose.material3.AssistChip(onClick = {}, label = { Text("#$t".take(24)) })
+                            androidx.compose.material3.AssistChip(onClick = { onTagClick(t) }, label = { Text("#$t".take(24)) })
                         }
                     }
                 }
