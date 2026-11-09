@@ -2,6 +2,9 @@ package com.mohamedadel.mytube.ui.search
 
 import com.mohamedadel.mytube.R
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +31,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,7 +46,12 @@ fun SearchScreen(
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
     onClose: () -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    showDropdown: Boolean = false,
+    dropRecents: List<String> = emptyList(),
+    suggestions: List<String> = emptyList(),
+    onPickSuggestion: (String) -> Unit = {},
+    onClearRecents: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -87,7 +96,51 @@ fun SearchScreen(
             )
         }
         Spacer(Modifier.height(8.dp))
-        Text(stringResource(R.string.search_guide), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Fix: the dropdown used to live outside this screen while this Column is fillMaxSize,
+        // so suggestions were pushed off-screen while typing and only flashed after submit.
+        // Now they render inside the search screen, directly under the field.
+        if (showDropdown && (suggestions.isNotEmpty() || dropRecents.isNotEmpty())) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 2.dp
+            ) {
+                Column {
+                    if (query.isBlank() && dropRecents.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(stringResource(R.string.recent_searches), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            androidx.compose.material3.TextButton(onClick = onClearRecents) { Text(stringResource(R.string.clear_all)) }
+                        }
+                    }
+                    dropRecents.forEach { s ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { onPickSuggestion(s) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                    suggestions.take(8).forEach { s ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { onPickSuggestion(s) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+            }
+        } else {
+            Text(stringResource(R.string.search_guide), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

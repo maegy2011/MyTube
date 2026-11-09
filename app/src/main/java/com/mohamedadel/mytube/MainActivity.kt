@@ -1645,6 +1645,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
             }
             // Standalone search screen: full search UI lives here, results stay in the main list.
+            // The suggestions dropdown lives INSIDE it (it used to sit below this fillMaxSize
+            // column, invisible while typing, flashing only after submit).
+            val dropRecents = if (query.isBlank()) recentSearches else recentSearches.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
             if (showSearch) {
                 SearchScreen(
                     query = query,
@@ -1652,230 +1655,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
                     onSearch = { q -> doSearch(q); showSearch = false },
                     onClose = { showSearch = false },
-                    onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false }
-                )
-            }
-
-            // Dropdown = recent searches (history icon) + live network suggestions, merged and deduped.
-            // Blank query -> recents only. Typing -> matching recents first, then network.
-            val dropRecents = if (query.isBlank()) recentSearches else recentSearches.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
-            AnimatedVisibility(visible = showSuggestions && (suggestions.isNotEmpty() || dropRecents.isNotEmpty()), enter = fadeIn(), exit = fadeOut()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    tonalElevation = 2.dp
-                ) {
-                    Column {
-                        if (query.isBlank() && dropRecents.isNotEmpty()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(stringResource(R.string.recent_searches), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                                androidx.compose.material3.TextButton(onClick = {
-                                    recentSearches = emptyList()
-                                    try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
-                                }) { Text(stringResource(R.string.clear_all)) }
-                            }
-                        }
-                        dropRecents.forEach { s ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    query = s; svm.onQueryChange(s); doSearch(s)
-                                }.padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(12.dp))
-                                Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
-                        suggestions.take(8).forEach { s ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    query = s; svm.onQueryChange(s); doSearch(s)
-                                }.padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(12.dp))
-                                Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
+                    onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false },
+                    showDropdown = showSuggestions,
+                    dropRecents = dropRecents,
+                    suggestions = suggestions,
+                    onPickSuggestion = { q -> query = q; svm.onQueryChange(q); showSearch = false; doSearch(q) },
+                    onClearRecents = {
+                        recentSearches = emptyList()
+                        try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
                     }
-                }
-            }
-            }
-
-            val cur = playing
-            if (cur != null && (playerExpanded || isFullscreen)) {
-                PlayerArea(
-                    video = cur,
-                    player = player,
-                    quality = quality,
-                    qualities = qualityList,
-                    isPlaying = isPlaying,
-                    playerLoading = playerLoading,
-                    positionMs = playerPositionMs,
-                    durationMs = playerDurationMs,
-                    bufferedPct = playerBufferedPct,
-                    errorMsg = playerError,
-                    onQuality = { q ->
-                        quality = q
-                        // user explicitly picked quality: resume only if it was already playing
-                        streamData?.let { applyQuality(q, it, player, autoplay = true, local = playingPinned) }
-                    },
-                    onTogglePlay = {
-                        playerError = null
-                        if (player?.isPlaying == true) player?.pause() else player?.play()
-                    },
-                    onSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
-                    onRetry = {
-                        playerError = null
-                        streamData?.let { applyQuality(quality, it, player, forceStart = true, local = playingPinned) }
-                    },
-                    queueOn = autoAdvance,
-                    playMode = playMode,
-                    playModeLabel = modeLabel(playMode),
-                    shuffleOn = shuffleOn,
-                    onCycleMode = { cycleMode() },
-                    onToggleShuffle = { setShuffle(!shuffleOn) },
-                    onQueue = { showQueue = true },
-                    onClose = { closePlayer() },
-                    onCollapse = { playerExpanded = false },
-                    isFullscreen = isFullscreen,
-                    onToggleFullscreen = { setFullscreen(!isFullscreen) },
-                    onSetMode = { setMode(it) },
-                    onSetShuffle = { setShuffle(it) },
-                    subtitles = (streamData?.subtitles ?: emptyList()).let { if (prefSubHideAuto) it.filter { t -> !t.auto } else it },
-                    subIdx = subTrackIdx,
-                    onSubtitleTrack = { i ->
-                        // manual pick becomes the saved subtitle preference (applies to all future videos)
-                        try {
-                            if (i < 0) {
-                                prefSubLang = "off"
-                                prefs.edit().putString("pref_sub_lang", "off").apply()
-                                subTrackIdx = -1
-                                toast(ctx.getString(R.string.toast_sub_off))
-                            } else {
-                                val t = streamData?.subtitles?.getOrNull(i)
-                                val tag = t?.langTag?.substringBefore("-")?.takeIf { it.isNotBlank() }
-                                val code = tag?.let { c -> if (LANG_OPTIONS.any { o -> o.first == c }) c else "auto" } ?: "auto"
-                                prefSubLang = code
-                                prefs.edit().putString("pref_sub_lang", code).apply()
-                                subTrackIdx = i
-                                toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
-                            }
-                        } catch (_: Exception) { toast(ctx.getString(R.string.toast_sub_fail)) }
-                        applyLangPrefs()
-                    },
-                    audioTracks = streamData?.audioTracks ?: emptyList(),
-                    audioIdx = audioTrackIdx,
-                    onAudioTrack = { i ->
-                        audioTrackIdx = i
-                        // manual pick becomes the saved preference (applies to all future videos)
-                        try {
-                            val t = streamData?.audioTracks?.getOrNull(i)
-                            val tag = t?.localeTag?.substringBefore("-") ?: t?.name
-                            if (!tag.isNullOrBlank()) {
-                                prefAudioLang = tag
-                                prefs.edit().putString("pref_audio_lang", tag).apply()
-                            }
-                        } catch (_: Exception) { }
-                        streamData?.let { sd -> applyQuality(quality, sd, player, autoplay = true) }
-                    },
-                    onNext = { playNextInQueue() },
-                    onPrev = { playPrevInQueue() },
-                    onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
-                    onEnterPip = onEnterPip,
-                    sleepLabel = sleepLeft.ifBlank { null },
-                    onSleepClick = { showSleep = true },
-                    isFav = cur.favKey() in favoriteSet,
-                    onToggleFav = { toggleFavorite(cur) },
-                    onSave = { pickFor = cur },
-                    likeCount = streamData?.likeCount,
-                    description = streamData?.description,
-                    chapters = streamData?.chapters ?: emptyList(),
-                    related = streamData?.related ?: emptyList(),
-                    onChapterSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
-                    onRelatedPlay = { rv -> playVideo(rv) },
-                    isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
-                    isPinned = pinKeys.contains(cur.favKey()),
-                    isPinning = pinningKeys.contains(cur.favKey()),
-                    onPin = {
-                        if (pinKeys.contains(cur.favKey())) doUnpin(cur.favKey())
-                        else requestPin(cur, streamData, quality, audioTrackIdx, subTrackIdx)
-                    },
-                    onSubscribe = { toggleSubscription(streamData?.channelUrl, cur.channel, channelDetail?.avatar) },
-                    onChannelClick = { openChannel(streamData?.channelUrl) },
-                    onCommentsClick = {
-                        showComments = true
-                        commentsLoading = true
-                        val url = playing?.url
-                        scope.launch {
-                            try {
-                                commentList = YouTubeRepo.comments(url)
-                                commentsHasMore = YouTubeRepo.CommentPager.hasMore
-                            } catch (_: Exception) { }
-                            commentsLoading = false
-                        }
-                    },
-                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold),
-                    category = streamData?.category,
-                    tags = streamData?.tags ?: emptyList(),
-                    onTagClick = { q -> try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) },
-                    storyboards = streamData?.storyboards ?: emptyList()
                 )
-                // comments sheet (real CommentsExtractor, pageless first 30)
-                if (showComments) {
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { showComments = false },
-                        title = { Text(stringResource(R.string.pill_comments)) },
-                        text = {
-                            if (commentsLoading) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                                }
-                            } else if (commentList.isEmpty()) {
-                                Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    items(commentList, key = { c -> (c.author ?: "") + "|" + (c.text?.take(24) ?: "") + "|" + (c.date ?: "") }) { c ->
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            if (!c.avatar.isNullOrBlank()) {
-                                                AsyncImage(model = c.avatar, contentDescription = c.author, modifier = Modifier.size(32.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                                                Spacer(Modifier.width(8.dp))
-                                            }
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    (c.author ?: "") + (if (!c.date.isNullOrBlank()) " • " + c.date else "") + (if (c.likes > 0) " • " + ctx.formatViews(c.likes.toLong()) else ""),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Text(c.text ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                                            }
-                                        }
-                                    }
-                                    // page-walk: reaching the end auto-fetches the next comments page
-                                    if (commentsHasMore || commentsLoadingMore) {
-                                        item {
-                                            androidx.compose.runtime.LaunchedEffect(commentList.size) { loadMoreComments() }
-                                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
-                                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        confirmButton = { },
-                        dismissButton = { androidx.compose.material3.TextButton(onClick = { showComments = false }) { Text(stringResource(R.string.close)) } }
-                    )
-                }
             }
 
-            if (!isFullscreen) {
             when {
                 // Fix 3: full channel screen with tabs (header + Videos/About)
                 channelScreenUrl != null -> {
