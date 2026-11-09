@@ -1217,7 +1217,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onSleepClick = { showSleep = true },
                     isFav = cur.favKey() in favoriteSet,
                     onToggleFav = { toggleFavorite(cur) },
-                    onSave = { pickFor = cur }
+                    onSave = { pickFor = cur },
+                    likeCount = streamData?.likeCount,
+                    description = streamData?.description,
+                    chapters = streamData?.chapters ?: emptyList(),
+                    related = streamData?.related ?: emptyList(),
+                    onChapterSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
+                    onRelatedPlay = { rv -> playVideo(rv) }
                 )
             }
 

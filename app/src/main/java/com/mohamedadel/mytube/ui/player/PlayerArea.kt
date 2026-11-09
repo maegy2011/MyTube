@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -145,13 +146,20 @@ fun PlayerArea(
     onSleepClick: () -> Unit = {},
     isFav: Boolean = false,
     onToggleFav: () -> Unit = {},
-    onSave: () -> Unit = {}
+    onSave: () -> Unit = {},
+    likeCount: Long? = null,
+    description: String? = null,
+    chapters: List<com.mohamedadel.mytube.data.youtube.ChapterItem> = emptyList(),
+    related: List<com.mohamedadel.mytube.data.youtube.VideoItem> = emptyList(),
+    onChapterSeek: (Long) -> Unit = {},
+    onRelatedPlay: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {}
 ) {
     val lctx = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     var langExpanded by remember { mutableStateOf(false) }
     var subExpanded by remember { mutableStateOf(false) }
     var showPlayerSettings by remember { mutableStateOf(false) }
+    var descExpanded by remember { mutableStateOf(false) }
     // TEMPORARY EXPERIMENT (native-controls test): hide all our custom bars, use the full native ExoPlayer controller.
     // Media3 ships Arabic strings (values-ar), so the native buttons appear Arabic on an Arabic device.
     // To revert: set nativeOnly = false.
@@ -531,6 +539,70 @@ fun PlayerArea(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
+                }
+                // likes row (real count from the same stream() call — no account needed)
+                if (likeCount != null && likeCount > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.ThumbUp, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(lctx.formatViews(likeCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                // description (collapsible, like YouTube)
+                if (!description.isNullOrBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Surface(
+                        onClick = { descExpanded = !descExpanded },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            description.let { if (!descExpanded && it.length > 160) it.take(160) + "…" else it },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = if (descExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+                // chapters (StreamSegments — tap seeks, like YouTube)
+                if (chapters.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.chapters_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        chapters.forEach { ch ->
+                            androidx.compose.material3.FilterChip(
+                                selected = false,
+                                onClick = { onChapterSeek(ch.startSec * 1000L) },
+                                label = { Text("${formatDuration(ch.startSec.toLong())} • ${ch.title.take(24)}") }
+                            )
+                        }
+                    }
+                }
+                // related (Up next — YouTube algorithm via getRelatedStreams)
+                if (related.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.related_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Column {
+                        related.take(10).forEach { rv ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable { onRelatedPlay(rv) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                AsyncImage(model = rv.thumbnail, contentDescription = rv.title, modifier = Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(rv.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text((rv.channel ?: "") + if (rv.viewCount != null && rv.viewCount > 0) " • " + lctx.formatViews(rv.viewCount) else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
                 }
             }
             // playback-settings dialog: quality / subtitles / audio / volume / open-youtube / close

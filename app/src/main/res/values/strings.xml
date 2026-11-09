@@ -218,4 +218,6 @@
     <string name="pill_pip">صورة</string>
     <string name="pill_settings">الإعدادات</string>
     <string name="dlg_player_settings">إعدادات التشغيل</string>
+    <string name="chapters_title">الفصول</string>
+    <string name="related_title">التالي</string>
 </resources>

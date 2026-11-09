@@ -218,4 +218,6 @@
     <string name="pill_pip">PiP</string>
     <string name="pill_settings">Settings</string>
     <string name="dlg_player_settings">Playback settings</string>
+    <string name="chapters_title">Chapters</string>
+    <string name="related_title">Up next</string>
 </resources>
