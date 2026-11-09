@@ -42,6 +42,13 @@ fun langLabel(code: String, deviceTag: String?): String = when (code) {
     else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second ?: code
 }
 
+val QUALITY_OPTIONS = listOf(
+    "audio-only" to "صوت فقط (الأخف — الافتراضي)",
+    "auto" to "تلقائي حسب السرعة",
+    "saver" to "توفير بيانات (أدنى دقة)",
+    "high" to "عالية (أعلى دقة)"
+)
+
 @Composable
 fun SettingsScreen(
     subLang: String,
@@ -49,12 +56,14 @@ fun SettingsScreen(
     subLang2: String,
     audioLang2: String,
     country: String,
+    quality: String,
     deviceLang: java.util.Locale?,
     onSubLang: (String) -> Unit,
     onAudioLang: (String) -> Unit,
     onSubLang2: (String) -> Unit,
     onAudioLang2: (String) -> Unit,
-    onCountry: (String) -> Unit
+    onCountry: (String) -> Unit,
+    onQuality: (String) -> Unit
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     LazyColumn(
@@ -143,6 +152,25 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(langLabel(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text("جودة الفيديو الافتراضية (تُطبق على كل فيديو جديد)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(QUALITY_OPTIONS) { (code, label) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onQuality(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (quality == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (quality == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         item {

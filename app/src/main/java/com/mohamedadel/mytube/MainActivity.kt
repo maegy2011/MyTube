@@ -256,6 +256,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefAudioLang2 by remember { mutableStateOf("original") }
     // content country (manual only, no IP): drives search/trending region. "global" = YouTube default.
     var prefCountry by remember { mutableStateOf("EG") }
+    // default video quality for every new video: audio-only | auto | saver | high
+    var prefQuality by remember { mutableStateOf("audio-only") }
     // standalone search screen (YouTube-style) + trending tabs
     var showSearch by remember { mutableStateOf(false) }
     var trendTab by remember { mutableStateOf(0) }
@@ -282,6 +284,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefSubLang2 = prefs.getString("pref_sub_lang2", "en") ?: "en"
             prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
+            prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
         } catch (_: Exception) { }
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
@@ -569,8 +572,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val sorted = s.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
             quals.addAll(sorted)
             qualityList = quals
-            quality = "audio-only (default)"
-            applyQuality("audio-only (default)", s, player, autoplay = false)
+            // default quality preference (applies to every new video)
+            val startQ = when (prefQuality) {
+                "auto" -> autoKey
+                "saver" -> sorted.lastOrNull() ?: "audio-only (default)"
+                "high" -> sorted.firstOrNull() ?: autoKey
+                else -> "audio-only (default)"
+            }
+            quality = startQ
+            applyQuality(startQ, s, player, autoplay = false)
         }
     }
 
@@ -1170,6 +1180,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         subLang2 = prefSubLang2,
                         audioLang2 = prefAudioLang2,
                         country = prefCountry,
+                        quality = prefQuality,
                         deviceLang = try { java.util.Locale.getDefault() } catch (_: Exception) { null },
                         onSubLang = { v ->
                             prefSubLang = v
@@ -1194,6 +1205,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             prefCountry = v
                             try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
                             refreshTrending()
+                        },
+                        onQuality = { v ->
+                            prefQuality = v
+                            try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
+                            toast("تُطبق الجودة على الفيديو التالي")
                         }
                     )
                 }
