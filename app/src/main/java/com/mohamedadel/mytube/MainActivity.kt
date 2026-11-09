@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.net.Uri
 import android.util.Rational
 import android.view.ViewGroup
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -315,6 +316,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefSkipSilence by remember { mutableStateOf(false) }
     // Phase 1: transient media-cache cap (MB) + live size label
     var prefCacheMaxMb by remember { mutableStateOf(500L) }
+    // Phase 4: offline mode — pinned items play from disk, unpinned show "pin first"
+    var prefOffline by remember { mutableStateOf(false) }
     var cacheSizeLabel by remember { mutableStateOf("—") }
     var prefSpeed by remember { mutableStateOf(1.0f) }
     var prefPitch by remember { mutableStateOf(1.0f) }
@@ -374,6 +377,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefAudioRole = prefs.getString("pref_audio_role", "auto") ?: "auto"
             prefSkipSilence = prefs.getBoolean("pref_skip_silence", false)
             prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
+            prefOffline = prefs.getBoolean("pref_offline", false)
             try { com.mohamedadel.mytube.playback.MediaCache.setMax(ctx.applicationContext, prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
             prefPitch = prefs.getFloat("pref_pitch", 1.0f)
@@ -661,7 +665,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val listState = rememberLazyListState()
 
     // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
-    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false) {
+    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false, local: Boolean = false) {
         if (p == null) return
         val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
         // user-selected dubbed/original audio track, falling back to lowest
@@ -700,8 +704,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             p.prepare()
         } else {
             val httpFactory = DefaultHttpDataSource.Factory()
-            // Phase 1: cache-first media (replay within URL lifetime = zero bytes)
-            val dataSourceFactory = try {
+            // Phase 1: cache-first media (replay within URL lifetime = zero bytes).
+            // Phase 4: pinned files bypass the cache entirely (no duplicate bytes on disk).
+            val dataSourceFactory = if (local) DefaultDataSource.Factory(ctx, httpFactory) else try {
                 com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
             } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
             val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
@@ -773,6 +778,60 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
         try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
         scope.launch {
+            val key = v.favKey()
+            val app = ctx.applicationContext
+            val pinned = try { com.mohamedadel.mytube.data.local.PinFiles.isPinned(app, key) } catch (_: Exception) { false }
+            if (prefOffline && !pinned) {
+                playerLoading = false
+                playerError = ctx.getString(R.string.err_pin_first)
+                toast(ctx.getString(R.string.err_pin_first))
+                return@launch
+            }
+            if (pinned) {
+                // Phase 4: zero-network playback from the faithful snapshot
+                try {
+                    val dir = com.mohamedadel.mytube.data.local.PinFiles.pinDir(app, key)
+                    val vFile = File(dir, "video.mp4")
+                    val aFile = File(dir, "audio.m4a")
+                    val sFile = File(dir, "sub.vtt")
+                    if (!vFile.exists()) throw IllegalStateException("pin missing")
+                    val meta = try { org.json.JSONObject(File(dir, "meta.json").readText()) } catch (_: Exception) { org.json.JSONObject() }
+                    val label = meta.optString("quality", "audio-only (default)").takeIf { it.isNotBlank() } ?: "audio-only (default)"
+                    val hasAudio = aFile.exists()
+                    val hasSub = sFile.exists()
+                    val vUri = android.net.Uri.fromFile(vFile).toString()
+                    val subs = if (hasSub) listOf(
+                        com.mohamedadel.mytube.data.youtube.SubtitleItem(
+                            url = android.net.Uri.fromFile(sFile).toString(),
+                            langTag = meta.optString("subLang", "und").takeIf { it.isNotBlank() } ?: "und",
+                            label = meta.optString("subTag", "").takeIf { it.isNotBlank() } ?: label,
+                            auto = false,
+                            mime = meta.optString("subMime", "text/vtt").takeIf { it.isNotBlank() } ?: "text/vtt"
+                        )
+                    ) else emptyList()
+                    val s = com.mohamedadel.mytube.data.youtube.StreamData(
+                        audioLowestUrl = if (hasAudio) android.net.Uri.fromFile(aFile).toString() else if (!hasAudio) vUri else null,
+                        videoUrlByQuality = mapOf(label to vUri),
+                        muxedQualities = if (hasAudio) emptySet() else setOf(label),
+                        title = v.title,
+                        subtitles = subs,
+                        channelUrl = null
+                    )
+                    streamData = s
+                    qualityList = listOf(label)
+                    quality = label
+                    audioTrackIdx = 0
+                    subTrackIdx = if (hasSub) 0 else -1
+                    applyQuality(label, s, player, autoplay = false, local = true)
+                } catch (_: Exception) {
+                    playerLoading = false
+                    playerError = ctx.getString(R.string.toast_pin_fail)
+                    toast(ctx.getString(R.string.toast_pin_fail))
+                } finally {
+                    playerLoading = false
+                }
+                return@launch
+            }
             val s = YouTubeRepo.stream(v.url ?: return@launch)
             // total extraction failure used to leave the spinner forever with NO error (silent death).
             // Detect it here and report a smart message instead.
@@ -1716,6 +1775,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             toast(ctx.getString(R.string.toast_cache_max))
                         },
                         onClearCache = { clearMediaCache() },
+                        offlineMode = prefOffline,
+                        onOfflineMode = { v ->
+                            prefOffline = v
+                            try { prefs.edit().putBoolean("pref_offline", v).apply() } catch (_: Exception) { }
+                        },
                         subHideAuto = prefSubHideAuto,
                         onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
                         subFg = prefSubFg,

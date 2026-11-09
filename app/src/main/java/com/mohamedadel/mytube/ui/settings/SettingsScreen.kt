@@ -3,6 +3,7 @@ package com.mohamedadel.mytube.ui.settings
 import com.mohamedadel.mytube.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -130,6 +131,8 @@ fun SettingsScreen(
     cacheMaxMb: Long = 500L,
     onCacheMax: (Long) -> Unit = {},
     onClearCache: () -> Unit = {},
+    offlineMode: Boolean = false,
+    onOfflineMode: (Boolean) -> Unit = {},
     onClearFavorites: () -> Unit,
     onClearHistory: () -> Unit
 ) {
@@ -472,6 +475,20 @@ fun SettingsScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedButton(onClick = { confirmFav = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_favorites)) }
                 androidx.compose.material3.OutlinedButton(onClick = { confirmHist = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_history)) }
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.offline_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onOfflineMode(!offlineMode) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (offlineMode) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (offlineMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.offline_mode), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.offline_mode_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         item {

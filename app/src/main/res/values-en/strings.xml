@@ -287,4 +287,8 @@
     <string name="toast_pin_done">Pinned for offline</string>
     <string name="toast_pin_fail">Pin failed — check connection</string>
     <string name="toast_unpinned">Pin removed</string>
+    <string name="offline_title">Offline mode</string>
+    <string name="offline_mode">Play pinned only (no data)</string>
+    <string name="offline_mode_desc">Pinned videos play from disk. Unpinned show “pin first”.</string>
+    <string name="err_pin_first">Not pinned — pin it first for offline play</string>
 </resources>
