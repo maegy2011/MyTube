@@ -1322,7 +1322,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 if (items.isNotEmpty()) return items
                             }
                         }
-                        val fresh = YouTubeRepo.feedFor(id)
+                        // RSS feed first (cheap, chronological); videos-tab fallback when the
+                        // feed endpoint is blocked/empty — recent uploads are the same content.
+                        val rss = YouTubeRepo.feedFor(id)
+                        val fresh = if (rss.isNotEmpty()) rss else YouTubeRepo.channelVideos(channelUrl).take(15)
                         if (useCache && fresh.isNotEmpty()) {
                             try { dao.upsertFeedCache(com.mohamedadel.mytube.data.local.FeedCacheEntity(id, System.currentTimeMillis(), com.mohamedadel.mytube.data.local.FeedJson.toJson(fresh))) } catch (_: Exception) { }
                         }

@@ -313,9 +313,17 @@ object YouTubeRepo {
     }
 
     // Resolve a channel URL to its stable channel ID (feed key). Null on failure — caller skips.
+    // Robust channel-id resolve: LH parse is enough for /channel/UC… links, but
+    // /c/, /user/ and /@handle links need a real extractor fetch to yield the UC id.
     suspend fun channelIdFor(channelUrl: String?): String? = withContext(Dispatchers.IO) {
         if (channelUrl.isNullOrBlank()) return@withContext null
-        try { service().channelLHFactory.fromUrl(channelUrl).id } catch (_: Exception) { null }
+        try {
+            val lhId = try { service().channelLHFactory.fromUrl(channelUrl).id } catch (_: Exception) { null }
+            if (!lhId.isNullOrBlank() && lhId.startsWith("UC")) return@withContext lhId
+            val ext = service().getChannelExtractor(service().channelLHFactory.fromUrl(channelUrl))
+            ext.fetchPage()
+            try { ext.id?.takeIf { it.isNotBlank() } } catch (_: Exception) { lhId }
+        } catch (_: Exception) { null }
     }
 
     // Channel videos tab (javap-verified 0.26.5: getTabs/getChannelTabExtractor/getContentFilters).
