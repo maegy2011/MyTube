@@ -18,6 +18,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -219,6 +221,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var loadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(false) }
     var nextPage by remember { mutableStateOf<Page?>(null) }
+    // search content filter: all | videos | channels | playlists (persisted; no sort API exists)
+    var prefContentFilter by remember { mutableStateOf("all") }
     var playing by remember { mutableStateOf<VideoItem?>(null) }
     var streamData by remember { mutableStateOf<StreamData?>(null) }
     // selected dubbed/original audio track (auto-matched to the audio pref once prefs load below)
@@ -333,6 +337,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefUiLang = prefs.getString("pref_ui_lang", "ar") ?: "ar"
             prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
+            prefContentFilter = prefs.getString("pref_content_filter", "all") ?: "all"
             prefSubHideAuto = prefs.getBoolean("pref_sub_hide_auto", false)
             prefSubFg = prefs.getString("pref_sub_fg", "white") ?: "white"
             prefSubBg = prefs.getString("pref_sub_bg", "transparent") ?: "transparent"
@@ -760,7 +765,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val page = nextPage ?: return@LaunchedEffect
             loadingMore = true
             try {
-                val res = YouTubeRepo.search(q, page, if (prefCountry == "global") null else prefCountry)
+                val res = YouTubeRepo.search(q, page, if (prefCountry == "global") null else prefCountry, prefContentFilter)
                 // drop duplicates already in list (same url/id) to avoid key crash
                 val seen = results.mapNotNull { it.url ?: it.id }.toSet()
                 val fresh = res.items.filter { (it.url ?: it.id ?: it.title) !in seen }
@@ -851,7 +856,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         searchJob?.cancel()
         searchJob = scope.launch {
             try {
-                val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry)
+                val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry, prefContentFilter)
                 if (page.error != null && page.items.isEmpty()) {
                     searchError = ctx.getString(R.string.err_search)
                     results = emptyList()
@@ -1290,7 +1295,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             commentsLoading = false
                         }
                     },
-                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold)
+                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold),
+                    category = streamData?.category,
+                    tags = streamData?.tags ?: emptyList()
                 )
                 // channel sheet (avatar/banner/subs/description/verified — no account needed)
                 if (showChannel) {
@@ -1645,10 +1652,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         verticalArrangement = Arrangement.spacedBy(0.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
                     ) {
-                        // results header: count only — "play all" is gone. The working queue is built
-                        // explicitly (row + button, long-press) and started from the queue panel.
+                        // content filter chips (all/videos/channels/playlists) + count
                         item {
-                            Text(stringResource(R.string.results_found_fmt, results.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("all", "videos", "channels", "playlists").forEach { f ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = prefContentFilter == f,
+                                        onClick = {
+                                            prefContentFilter = f
+                                            try { prefs.edit().putString("pref_content_filter", f).apply() } catch (_: Exception) { }
+                                            if (currentQuery.isNotBlank()) doSearch(currentQuery)
+                                        },
+                                        label = { Text(stringResource(when (f) { "videos" -> R.string.filter_videos; "channels" -> R.string.filter_channels; "playlists" -> R.string.filter_playlists; else -> R.string.filter_all })) }
+                                    )
+                                }
+                            }
+                        }
+                        item {
+                            Text(stringResource(R.string.results_found_fmt, results.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp))
                         }
                         itemsIndexed(items = results, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
                             SearchRow(
@@ -1677,7 +1698,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         loadingMore = true
                                         scope.launch {
                                             try {
-                                                val page = YouTubeRepo.search(currentQuery, pg, if (prefCountry == "global") null else prefCountry)
+                                                val page = YouTubeRepo.search(currentQuery, pg, if (prefCountry == "global") null else prefCountry, prefContentFilter)
                                                 val seen = results.mapNotNull { it.url ?: it.id }.toSet()
                                                 val fresh = page.items.filter { (it.url ?: it.id ?: it.title) !in seen }
                                                 results = results + fresh

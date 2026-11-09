@@ -239,4 +239,8 @@
     <string name="speed_normal">طبيعية</string>
     <string name="pill_comments">التعليقات</string>
     <string name="pitch_title">حدة الصوت</string>
+    <string name="filter_all">الكل</string>
+    <string name="filter_videos">فيديوهات</string>
+    <string name="filter_channels">قنوات</string>
+    <string name="filter_playlists">قوائم</string>
 </resources>

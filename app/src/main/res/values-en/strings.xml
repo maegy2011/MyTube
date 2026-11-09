@@ -239,4 +239,8 @@
     <string name="speed_normal">Normal</string>
     <string name="pill_comments">Comments</string>
     <string name="pitch_title">Pitch (voice tone)</string>
+    <string name="filter_all">All</string>
+    <string name="filter_videos">Videos</string>
+    <string name="filter_channels">Channels</string>
+    <string name="filter_playlists">Playlists</string>
 </resources>

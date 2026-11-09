@@ -156,7 +156,9 @@ fun PlayerArea(
     onRelatedPlay: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
     subStyle: SubStyle = SubStyle(),
     onChannelClick: () -> Unit = {},
-    onCommentsClick: () -> Unit = {}
+    onCommentsClick: () -> Unit = {},
+    category: String? = null,
+    tags: List<String> = emptyList()
 ) {
     val lctx = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
@@ -578,6 +580,18 @@ fun PlayerArea(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(12.dp)
                         )
+                    }
+                }
+                // category + tags (from the same stream() call)
+                if (!category.isNullOrBlank() || tags.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!category.isNullOrBlank()) {
+                            androidx.compose.material3.AssistChip(onClick = {}, label = { Text(category) })
+                        }
+                        tags.take(8).forEach { t ->
+                            androidx.compose.material3.AssistChip(onClick = {}, label = { Text("#$t".take(24)) })
+                        }
                     }
                 }
                 // chapters (StreamSegments — tap seeks, like YouTube)

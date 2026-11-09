@@ -109,10 +109,15 @@ object YouTubeRepo {
         }
     }
 
-    suspend fun search(query: String, page: Page? = null, region: String? = null): SearchPage = withContext(Dispatchers.IO) {
+    // content filter: "all" (default) | "videos" | "channels" | "playlists" (verified via javap:
+    // YoutubeSearchQueryHandlerFactory.getAvailableContentFilter; NO sort API exists)
+    suspend fun search(query: String, page: Page? = null, region: String? = null, contentFilter: String = "all"): SearchPage = withContext(Dispatchers.IO) {
         try {
             applyRegion(region)
-            val ext = service().getSearchExtractor(query)
+            val ext = try {
+                val qh = service().searchQHFactory.fromQuery(query, listOf(contentFilter), "")
+                service().getSearchExtractor(qh)
+            } catch (_: Exception) { service().getSearchExtractor(query) }
             val lp = if (page == null) { ext.fetchPage(); ext.initialPage } else { ext.getPage(page) }
             val items = lp.items
             val out = mutableListOf<VideoItem>()
