@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +70,7 @@ fun EqualizerBars(playing: Boolean) {
     }
 }
 
+// R1: queue navigation (next/prev, disabled at the ends) + swipe-to-dismiss (same closePlayer()).
 @Composable
 fun MiniPlayer(
     video: VideoItem,
@@ -76,8 +79,28 @@ fun MiniPlayer(
     durationMs: Long,
     onToggle: () -> Unit,
     onTap: () -> Unit,
-    onClose: () -> Unit = {}
+    onClose: () -> Unit = {},
+    onNext: (() -> Unit)? = null,
+    onPrev: (() -> Unit)? = null,
+    hasNext: Boolean = false,
+    hasPrev: Boolean = false
 ) {
+    val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState()
+    val dismissed = dismissState.currentValue != androidx.compose.material3.SwipeToDismissBoxValue.Settled
+    androidx.compose.runtime.LaunchedEffect(dismissed) { if (dismissed) onClose() }
+    androidx.compose.material3.SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(Icons.Rounded.Clear, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 16.dp))
+            }
+        },
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = true
+    ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(0.dp),
@@ -97,8 +120,18 @@ fun MiniPlayer(
                 }
                 EqualizerBars(playing = isPlaying)
                 Spacer(Modifier.width(4.dp))
+                if (onPrev != null) {
+                    IconButton(onClick = onPrev, enabled = hasPrev) {
+                        Icon(Icons.Rounded.SkipPrevious, contentDescription = stringResource(R.string.prev), tint = if (hasPrev) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), modifier = Modifier.size(22.dp))
+                    }
+                }
                 IconButton(onClick = onToggle) {
                     Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play), tint = MaterialTheme.colorScheme.primary)
+                }
+                if (onNext != null) {
+                    IconButton(onClick = onNext, enabled = hasNext) {
+                        Icon(Icons.Rounded.SkipNext, contentDescription = stringResource(R.string.next), tint = if (hasNext) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), modifier = Modifier.size(22.dp))
+                    }
                 }
                 IconButton(onClick = onClose) {
                     Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.cd_close_player), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -111,6 +144,7 @@ fun MiniPlayer(
                 )
             }
         }
+    }
     }
 }
 // Sleep timer picker: arms playback auto-pause after N minutes (or disarms).

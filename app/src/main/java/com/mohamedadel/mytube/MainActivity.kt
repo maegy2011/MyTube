@@ -1412,6 +1412,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         if (player?.isPlaying == true) player?.pause() else player?.play()
                     },
                     onClose = { closePlayer() },
+                    onNext = { playNextInQueue() },
+                    onPrev = { playPrevInQueue() },
+                    hasNext = queueIndex >= 0 && queueIndex < queue.size - 1,
+                    hasPrev = queueIndex > 0,
                     onTap = {
                         // reopen the full player + jump the queue to the currently playing row
                         playerExpanded = true
