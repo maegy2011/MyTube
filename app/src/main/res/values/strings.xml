@@ -304,4 +304,9 @@
     <string name="clear_pins_title">حذف كل المثبتات؟</string>
     <string name="clear_pins_fmt">سيحذف هذا %1$d مقاطع مثبتة (%2$s) من القرص. كاش الوسائط لا يتأثر.</string>
     <string name="toast_pins_cleared">تم حذف كل المثبتات</string>
+    <string name="perf_title">الأداء</string>
+    <string name="perf_parallel">تحديث الخلاصة بالتوازي (3 معًا)</string>
+    <string name="perf_parallel_desc">الإيقاف = قناة كل مرة (أرحم للشبكات الضعيفة).</string>
+    <string name="perf_feedcache">كاش الخلاصة (6 ساعات)</string>
+    <string name="perf_feedcache_desc">خلاصة فورية من القرص عند حداثتها؛ تتحدث تلقائيًا.</string>
 </resources>

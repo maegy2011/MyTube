@@ -237,9 +237,19 @@ interface PlaylistDao {
 
     @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM pins")
     suspend fun pinsTotalSize(): Long
+
+    // ---- Feed cache ----
+    @Query("SELECT * FROM feed_cache WHERE channelId = :id")
+    suspend fun getFeedCache(id: String): FeedCacheEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFeedCache(e: FeedCacheEntity)
+
+    @Query("DELETE FROM feed_cache")
+    suspend fun clearFeedCache()
 }
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class], version = 6, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class], version = 7, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -268,11 +278,27 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+// L2: feed cache (per-channel VideoItem snapshot as JSON, TTL-checked by caller).
+// Skips Room TypeConverters: one TEXT column, manual org.json mapping (no new deps).
+@Entity(tableName = "feed_cache")
+data class FeedCacheEntity(
+    @PrimaryKey val channelId: String,
+    val fetchedAt: Long = System.currentTimeMillis(),
+    val itemsJson: String = "[]"
+)
+
 // v5 -> v6: offline pins index (non-destructive; bytes live in filesDir/travel/).
 val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS pins (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, videoKey TEXT NOT NULL, videoId TEXT, title TEXT, channel TEXT, url TEXT, kind TEXT NOT NULL DEFAULT 'audio', quality TEXT, audioTag TEXT, subTag TEXT, sizeBytes INTEGER NOT NULL DEFAULT 0, pinnedAt INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_pins_videoKey ON pins (videoKey)")
+    }
+}
+
+// v6 -> v7: feed cache (non-destructive; TTL auto-refreshes, safe to wipe anytime).
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS feed_cache (channelId TEXT NOT NULL, fetchedAt INTEGER NOT NULL DEFAULT 0, itemsJson TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(channelId))")
     }
 }
 
@@ -362,3 +388,35 @@ fun VideoItem.toEntity(pid: Long, pos: Int): PlaylistItemEntity = PlaylistItemEn
     viewCount = viewCount,
     position = pos
 )
+
+// Manual VideoItem JSON (feed cache only): 12 fields, no serializer dep.
+object FeedJson {
+    fun toJson(items: List<VideoItem>): String {
+        val arr = org.json.JSONArray()
+        for (v in items) {
+            arr.put(org.json.JSONObject()
+                .put("id", v.id ?: "").put("title", v.title ?: "").put("channel", v.channel ?: "")
+                .put("thumbnail", v.thumbnail ?: "").put("durationSec", v.durationSec ?: -1)
+                .put("viewCount", v.viewCount ?: -1).put("url", v.url ?: "")
+                .put("channelAvatar", v.channelAvatar ?: "").put("verified", v.verified)
+                .put("uploadDate", v.uploadDate ?: "").put("isShort", v.isShort)
+                .put("channelUrl", v.channelUrl ?: ""))
+        }
+        return arr.toString()
+    }
+    fun fromJson(raw: String): List<VideoItem> {
+        return try {
+            val arr = org.json.JSONArray(raw)
+            List(arr.length()) { i ->
+                val o = arr.getJSONObject(i)
+                fun s(k: String): String? = o.optString(k, "").takeIf { it.isNotEmpty() }
+                VideoItem(id = s("id"), title = s("title"), channel = s("channel"), thumbnail = s("thumbnail"),
+                    durationSec = o.optLong("durationSec", -1).takeIf { it >= 0 },
+                    viewCount = o.optLong("viewCount", -1).takeIf { it >= 0 }, url = s("url"),
+                    channelAvatar = s("channelAvatar"), verified = o.optBoolean("verified", false),
+                    uploadDate = s("uploadDate"), isShort = o.optBoolean("isShort", false),
+                    channelUrl = s("channelUrl"))
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+}

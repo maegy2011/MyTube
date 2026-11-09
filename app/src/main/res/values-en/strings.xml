@@ -304,4 +304,9 @@
     <string name="clear_pins_title">Delete all offline pins?</string>
     <string name="clear_pins_fmt">This deletes %1$d pinned videos (%2$s) from disk. The transient media cache is NOT affected.</string>
     <string name="toast_pins_cleared">All pins deleted</string>
+    <string name="perf_title">Performance</string>
+    <string name="perf_parallel">Parallel feed refresh (3 at a time)</string>
+    <string name="perf_parallel_desc">Off = one channel at a time (kinder to weak networks).</string>
+    <string name="perf_feedcache">Feed cache (6 hours)</string>
+    <string name="perf_feedcache_desc">Instant feed from disk when fresh; auto-refreshes in background.</string>
 </resources>

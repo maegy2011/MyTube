@@ -136,6 +136,7 @@ import com.mohamedadel.mytube.data.local.MIGRATION_2_3
 import com.mohamedadel.mytube.data.local.MIGRATION_3_4
 import com.mohamedadel.mytube.data.local.MIGRATION_4_5
 import com.mohamedadel.mytube.data.local.MIGRATION_5_6
+import com.mohamedadel.mytube.data.local.MIGRATION_6_7
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
@@ -148,6 +149,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import org.schabi.newpipe.extractor.Page
 
@@ -267,7 +270,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }
@@ -323,6 +326,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var playingPinned by remember { mutableStateOf(false) }
     // Phase 6: storage section — pins totals + soft-limit (reminder only, never blocks)
     var prefPinWarnMb by remember { mutableStateOf(1024L) }
+    // Perf toggles (settings): feed parallelism + feed cache; lazy lists stay lazy (no toggle needed)
+    var prefFeedParallel by remember { mutableStateOf(true) }
+    var prefFeedCache by remember { mutableStateOf(true) }
     var pinsCount by remember { mutableStateOf(0) }
     var pinsSizeLabel by remember { mutableStateOf("—") }
     var pinsBytes by remember { mutableStateOf(0L) }
@@ -387,6 +393,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
             prefOffline = prefs.getBoolean("pref_offline", false)
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
+            prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
+            prefFeedCache = prefs.getBoolean("pref_feed_cache", true)
             // cap only (no disk I/O); the cache itself warms on a background thread after scope exists
             try { com.mohamedadel.mytube.playback.MediaCache.setMax(prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
@@ -804,6 +812,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         playerLoading = true
         playerError = null
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
+        // queue continuity: advancing inside a playing queue resumes; a fresh tap stays paused (no-autoplay policy)
+        val wasPlayingQueue = inQueue && try { player?.isPlaying == true } catch (_: Exception) { false }
         try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
         scope.launch {
             val key = v.favKey()
@@ -851,7 +861,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     quality = label
                     audioTrackIdx = 0
                     subTrackIdx = if (hasSub) 0 else -1
-                    applyQuality(label, s, player, autoplay = false, local = true)
+                    applyQuality(label, s, player, autoplay = wasPlayingQueue, local = true)
                     playingPinned = true
                 } catch (_: Exception) {
                     playerLoading = false
@@ -877,7 +887,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // default quality preference (applies to every new video)
             val startQ = pickStartQuality(s, kbps)
             quality = startQ
-            applyQuality(startQ, s, player, autoplay = false)
+            applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
         }
     }
 
@@ -1119,16 +1129,40 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     // A3 feed: per-channel fetch with own try (one dead channel never kills the feed), merged newest-first
+    // L1+L2: parallel fetch (cap 3) + 6h Room cache. DAO stays off-main; per-channel try (one dead channel never kills the feed).
     fun refreshFeed() {
         feedLoading = true
-        scope.launch {
+        val subs = subscriptions.toList()
+        val useParallel = prefFeedParallel
+        val useCache = prefFeedCache
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val all = mutableListOf<VideoItem>()
-                for (sub in subscriptions) {
-                    try {
-                        val id = YouTubeRepo.channelIdFor(sub.channelUrl)
-                        if (id != null) all += YouTubeRepo.feedFor(id)
-                    } catch (_: Exception) { }
+                suspend fun oneChannel(channelUrl: String?): List<VideoItem> {
+                    return try {
+                        val id = YouTubeRepo.channelIdFor(channelUrl) ?: return emptyList()
+                        if (useCache) {
+                            val hit = try { dao.getFeedCache(id) } catch (_: Exception) { null }
+                            if (hit != null && System.currentTimeMillis() - hit.fetchedAt < 6 * 3600 * 1000L) {
+                                val items = com.mohamedadel.mytube.data.local.FeedJson.fromJson(hit.itemsJson)
+                                if (items.isNotEmpty()) return items
+                            }
+                        }
+                        val fresh = YouTubeRepo.feedFor(id)
+                        if (useCache && fresh.isNotEmpty()) {
+                            try { dao.upsertFeedCache(com.mohamedadel.mytube.data.local.FeedCacheEntity(id, System.currentTimeMillis(), com.mohamedadel.mytube.data.local.FeedJson.toJson(fresh))) } catch (_: Exception) { }
+                        }
+                        fresh
+                    } catch (_: Exception) { emptyList() }
+                }
+                val all = if (useParallel) {
+                    val sem = kotlinx.coroutines.sync.Semaphore(3)
+                    subs.map { sub ->
+                        async {
+                            sem.acquire(); try { oneChannel(sub.channelUrl) } finally { sem.release() }
+                        }
+                    }.awaitAll().flatten()
+                } else {
+                    subs.flatMap { oneChannel(it.channelUrl) }
                 }
                 feedItems = all
             } catch (_: Exception) { }
@@ -1841,6 +1875,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             try { prefs.edit().putLong("pref_pin_warn_mb", mb).apply() } catch (_: Exception) { }
                         },
                         onClearPins = { clearAllPins() },
+                        feedParallel = prefFeedParallel,
+                        onFeedParallel = { v ->
+                            prefFeedParallel = v
+                            try { prefs.edit().putBoolean("pref_feed_parallel", v).apply() } catch (_: Exception) { }
+                        },
+                        feedCache = prefFeedCache,
+                        onFeedCache = { v ->
+                            prefFeedCache = v
+                            try { prefs.edit().putBoolean("pref_feed_cache", v).apply() } catch (_: Exception) { }
+                        },
                         subHideAuto = prefSubHideAuto,
                         onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
                         subFg = prefSubFg,
