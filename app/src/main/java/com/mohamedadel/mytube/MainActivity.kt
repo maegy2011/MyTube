@@ -146,7 +146,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
-        setContent { MyTubeTheme { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }, pipMode = pipMode) } }
+        // theme preference is read here (before composition) so it survives restarts;
+        // changes apply via activity.recreate() from the settings screen.
+        val themePref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_theme", "dark") ?: "dark" } catch (_: Exception) { "dark" }
+        setContent {
+            MyTubeTheme(
+                darkTheme = when (themePref) {
+                    "light" -> false
+                    "system" -> androidx.compose.foundation.isSystemInDarkTheme()
+                    else -> true
+                }
+            ) { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }, pipMode = pipMode) }
+        }
     }
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
@@ -256,6 +267,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefAudioLang2 by remember { mutableStateOf("original") }
     // content country (manual only, no IP): drives search/trending region. "global" = YouTube default.
     var prefCountry by remember { mutableStateOf("EG") }
+    // app theme: dark (default) | light (large-type friendly) | system
+    var prefTheme by remember { mutableStateOf("dark") }
     // default video quality for every new video: audio-only | auto | saver | high
     var prefQuality by remember { mutableStateOf("audio-only") }
     // standalone search screen (YouTube-style) + trending tabs
@@ -284,6 +297,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefSubLang2 = prefs.getString("pref_sub_lang2", "en") ?: "en"
             prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
+            prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
         } catch (_: Exception) { }
         try {
@@ -1210,6 +1224,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             prefQuality = v
                             try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
                             toast("تُطبق الجودة على الفيديو التالي")
+                        },
+                        theme = prefTheme,
+                        onTheme = { v ->
+                            prefTheme = v
+                            try { prefs.edit().putString("pref_theme", v).apply() } catch (_: Exception) { }
+                            toast("يُطبق المظهر بعد إعادة فتح التطبيق")
+                            try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
                         }
                     )
                 }

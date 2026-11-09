@@ -42,6 +42,12 @@ fun langLabel(code: String, deviceTag: String?): String = when (code) {
     else -> LANG_OPTIONS.firstOrNull { it.first == code }?.second ?: code
 }
 
+val THEME_OPTIONS = listOf(
+    "dark" to "داكن (الافتراضي)",
+    "light" to "فاتح (مريح لكبار السن)",
+    "system" to "حسب النظام"
+)
+
 val QUALITY_OPTIONS = listOf(
     "audio-only" to "صوت فقط (الأخف — الافتراضي)",
     "auto" to "تلقائي حسب السرعة",
@@ -63,7 +69,9 @@ fun SettingsScreen(
     onSubLang2: (String) -> Unit,
     onAudioLang2: (String) -> Unit,
     onCountry: (String) -> Unit,
-    onQuality: (String) -> Unit
+    onQuality: (String) -> Unit,
+    theme: String,
+    onTheme: (String) -> Unit
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     LazyColumn(
@@ -167,6 +175,25 @@ fun SettingsScreen(
                     if (quality == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
                     contentDescription = null,
                     tint = if (quality == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text("مظهر التطبيق", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(THEME_OPTIONS) { (code, label) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onTheme(code) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (theme == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (theme == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
