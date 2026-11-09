@@ -752,11 +752,38 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             } catch (_: Exception) { }
         }
     }
+    val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
+    var suggestionChips by remember { mutableStateOf(mapOf<String, List<String>>()) }
+    // Suggestions tab: seeds = your recent searches (else trending fallbacks);
+    // chips = real NewPipe suggestionList completions, videos = top hits per seed.
+    fun refreshSuggestions(region: String?, myTab: Int) {
+        val seeds = (recentSearches.take(3) + trending.take(2)).distinct().take(3)
+        if (seeds.isEmpty()) { if (trendTab == myTab) { suggestionChips = emptyMap(); trendingItems = emptyList() }; return }
+        scope.launch {
+            try {
+                val chips = seeds.associateWith { seed ->
+                    try { YouTubeRepo.suggestions(seed).take(4) } catch (_: Exception) { emptyList() }
+                }
+                val vids = seeds.take(2).flatMap { seed ->
+                    try { YouTubeRepo.search(seed, null, region).items.take(6) } catch (_: Exception) { emptyList() }
+                }.distinctBy { it.id ?: it.url ?: it.title }.take(18)
+                if (trendTab == myTab) { suggestionChips = chips; trendingItems = vids }
+            } catch (_: Exception) { if (trendTab == myTab) { suggestionChips = emptyMap(); trendingItems = emptyList() } }
+            finally { if (trendTab == myTab) trendingLoading = false }
+        }
+    }
+
     fun refreshTrending() {
         val tab = TREND_TABS.getOrNull(trendTab)
         val kiosk = tab?.second
         val isSearchTab = tab?.third == true
         trendingLoading = true
+        if (kiosk == "suggestions") {
+            val region = if (prefCountry == "global") null else prefCountry
+            val myTab = trendTab
+            refreshSuggestions(region, myTab)
+            return
+        }
         scope.launch {
             try {
                 val region = if (prefCountry == "global") null else prefCountry
@@ -1068,9 +1095,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
-    val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
 
-    // auto-load more when scrolled to bottom (guarded: single-flight + null page + error-safe)
+    LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
     val shouldLoadMore by remember {
         derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -2154,6 +2180,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         trendingLoading = trendingLoading,
                         countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry,
                         onSearch = { q -> query = q; doSearch(q) },
+                        isSuggestionsTab = TREND_TABS.getOrNull(trendTab)?.second == "suggestions",
+                        suggestionChips = suggestionChips,
+                        onSuggestion = { q -> query = q; doSearch(q) },
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },

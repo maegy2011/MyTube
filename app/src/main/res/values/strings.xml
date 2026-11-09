@@ -329,4 +329,6 @@
     <string name="channel_no_desc">لا يوجد وصف.</string>
     <string name="show_less">أقل</string>
     <string name="subs_count_fmt">%1$,d مشترك</string>
+    <string name="tab_suggestions">اقتراحات</string>
+    <string name="sugg_based">مقترحات لك بناءً على نشاطك (اقتراحات NewPipe)</string>
 </resources>

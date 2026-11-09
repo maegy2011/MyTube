@@ -329,4 +329,6 @@
     <string name="channel_no_desc">No description.</string>
     <string name="show_less">Less</string>
     <string name="subs_count_fmt">%1$,d subscribers</string>
+    <string name="tab_suggestions">Suggestions</string>
+    <string name="sugg_based">Suggested for you, based on your activity (NewPipe suggestions)</string>
 </resources>

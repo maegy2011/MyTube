@@ -3,6 +3,8 @@ package com.mohamedadel.mytube.ui.results
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.R
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,7 +45,8 @@ val TREND_TABS = listOf(
     Triple(R.string.tab_movies, "trending_movies_and_shows", false),
     Triple(R.string.tab_podcasts, "trending_podcasts_episodes", false),
     Triple(R.string.tab_live, "live", false),
-    Triple(R.string.tab_news, "news", true)
+    Triple(R.string.tab_news, "news", true),
+    Triple(R.string.tab_suggestions, "suggestions", false)
 )
 
 // Real per-country trending (kiosk) in "عام"; category tabs search within the same country.
@@ -58,6 +61,9 @@ fun HomeEmptyState(
     trendingLoading: Boolean,
     countryName: String,
     onSearch: (String) -> Unit,
+    isSuggestionsTab: Boolean = false,
+    suggestionChips: Map<String, List<String>> = emptyMap(),
+    onSuggestion: (String) -> Unit = {},
     onPlay: (VideoItem) -> Unit,
     isFav: (VideoItem) -> Boolean = { false },
     onFav: (VideoItem) -> Unit = {},
@@ -105,6 +111,37 @@ fun HomeEmptyState(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
+                if (isSuggestionsTab && suggestionChips.isNotEmpty()) {
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                stringResource(R.string.sugg_based),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            suggestionChips.forEach { (seed, chips) ->
+                                if (chips.isNotEmpty()) {
+                                    Text(
+                                        seed,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    @OptIn(ExperimentalLayoutApi::class)
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                                    ) {
+                                        chips.forEach { c ->
+                                            FilterChip(selected = false, onClick = { onSuggestion(c) }, label = { Text(c) })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
                     SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
                 }
