@@ -26,6 +26,8 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Pause
@@ -52,6 +54,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
@@ -139,6 +144,7 @@ fun PlayerArea(
     onToggleShuffle: () -> Unit = {},
     onQueue: () -> Unit = {},
     onClose: () -> Unit = {},
+    onCollapse: () -> Unit = {},
     audioTracks: List<AudioTrackItem> = emptyList(),
     audioIdx: Int = 0,
     onAudioTrack: (Int) -> Unit = {},
@@ -239,6 +245,21 @@ fun PlayerArea(
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
     ) {
         Column {
+            // Fix 1: visible collapse/close — the mini player was reachable only via system back.
+            if (!isFullscreen) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onCollapse, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = stringResource(R.string.cd_collapse_player), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cd_close_player), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             Box(
                 // nativeOnly: NO tap interceptor — every touch must reach PlayerView so its controller shows.
                 // (the old custom-bar toggle stole taps and the controller never appeared)
@@ -577,7 +598,13 @@ fun PlayerArea(
                         modifier = Modifier.weight(1f).clickable { onChannelClick() }
                     ) {
                         Text(
-                            text = video.channel ?: "",
+                            text = buildAnnotatedString {
+                                append(video.channel ?: "")
+                                if (video.verified) {
+                                    if (length > 0) append(" ")
+                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.secondary)) { append("✓") }
+                                }
+                            },
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,

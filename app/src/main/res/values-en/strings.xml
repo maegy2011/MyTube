@@ -323,4 +323,10 @@
     <string name="perf_preload_wifi">Prefetch on Wi-Fi only</string>
     <string name="perf_preload_wifi_desc">Mobile data never prefetches.</string>
     <string name="sub_badge">Subscribed</string>
+    <string name="cd_collapse_player">Collapse player</string>
+    <string name="channel_tab_videos">Videos</string>
+    <string name="channel_tab_about">About</string>
+    <string name="channel_no_desc">No description.</string>
+    <string name="show_less">Less</string>
+    <string name="subs_count_fmt">%1$,d subscribers</string>
 </resources>

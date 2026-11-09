@@ -23,6 +23,10 @@ private val InkMetaOnLight = Color(0xFF5A5A66) // 6.5–6.8:1 on light surfaces
 
 // ── Tier 1 · semantic aliases (meaning, not value) ───────────────────────────
 // Light/dark toggle = swap the Tier-0 mapping below; call sites never change.
+// Verification blue: dark-on-light / light-on-dark (both ≥ 6.3:1 as text on surfaces)
+val VerifiedOnLight = Color(0xFF0B57D0)
+val VerifiedOnDark = Color(0xFF7AB8FF)
+
 val BrandMark = Red500
 val SplashScrim = Color(0xFFD5392E)
 

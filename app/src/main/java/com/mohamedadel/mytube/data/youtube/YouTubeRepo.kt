@@ -318,6 +318,48 @@ object YouTubeRepo {
         try { service().channelLHFactory.fromUrl(channelUrl).id } catch (_: Exception) { null }
     }
 
+    // Channel videos tab (javap-verified 0.26.5: getTabs/getChannelTabExtractor/getContentFilters).
+    // Picks the "videos" tab, else the first tab; pageless first ~20 items, zero account.
+    suspend fun channelVideos(channelUrl: String?, limit: Int = 20): List<VideoItem> = withContext(Dispatchers.IO) {
+        if (channelUrl.isNullOrBlank()) return@withContext emptyList()
+        try {
+            val h = service().channelLHFactory.fromUrl(channelUrl)
+            val ext = service().getChannelExtractor(h)
+            ext.fetchPage()
+            val tabs = try { ext.tabs } catch (_: Exception) { emptyList() }
+            if (tabs.isEmpty()) return@withContext emptyList()
+            val videosTab = tabs.firstOrNull { t ->
+                try { t.contentFilters.any { f -> f.contains("video", ignoreCase = true) } } catch (_: Exception) { false }
+            } ?: tabs.first()
+            val tabExt = service().getChannelTabExtractor(videosTab)
+            tabExt.fetchPage()
+            val page = try { tabExt.initialPage } catch (_: Exception) { null } ?: return@withContext emptyList()
+            page.items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>().take(limit).mapNotNull { info ->
+                try {
+                    val url: String? = try { info.url } catch (_: Exception) { null }
+                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
+                    var thumb: String? = null
+                    try { thumb = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    var dur: Long? = null
+                    try { dur = info.duration } catch (_: Exception) {}
+                    var views: Long? = null
+                    try { views = info.viewCount } catch (_: Exception) {}
+                    var verified = false
+                    try { verified = info.isUploaderVerified } catch (_: Exception) {}
+                    var upDate: String? = null
+                    try { upDate = info.textualUploadDate } catch (_: Exception) {}
+                    var isShort = false
+                    try { isShort = info.isShortFormContent } catch (_: Exception) {}
+                    val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                    val chName: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { null }
+                    var chUrl: String? = null
+                    try { chUrl = info.uploaderUrl } catch (_: Exception) {}
+                    VideoItem(id, name, chName, thumb, dur, views, url, null, verified, upDate, isShort, chUrl ?: channelUrl)
+                } catch (_: Exception) { null }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
     suspend fun channelDetail(channelUrl: String?): ChannelDetail = withContext(Dispatchers.IO) {
         if (channelUrl.isNullOrBlank()) return@withContext ChannelDetail()
         try {

@@ -28,6 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,9 +55,9 @@ import com.mohamedadel.mytube.util.formatViews
 @OptIn(ExperimentalFoundationApi::class)
 fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: ((VideoItem) -> Unit)? = null, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null, pinBadge: String? = null, pinning: Boolean = false) {
     val lctx = LocalContext.current
+    val metaHasCheck = v.verified
     val meta = buildString {
         append(v.channel ?: "")
-        if (v.verified) append(" ✓")
         if (v.viewCount != null && v.viewCount > 0) {
             if (isNotEmpty()) append(" • ")
             append(v.viewCount.let { lctx.formatViews(it) })
@@ -113,8 +116,20 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (meta.isNotEmpty()) {
-                    Text(text = meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (meta.isNotEmpty() || metaHasCheck) {
+                    Text(
+                        text = buildAnnotatedString {
+                            append(meta)
+                            if (metaHasCheck) {
+                                if (length > 0) append(" ")
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.secondary)) { append("✓") }
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 // Phase 5: offline-pin badge (📌 quality • size) or in-progress state
                 if (pinning) {

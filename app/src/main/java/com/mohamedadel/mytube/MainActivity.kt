@@ -110,6 +110,7 @@ import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.library.FeedScreen
+import com.mohamedadel.mytube.ui.library.ChannelScreen
 import com.mohamedadel.mytube.ui.queue.QueuePanel
 import com.mohamedadel.mytube.ui.results.HomeEmptyState
 import com.mohamedadel.mytube.ui.results.SearchRow
@@ -368,7 +369,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showQueue by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var channelDetail by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.ChannelDetail?>(null) }
-    var showChannel by remember { mutableStateOf(false) }
+
     var commentList by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.CommentItem>()) }
     var showFeed by remember { mutableStateOf(false) }
     var feedItems by remember { mutableStateOf(emptyList<VideoItem>()) }
@@ -606,6 +607,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // no remove needed for composition lifetime
     }
     val scope = rememberCoroutineScope()
+    // Fix 3: full channel screen with tabs (replaces the dialog sheet)
+    var channelScreenUrl by remember { mutableStateOf<String?>(null) }
+    var channelScreenVideos by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
+    var channelScreenLoading by remember { mutableStateOf(false) }
+    fun openChannel(url: String?) {
+        if (url.isNullOrBlank()) return
+        try { playerExpanded = false } catch (_: Exception) { }
+        channelScreenUrl = url
+        channelDetail = null
+        channelScreenVideos = emptyList()
+        channelScreenLoading = true
+        scope.launch {
+            try { channelDetail = YouTubeRepo.channelDetail(url) } catch (_: Exception) { }
+            try { channelScreenVideos = YouTubeRepo.channelVideos(url) } catch (_: Exception) { }
+            channelScreenLoading = false
+        }
+    }
     // SimpleCache init does disk I/O — warm it off the main thread (skill Rule 5)
     LaunchedEffect(Unit) {
         try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext) } } catch (_: Exception) { }
@@ -1325,8 +1343,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (fromLibrary) { fromLibrary = false; showLibrary = true }
             return true
         }
-        if (showChannel) {
-            showChannel = false
+        if (channelScreenUrl != null) {
+            channelScreenUrl = null
             return true
         }
         if (showComments) {
@@ -1385,7 +1403,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = showFeed || showChannel || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -1653,6 +1671,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onToggleShuffle = { setShuffle(!shuffleOn) },
                     onQueue = { showQueue = true },
                     onClose = { closePlayer() },
+                    onCollapse = { playerExpanded = false },
                     isFullscreen = isFullscreen,
                     onToggleFullscreen = { setFullscreen(!isFullscreen) },
                     onSetMode = { setMode(it) },
@@ -1717,14 +1736,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         else requestPin(cur, streamData, quality, audioTrackIdx, subTrackIdx)
                     },
                     onSubscribe = { toggleSubscription(streamData?.channelUrl, cur.channel, channelDetail?.avatar) },
-                    onChannelClick = {
-                        showChannel = true
-                        channelDetail = null
-                        val url = streamData?.channelUrl
-                        scope.launch {
-                            try { channelDetail = YouTubeRepo.channelDetail(url) } catch (_: Exception) { }
-                        }
-                    },
+                    onChannelClick = { openChannel(streamData?.channelUrl) },
                     onCommentsClick = {
                         showComments = true
                         commentsLoading = true
@@ -1739,53 +1751,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     tags = streamData?.tags ?: emptyList(),
                     storyboards = streamData?.storyboards ?: emptyList()
                 )
-                // channel sheet (avatar/banner/subs/description/verified — no account needed)
-                if (showChannel) {
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { showChannel = false },
-                        title = { Text(channelDetail?.name ?: (cur.channel ?: "")) },
-                        text = {
-                            val cd = channelDetail
-                            if (cd == null) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                                }
-                            } else {
-                                LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    item {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (!cd.avatar.isNullOrBlank()) {
-                                                AsyncImage(model = cd.avatar, contentDescription = cd.name, modifier = Modifier.size(48.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                                                Spacer(Modifier.width(12.dp))
-                                            }
-                                            Column {
-                                                Text((cd.name ?: "") + if (cd.verified) " ✓" else "", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                                if (cd.subs != null && cd.subs > 0) Text(ctx.formatViews(cd.subs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                        }
-                                    }
-                                    if (!cd.banner.isNullOrBlank()) {
-                                        item {
-                                            AsyncImage(model = cd.banner, contentDescription = null, modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-                                        }
-                                    }
-                                    if (!cd.description.isNullOrBlank()) {
-                                        item { Text(cd.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                                    }
-                                    item {
-                                        val isSub = subscriptions.any { it.channelUrl == streamData?.channelUrl }
-                                        androidx.compose.material3.Button(
-                                            onClick = { toggleSubscription(streamData?.channelUrl, cd.name, cd.avatar) },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) { Text(stringResource(if (isSub) R.string.unsubscribe else R.string.subscribe)) }
-                                    }
-                                }
-                            }
-                        },
-                        confirmButton = { },
-                        dismissButton = { androidx.compose.material3.TextButton(onClick = { showChannel = false }) { Text(stringResource(R.string.close)) } }
-                    )
-                }
                 // comments sheet (real CommentsExtractor, pageless first 30)
                 if (showComments) {
                     androidx.compose.material3.AlertDialog(
@@ -1827,6 +1792,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
             if (!isFullscreen) {
             when {
+                // Fix 3: full channel screen with tabs (header + Videos/About)
+                channelScreenUrl != null -> {
+                    val chUrl = channelScreenUrl
+                    ChannelScreen(
+                        detail = channelDetail,
+                        videos = channelScreenVideos,
+                        videosLoading = channelScreenLoading,
+                        isSubscribed = chUrl != null && subscriptions.any { it.channelUrl == chUrl },
+                        onSubscribe = { toggleSubscription(chUrl, channelDetail?.name, channelDetail?.avatar) },
+                        onBack = { channelScreenUrl = null },
+                        onPlay = { playVideo(it) },
+                        onLongClick = { optionsFor = it },
+                        onAdd = { enqueueLast(it) },
+                        isFav = { v -> v.favKey() in favoriteSet },
+                        onFav = { toggleFavorite(it) },
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys,
+                        subsLabel = { n -> if (n != null && n > 0) ctx.getString(R.string.subs_count_fmt, n) else "" }
+                    )
+                }
                 // queue button opens this panel INSTEAD of the suggestions/results below the video
                 showQueue -> {
                     QueuePanel(
@@ -1869,7 +1854,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onUnsubscribe = { url -> scope.launch { try { dao.deleteSubscription(url) } catch (_: Exception) { } } },
                         onImportSubs = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } },
                         feedCounts = feedCounts,
-                        onOpenChannel = { url -> feedFilter = url; showLibrary = false; fromLibrary = true; showFeed = true; if (feedItems.isEmpty()) refreshFeed() }
+                        onOpenChannel = { url -> openChannel(url) }
                     )
                 }
                 showFeed -> {
