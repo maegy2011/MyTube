@@ -3,6 +3,8 @@ package com.mohamedadel.mytube.ui.player
 import com.mohamedadel.mytube.R
 import android.view.ViewGroup
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,7 +64,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -158,7 +163,8 @@ fun PlayerArea(
     onChannelClick: () -> Unit = {},
     onCommentsClick: () -> Unit = {},
     category: String? = null,
-    tags: List<String> = emptyList()
+    tags: List<String> = emptyList(),
+    storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList()
 ) {
     val lctx = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
@@ -166,6 +172,43 @@ fun PlayerArea(
     var subExpanded by remember { mutableStateOf(false) }
     var showPlayerSettings by remember { mutableStateOf(false) }
     var descExpanded by remember { mutableStateOf(false) }
+    // storyboard scrub preview (YouTube-style): hook the native TimeBar's scrub listener,
+    // crop the sprite frame for the scrubbed position, show it above the controls.
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubPosMs by remember { mutableStateOf(0L) }
+    var containerWPx by remember { mutableStateOf(0) }
+    val spriteCache = remember { mutableMapOf<String, android.graphics.Bitmap>() }
+    var frameBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    val board = storyboards.firstOrNull()
+    val frameIdx = if (board != null && board.durPerFrame > 0 && board.total > 0)
+        ((scrubPosMs / board.durPerFrame).toInt().coerceIn(0, board.total - 1)) else -1
+    LaunchedEffect(frameIdx, scrubbing) {
+        if (!scrubbing || board == null || frameIdx < 0) return@LaunchedEffect
+        try {
+            val perPage = (board.perX * board.perY).coerceAtLeast(1)
+            val page = (frameIdx / perPage).coerceIn(0, board.urls.size - 1)
+            val idx = frameIdx % perPage
+            val col = idx % board.perX.coerceAtLeast(1)
+            val row = idx / board.perX.coerceAtLeast(1)
+            val url = board.urls[page]
+            var sprite = spriteCache[url]
+            if (sprite == null) {
+                val req = coil.request.ImageRequest.Builder(lctx).data(url).allowHardware(false).build()
+                val res = coil.Coil.imageLoader(lctx).execute(req)
+                val d = (res as? coil.request.SuccessResult)?.drawable as? android.graphics.drawable.BitmapDrawable
+                sprite = d?.bitmap
+                if (sprite != null) spriteCache[url] = sprite
+            }
+            val bmp = sprite
+            if (bmp != null) {
+                val l = (col * board.fw).coerceIn(0, (bmp.width - 1).coerceAtLeast(0))
+                val t = (row * board.fh).coerceIn(0, (bmp.height - 1).coerceAtLeast(0))
+                val w = minOf(board.fw, bmp.width - l)
+                val h = minOf(board.fh, bmp.height - t)
+                if (w > 0 && h > 0) frameBmp = android.graphics.Bitmap.createBitmap(bmp, l, t, w, h).asImageBitmap()
+            }
+        } catch (_: Exception) { }
+    }
     // TEMPORARY EXPERIMENT (native-controls test): hide all our custom bars, use the full native ExoPlayer controller.
     // Media3 ships Arabic strings (values-ar), so the native buttons appear Arabic on an Arabic device.
     // To revert: set nativeOnly = false.
@@ -193,9 +236,9 @@ fun PlayerArea(
             Box(
                 // nativeOnly: NO tap interceptor — every touch must reach PlayerView so its controller shows.
                 // (the old custom-bar toggle stole taps and the controller never appeared)
-                modifier = if (isFullscreen) Modifier.fillMaxSize()
+                modifier = (if (isFullscreen) Modifier.fillMaxSize()
                     else if (!nativeOnly) Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
-                    else Modifier.fillMaxWidth().height(220.dp)
+                    else Modifier.fillMaxWidth().height(220.dp)).onGloballyPositioned { containerWPx = it.size.width }
             ) {
                 if (quality != "audio-only (default)" && player != null) {
                     AndroidView(
@@ -239,6 +282,21 @@ fun PlayerArea(
                                 setShowShuffleButton(true)
                                 setShowSubtitleButton(true)
                                 setShowVrButton(true)
+                                // storyboard preview hook: native TimeBar scrub events drive the overlay states
+                                try {
+                                    val tb = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress) as? androidx.media3.ui.TimeBar
+                                    tb?.addListener(object : androidx.media3.ui.TimeBar.OnScrubListener {
+                                        override fun onScrubStart(bar: androidx.media3.ui.TimeBar, pos: Long) {
+                                            scrubbing = true; scrubPosMs = pos
+                                        }
+                                        override fun onScrubMove(bar: androidx.media3.ui.TimeBar, pos: Long) {
+                                            scrubPosMs = pos
+                                        }
+                                        override fun onScrubStop(bar: androidx.media3.ui.TimeBar, pos: Long, canceled: Boolean) {
+                                            scrubbing = false; frameBmp = null
+                                        }
+                                    })
+                                } catch (_: Exception) { }
                             }
                         },
                         update = { v ->
@@ -309,6 +367,32 @@ fun PlayerArea(
                 // Drawn only during loading (transient; taps do nothing useful yet anyway).
                 if (playerLoading && quality != "audio-only (default)" && errorMsg == null && video.thumbnail != null) {
                     AsyncImage(model = video.thumbnail, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                // storyboard scrub preview (YouTube-style popup above the seek bar, follows the thumb)
+                if (scrubbing && board != null && durationMs > 0) {
+                    val frac = (scrubPosMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                    val popupW = with(LocalDensity.current) { 160.dp.toPx() }
+                    val xOff = if (containerWPx > 0) ((frac * containerWPx - popupW / 2).coerceIn(0f, (containerWPx - popupW).coerceAtLeast(0f))) else 0f
+                    Box(
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                            .offset { androidx.compose.ui.unit.IntOffset((xOff - containerWPx / 2).toInt(), 0) }
+                            .padding(bottom = 84.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val bmp = frameBmp
+                            if (bmp != null) {
+                                Image(bitmap = bmp, contentDescription = null, modifier = Modifier.size(160.dp, 90.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                            } else {
+                                Box(modifier = Modifier.size(160.dp, 90.dp).clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Surface(shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.8f)) {
+                                Text(formatMs(scrubPosMs), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
                 }
                 // center state: error > loading > big play/pause button.
                 // nativeOnly: NO overlay (not even loading) — anything drawn over

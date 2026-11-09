@@ -1297,7 +1297,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     },
                     subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold),
                     category = streamData?.category,
-                    tags = streamData?.tags ?: emptyList()
+                    tags = streamData?.tags ?: emptyList(),
+                    storyboards = streamData?.storyboards ?: emptyList()
                 )
                 // channel sheet (avatar/banner/subs/description/verified — no account needed)
                 if (showChannel) {
