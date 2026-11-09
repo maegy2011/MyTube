@@ -81,6 +81,16 @@ data class HistoryEntity(
     val playedAt: Long = System.currentTimeMillis()
 )
 
+// Subscriptions (local-only, no account): channel URL is the stable key.
+@Entity(tableName = "subscriptions", indices = [Index(value = ["channelUrl"], unique = true)])
+data class SubscriptionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val channelUrl: String,
+    val name: String?,
+    val avatar: String? = null,
+    val addedAt: Long = System.currentTimeMillis()
+)
+
 // Playlist row + item count for the management screen.
 data class PlaylistWithCount(
     val id: Long,
@@ -173,9 +183,22 @@ interface PlaylistDao {
 
     @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY playedAt DESC LIMIT 100)")
     suspend fun trimHistory()
+
+    // ---- Subscriptions ----
+    @Query("SELECT * FROM subscriptions ORDER BY addedAt DESC")
+    fun observeSubscriptions(): Flow<List<SubscriptionEntity>>
+
+    @Query("SELECT COUNT(*) FROM subscriptions WHERE channelUrl = :url")
+    suspend fun subscriptionCount(url: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSubscription(s: SubscriptionEntity): Long
+
+    @Query("DELETE FROM subscriptions WHERE channelUrl = :url")
+    suspend fun deleteSubscription(url: String)
 }
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class], version = 4, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class], version = 5, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -193,6 +216,14 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, videoKey TEXT NOT NULL, videoId TEXT, title TEXT, channel TEXT, thumbnail TEXT, url TEXT, durationSec INTEGER, viewCount INTEGER, playedAt INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_history_videoKey ON history (videoKey)")
+    }
+}
+
+// v4 -> v5: subscriptions table (non-destructive).
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, channelUrl TEXT NOT NULL, name TEXT, avatar TEXT, addedAt INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_subscriptions_channelUrl ON subscriptions (channelUrl)")
     }
 }
 

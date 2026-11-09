@@ -266,6 +266,50 @@ object YouTubeRepo {
         } catch (_: Exception) { StreamData() }
     }
 
+    // A2 subscriptions: import OPML/JSON/CSV/ZIP (YouTube Takeout) via the extractor's own dispatch.
+    // Returns (url, name) pairs; caller persists them (dedupe by URL).
+    suspend fun importSubscriptions(input: java.io.InputStream): List<Pair<String, String?>> = withContext(Dispatchers.IO) {
+        try {
+            service().subscriptionExtractor.fromInputStream(input).mapNotNull { item ->
+                val u = try { item.url } catch (_: Exception) { null }
+                if (u.isNullOrBlank()) null else Pair(u, try { item.name } catch (_: Exception) { null })
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    // A3 feed: latest videos of one channel. Param is the CHANNEL ID (not URL) —
+    // resolve via channelLHFactory.fromUrl(url).getId() first. Per-channel try at call site.
+    suspend fun feedFor(channelId: String?): List<VideoItem> = withContext(Dispatchers.IO) {
+        if (channelId.isNullOrBlank()) return@withContext emptyList()
+        try {
+            val ext = service().getFeedExtractor(channelId) ?: return@withContext emptyList()
+            ext.fetchPage()
+            val lp = try { ext.initialPage } catch (_: Exception) { return@withContext emptyList() }
+            lp.items.mapNotNull { info ->
+                try {
+                    val u: String? = try { info.url } catch (_: Exception) { null }
+                    if (u == null) return@mapNotNull null
+                    val nm: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
+                    val ch: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { null }
+                    var th: String? = null
+                    try { th = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    var d: Long? = null
+                    try { d = info.duration } catch (_: Exception) {}
+                    var vw: Long? = null
+                    try { vw = info.viewCount } catch (_: Exception) {}
+                    val rid: String? = u.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                    VideoItem(rid, nm, ch, th, d, vw, u)
+                } catch (_: Exception) { null }
+            }.take(15)
+        } catch (_: Exception) { emptyList() }
+    }
+
+    // Resolve a channel URL to its stable channel ID (feed key). Null on failure — caller skips.
+    suspend fun channelIdFor(channelUrl: String?): String? = withContext(Dispatchers.IO) {
+        if (channelUrl.isNullOrBlank()) return@withContext null
+        try { service().channelLHFactory.fromUrl(channelUrl).id } catch (_: Exception) { null }
+    }
+
     suspend fun channelDetail(channelUrl: String?): ChannelDetail = withContext(Dispatchers.IO) {
         if (channelUrl.isNullOrBlank()) return@withContext ChannelDetail()
         try {

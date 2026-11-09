@@ -255,4 +255,14 @@
     <string name="audio_role_dubbed">مدبلج</string>
     <string name="audio_role_original">أصلي</string>
     <string name="audio_role_commentary">تعليق المخرج</string>
+    <string name="sub_added">تم الاشتراك</string>
+    <string name="sub_removed">تم إلغاء الاشتراك</string>
+    <string name="subscribe">اشترك</string>
+    <string name="unsubscribe">إلغاء الاشتراك</string>
+    <string name="subscriptions">الاشتراكات</string>
+    <string name="import_subs">استيراد (OPML / Takeout)</string>
+    <string name="imported_fmt">تم استيراد %1$d قناة</string>
+    <string name="feed_title">خلاصة الاشتراكات</string>
+    <string name="feed_refresh">تحديث</string>
+    <string name="feed_empty">لا اشتراكات بعد — اشترك من صفحة قناة أو استورد ملفًا.</string>
 </resources>

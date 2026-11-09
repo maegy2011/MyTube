@@ -255,4 +255,14 @@
     <string name="audio_role_dubbed">Dubbed</string>
     <string name="audio_role_original">Original</string>
     <string name="audio_role_commentary">Director’s commentary</string>
+    <string name="sub_added">Subscribed</string>
+    <string name="sub_removed">Unsubscribed</string>
+    <string name="subscribe">Subscribe</string>
+    <string name="unsubscribe">Unsubscribe</string>
+    <string name="subscriptions">Subscriptions</string>
+    <string name="import_subs">Import (OPML / Takeout)</string>
+    <string name="imported_fmt">Imported %1$d channels</string>
+    <string name="feed_title">Subscription feed</string>
+    <string name="feed_refresh">Refresh</string>
+    <string name="feed_empty">No subscriptions yet — subscribe from a channel page or import a file.</string>
 </resources>

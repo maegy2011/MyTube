@@ -107,6 +107,7 @@ import com.mohamedadel.mytube.ui.playlists.HistoryScreen
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
+import com.mohamedadel.mytube.ui.library.FeedScreen
 import com.mohamedadel.mytube.ui.queue.QueuePanel
 import com.mohamedadel.mytube.ui.results.HomeEmptyState
 import com.mohamedadel.mytube.ui.results.SearchRow
@@ -131,6 +132,7 @@ import androidx.room.Room
 import com.mohamedadel.mytube.data.local.MIGRATION_1_2
 import com.mohamedadel.mytube.data.local.MIGRATION_2_3
 import com.mohamedadel.mytube.data.local.MIGRATION_3_4
+import com.mohamedadel.mytube.data.local.MIGRATION_4_5
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
@@ -262,7 +264,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }
@@ -275,6 +277,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val history by remember { dao.observeHistory() }.collectAsState(initial = emptyList())
     // Favorites (one-tap heart): keys observed live so every heart reflects instantly.
     val favoriteKeys by remember { dao.observeFavoriteKeys() }.collectAsState(initial = emptyList())
+    val subscriptions by remember { dao.observeSubscriptions() }.collectAsState(initial = emptyList())
     val favoriteSet = remember(favoriteKeys) { favoriteKeys.toSet() }
     val favorites by remember { dao.observeFavorites() }.collectAsState(initial = emptyList())
     // (toggleFavorite lives after `scope` below — Kotlin locals must precede use.)
@@ -327,6 +330,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var channelDetail by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.ChannelDetail?>(null) }
     var showChannel by remember { mutableStateOf(false) }
     var commentList by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.CommentItem>()) }
+    var showFeed by remember { mutableStateOf(false) }
+    var feedItems by remember { mutableStateOf(emptyList<VideoItem>()) }
+    var feedLoading by remember { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var commentsLoading by remember { mutableStateOf(false) }
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
@@ -528,6 +534,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Short user feedback for every silent success/failure in favorites/queue/playlists.
     fun toast(msg: String) {
         try { Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+    }
+    val subsImportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val input = ctx.contentResolver.openInputStream(uri) ?: return@launch
+                val pairs = YouTubeRepo.importSubscriptions(input)
+                try { input.close() } catch (_: Exception) { }
+                var n = 0
+                for ((u, name) in pairs) {
+                    try {
+                        if (dao.subscriptionCount(u) == 0) {
+                            dao.insertSubscription(com.mohamedadel.mytube.data.local.SubscriptionEntity(channelUrl = u, name = name))
+                            n++
+                        }
+                    } catch (_: Exception) { }
+                }
+                toast(ctx.getString(R.string.imported_fmt, n))
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) }
+        }
     }
     // data management (reused by the favorites/history screens AND the settings screen)
     fun clearFavorites() {
@@ -938,7 +966,43 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         queueIndex = -1
     }
     // Smart back: exit fullscreen first; collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
+    fun toggleSubscription(url: String?, name: String?, avatar: String?) {
+        if (url.isNullOrBlank()) return
+        scope.launch {
+            try {
+                if (dao.subscriptionCount(url) > 0) {
+                    dao.deleteSubscription(url)
+                    toast(ctx.getString(R.string.sub_removed))
+                } else {
+                    dao.insertSubscription(com.mohamedadel.mytube.data.local.SubscriptionEntity(channelUrl = url, name = name, avatar = avatar))
+                    toast(ctx.getString(R.string.sub_added))
+                }
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) }
+        }
+    }
+    // A3 feed: per-channel fetch with own try (one dead channel never kills the feed), merged newest-first
+    fun refreshFeed() {
+        feedLoading = true
+        scope.launch {
+            try {
+                val all = mutableListOf<VideoItem>()
+                for (sub in subscriptions) {
+                    try {
+                        val id = YouTubeRepo.channelIdFor(sub.channelUrl)
+                        if (id != null) all += YouTubeRepo.feedFor(id)
+                    } catch (_: Exception) { }
+                }
+                feedItems = all
+            } catch (_: Exception) { }
+            feedLoading = false
+        }
+    }
     fun smartBack(): Boolean {
+        if (showFeed) {
+            showFeed = false
+            if (fromLibrary) { fromLibrary = false; showLibrary = true }
+            return true
+        }
         if (showChannel) {
             showChannel = false
             return true
@@ -999,7 +1063,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = showChannel || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showFeed || showChannel || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -1374,6 +1438,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                     if (!cd.description.isNullOrBlank()) {
                                         item { Text(cd.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                     }
+                                    item {
+                                        val isSub = subscriptions.any { it.channelUrl == streamData?.channelUrl }
+                                        androidx.compose.material3.Button(
+                                            onClick = { toggleSubscription(streamData?.channelUrl, cd.name, cd.avatar) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) { Text(stringResource(if (isSub) R.string.unsubscribe else R.string.subscribe)) }
+                                    }
                                 }
                             }
                         },
@@ -1458,7 +1529,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     LibraryScreen(
                         onHistory = { showLibrary = false; fromLibrary = true; showHistory = true },
                         onFavorites = { showLibrary = false; fromLibrary = true; showFavorites = true },
-                        onPlaylists = { showLibrary = false; fromLibrary = true; showPlaylists = true }
+                        onPlaylists = { showLibrary = false; fromLibrary = true; showPlaylists = true },
+                        subscriptions = subscriptions,
+                        onOpenFeed = { showLibrary = false; fromLibrary = true; showFeed = true; if (feedItems.isEmpty()) refreshFeed() },
+                        onUnsubscribe = { url -> scope.launch { try { dao.deleteSubscription(url) } catch (_: Exception) { } } },
+                        onImportSubs = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } }
+                    )
+                }
+                showFeed -> {
+                    FeedScreen(
+                        items = feedItems,
+                        loading = feedLoading,
+                        onRefresh = { refreshFeed() },
+                        onPlay = { playVideo(it) },
+                        isFav = { v -> v.favKey() in favoriteSet },
+                        onFav = { toggleFavorite(it) },
+                        onAdd = { enqueueLast(it) }
                     )
                 }
                 showSettings -> {
