@@ -21,6 +21,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +42,24 @@ fun HistoryScreen(
     onDelete: (VideoItem) -> Unit,
     onClear: () -> Unit,
     onBack: () -> Unit,
-    onLongClick: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {}
+    onLongClick: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
+    // Phase 5: offline-pin badges + filter tabs (in-memory filter, zero network)
+    pinInfo: Map<String, com.mohamedadel.mytube.data.local.PinEntity> = emptyMap(),
+    pinningKeys: Set<String> = emptySet()
 ) {
+    val lctx = androidx.compose.ui.platform.LocalContext.current
+    var tab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+    fun sizeLabel(bytes: Long): String = try {
+        if (bytes < 1048576) lctx.getString(com.mohamedadel.mytube.R.string.db_kb, (bytes / 1024).toInt())
+        else lctx.getString(com.mohamedadel.mytube.R.string.db_mb, bytes / 1048576.0)
+    } catch (_: Exception) { "" }
+    val shown = remember(items, tab, pinInfo) {
+        when (tab) {
+            1 -> items.filter { h -> pinInfo.containsKey(h.videoKey) }
+            2 -> items.filter { h -> !pinInfo.containsKey(h.videoKey) }
+            else -> items
+        }
+    }
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -58,7 +78,14 @@ fun HistoryScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
-        if (items.isEmpty()) {
+        // filter tabs: all / pinned / unpinned
+        androidx.compose.material3.TabRow(selectedTabIndex = tab) {
+            androidx.compose.material3.Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(com.mohamedadel.mytube.R.string.hist_tab_all)) })
+            androidx.compose.material3.Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(com.mohamedadel.mytube.R.string.hist_tab_pinned)) })
+            androidx.compose.material3.Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(stringResource(com.mohamedadel.mytube.R.string.hist_tab_unpinned)) })
+        }
+        Spacer(Modifier.height(8.dp))
+        if (shown.isEmpty()) {
             Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(48.dp))
                 Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
@@ -69,15 +96,21 @@ fun HistoryScreen(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(items, key = { _, h -> h.videoKey }) { _, h ->
+                itemsIndexed(shown, key = { _, h -> h.videoKey }) { _, h ->
                     val v = h.toVideoItem()
+                    val pin = pinInfo[h.videoKey]
+                    val badge = pin?.let { p ->
+                        "📌 " + (p.quality ?: "") + (if (p.sizeBytes > 0) " • " + sizeLabel(p.sizeBytes) else "")
+                    }
                     SearchRow(
                         v = v,
                         isCurrent = false,
                         isPlaying = false,
                         onClick = { onPlay(v) },
                         onLongClick = { onLongClick(it) },
-                        onRemove = onDelete
+                        onRemove = onDelete,
+                        pinBadge = badge,
+                        pinning = pinningKeys.contains(h.videoKey)
                     )
                 }
             }

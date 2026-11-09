@@ -291,4 +291,7 @@
     <string name="offline_mode">تشغيل المثبت فقط (بلا بيانات)</string>
     <string name="offline_mode_desc">المثبت يعمل من القرص. غير المثبت يعرض «ثبّت أولًا».</string>
     <string name="err_pin_first">غير مثبّت — ثبّته أولًا للتشغيل بدون اتصال</string>
+    <string name="hist_tab_all">الكل</string>
+    <string name="hist_tab_pinned">المثبتة</string>
+    <string name="hist_tab_unpinned">غير المثبتة</string>
 </resources>

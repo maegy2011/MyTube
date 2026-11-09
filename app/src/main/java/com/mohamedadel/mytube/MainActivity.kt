@@ -1834,7 +1834,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) } } },
                         onClear = { clearHistory() },
                         onBack = { smartBack() },
-                        onLongClick = { optionsFor = it }
+                        onLongClick = { optionsFor = it },
+                        pinInfo = remember(pins) { pins.associateBy { it.videoKey } },
+                        pinningKeys = pinningKeys
                     )
                 }
                 showFavorites -> {

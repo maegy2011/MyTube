@@ -291,4 +291,7 @@
     <string name="offline_mode">Play pinned only (no data)</string>
     <string name="offline_mode_desc">Pinned videos play from disk. Unpinned show “pin first”.</string>
     <string name="err_pin_first">Not pinned — pin it first for offline play</string>
+    <string name="hist_tab_all">All</string>
+    <string name="hist_tab_pinned">Pinned</string>
+    <string name="hist_tab_unpinned">Not pinned</string>
 </resources>
