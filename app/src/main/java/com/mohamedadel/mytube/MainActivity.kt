@@ -847,6 +847,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // so late responses can never overwrite fresh results. Failures surface with retry.
     var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var searchSuggestion by remember { mutableStateOf<String?>(null) }
+    var searchCorrected by remember { mutableStateOf(false) }
     fun doSearch(q: String) {
         if (q.isBlank()) return
         currentQuery = q
@@ -865,6 +867,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     results = page.items
                     nextPage = page.nextPage
                     hasMore = page.hasNext
+                    searchSuggestion = page.suggestion
+                    searchCorrected = page.corrected
                 }
             } catch (_: Exception) {
                 searchError = ctx.getString(R.string.err_search)
@@ -1665,6 +1669,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                             if (currentQuery.isNotBlank()) doSearch(currentQuery)
                                         },
                                         label = { Text(stringResource(when (f) { "videos" -> R.string.filter_videos; "channels" -> R.string.filter_channels; "playlists" -> R.string.filter_playlists; else -> R.string.filter_all })) }
+                                    )
+                                }
+                            }
+                        }
+                        // search correction (own item: never breaks the list)
+                        if (searchSuggestion != null) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clickable { doSearch(searchSuggestion!!) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        if (searchCorrected) stringResource(R.string.did_you_mean_showing_fmt, searchSuggestion!!) else stringResource(R.string.did_you_mean_fmt, searchSuggestion!!),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }

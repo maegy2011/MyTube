@@ -243,4 +243,6 @@
     <string name="filter_videos">Videos</string>
     <string name="filter_channels">Channels</string>
     <string name="filter_playlists">Playlists</string>
+    <string name="did_you_mean_fmt">Did you mean: %1$s?</string>
+    <string name="did_you_mean_showing_fmt">Showing results for %1$s</string>
 </resources>

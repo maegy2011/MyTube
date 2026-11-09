@@ -243,4 +243,6 @@
     <string name="filter_videos">فيديوهات</string>
     <string name="filter_channels">قنوات</string>
     <string name="filter_playlists">قوائم</string>
+    <string name="did_you_mean_fmt">هل تقصد: %1$s؟</string>
+    <string name="did_you_mean_showing_fmt">عرض نتائج %1$s</string>
 </resources>

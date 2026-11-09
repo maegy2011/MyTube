@@ -20,7 +20,7 @@ data class Storyboard(val urls: List<String>, val total: Int, val perX: Int, val
 data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
 data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
 data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList())
-data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false, val error: String? = null)
+data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false, val error: String? = null, val suggestion: String? = null, val corrected: Boolean = false)
 
 object YouTubeRepo {
     private val client = OkHttpClient()
@@ -147,7 +147,14 @@ object YouTubeRepo {
             }
             val hasNext = try { lp.hasNextPage() } catch (_: Exception) { false }
             val next = if (hasNext) try { lp.nextPage } catch (_: Exception) { null } else null
-            SearchPage(out, next, hasNext)
+            // search correction (own try: must never fail the search itself)
+            var sugg: String? = null
+            var corr = false
+            try { sugg = ext.searchSuggestion?.takeIf { it.isNotBlank() } } catch (_: Exception) { }
+            try { corr = ext.isCorrectedSearch } catch (_: Exception) { }
+            // hide self-echo suggestion (same as query = no correction)
+            if (sugg != null && sugg.equals(query, ignoreCase = true)) sugg = null
+            SearchPage(out, next, hasNext, null, sugg, corr)
         } catch (e: Exception) { SearchPage(error = e.message ?: e.javaClass.simpleName) }
     }
 
