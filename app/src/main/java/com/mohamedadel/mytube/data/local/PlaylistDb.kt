@@ -211,6 +211,10 @@ interface PlaylistDao {
     @Query("SELECT * FROM history WHERE videoKey NOT IN (:keys) ORDER BY playedAt DESC LIMIT :limit OFFSET :offset")
     suspend fun historyPageUnpinned(keys: List<String>, limit: Int, offset: Int): List<HistoryEntity>
 
+    // R2: local search (title/channel, newest first, capped — paging unnecessary for matches)
+    @Query("SELECT * FROM history WHERE title LIKE '%' || :q || '%' OR channel LIKE '%' || :q || '%' ORDER BY playedAt DESC LIMIT 200")
+    suspend fun historySearch(q: String): List<HistoryEntity>
+
     @Query("SELECT COUNT(*) FROM history")
     suspend fun historyCount(): Int
 

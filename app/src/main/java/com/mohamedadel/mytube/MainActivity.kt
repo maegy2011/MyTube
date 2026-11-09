@@ -338,6 +338,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pinsSizeLabel by remember { mutableStateOf("—") }
     var pinsBytes by remember { mutableStateOf(0L) }
     var histCount by remember { mutableStateOf(0) }
+
     var cacheSizeLabel by remember { mutableStateOf("—") }
     var prefSpeed by remember { mutableStateOf(1.0f) }
     var prefPitch by remember { mutableStateOf(1.0f) }
@@ -643,6 +644,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
+    // R2: history local search (Room LIKE, capped 200, off-main)
+    var histSearchQuery by remember { mutableStateOf("") }
+    var histSearchResults by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.local.HistoryEntity>()) }
+    fun runHistSearch(q: String) {
+        histSearchQuery = q
+        if (q.isBlank()) { histSearchResults = emptyList(); return }
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { histSearchResults = dao.historySearch(q.trim()) } catch (_: Exception) { }
+        }
+    }
     fun refreshCacheLabel() {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val bytes = try { com.mohamedadel.mytube.playback.MediaCache.bytesUsed(ctx.applicationContext) } catch (_: Exception) { 0L }
@@ -2007,6 +2018,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onBack = { smartBack() },
                         onLongClick = { optionsFor = it },
                         totalCount = histCount,
+                        searchQuery = histSearchQuery,
+                        onSearchQuery = { runHistSearch(it) },
+                        searchResults = histSearchResults,
                         pinInfo = remember(pins) { pins.associateBy { it.videoKey } },
                         pinningKeys = pinningKeys
                     )

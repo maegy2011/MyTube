@@ -2,6 +2,7 @@ package com.mohamedadel.mytube.ui.playlists
 
 import com.mohamedadel.mytube.R
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +53,11 @@ fun HistoryScreen(
     // Phase 5: offline-pin badges (zero network)
     pinInfo: Map<String, com.mohamedadel.mytube.data.local.PinEntity> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
-    totalCount: Int = 0
+    totalCount: Int = 0,
+    // R2: local search (blank = paged tabs). Results grouped by recency buckets; zero network.
+    searchQuery: String = "",
+    onSearchQuery: (String) -> Unit = {},
+    searchResults: List<HistoryEntity> = emptyList()
 ) {
     val lctx = androidx.compose.ui.platform.LocalContext.current
     var tab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
@@ -79,6 +86,66 @@ fun HistoryScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
+        // local search field (title/channel)
+        androidx.compose.material3.OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQuery,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(R.string.hist_search_hint)) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+            trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { onSearchQuery("") }) { Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.clear), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) } },
+            singleLine = true,
+            shape = RoundedCornerShape(24.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        if (searchQuery.isNotBlank()) {
+            // bucketed search results (in-memory grouping over the capped Room query)
+            val now = System.currentTimeMillis()
+            val day = 24 * 3600 * 1000L
+            val startToday = now - (now % day)
+            var lastBucket = -1
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                searchResults.forEach { h ->
+                    val bucket = when {
+                        h.playedAt >= startToday -> 0
+                        h.playedAt >= startToday - day -> 1
+                        h.playedAt >= startToday - 7 * day -> 2
+                        else -> 3
+                    }
+                    if (bucket != lastBucket) {
+                        lastBucket = bucket
+                        item(key = "bucket-$bucket") {
+                            Text(
+                                stringResource(
+                                    when (bucket) {
+                                        0 -> R.string.hist_bucket_today
+                                        1 -> R.string.hist_bucket_yesterday
+                                        2 -> R.string.hist_bucket_week
+                                        else -> R.string.hist_bucket_older
+                                    }
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                    item(key = h.videoKey) {
+                        val v = h.toVideoItem()
+                        val pin = pinInfo[h.videoKey]
+                        SearchRow(
+                            v = v, isCurrent = false, isPlaying = false,
+                            onClick = { onPlay(v) },
+                            onLongClick = { onLongClick(it) },
+                            onRemove = onDelete,
+                            pinBadge = pin?.let { pp -> "📌 " + (pp.quality ?: "") + (if (pp.sizeBytes > 0) " • " + sizeLabel(pp.sizeBytes) else "") },
+                            pinning = pinningKeys.contains(h.videoKey)
+                        )
+                    }
+                }
+            }
+            return@Column
+        }
         // filter tabs: all / pinned / unpinned
         androidx.compose.material3.TabRow(selectedTabIndex = tab) {
             androidx.compose.material3.Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(com.mohamedadel.mytube.R.string.hist_tab_all)) })

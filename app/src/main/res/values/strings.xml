@@ -312,4 +312,9 @@
     <string name="perf_preload">تجهيز معلومات المقطع التالي</string>
     <string name="perf_preload_desc">يتخطى انتظار التحميل عند التقدم. جلب معلومات صغير فقط، بلا بايتات ميديا.</string>
     <string name="hist_load_fail">فشل تحميل السجل</string>
+    <string name="hist_search_hint">ابحث في السجل</string>
+    <string name="hist_bucket_today">اليوم</string>
+    <string name="hist_bucket_yesterday">أمس</string>
+    <string name="hist_bucket_week">هذا الأسبوع</string>
+    <string name="hist_bucket_older">أقدم</string>
 </resources>
