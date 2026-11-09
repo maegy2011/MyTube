@@ -311,6 +311,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefAudioRole by remember { mutableStateOf("auto") }
     // B3 silence skipping (ExoPlayer SilenceSkippingAudioProcessor via custom RenderersFactory)
     var prefSkipSilence by remember { mutableStateOf(false) }
+    // Phase 1: transient media-cache cap (MB) + live size label
+    var prefCacheMaxMb by remember { mutableStateOf(500L) }
+    var cacheSizeLabel by remember { mutableStateOf("—") }
     var prefSpeed by remember { mutableStateOf(1.0f) }
     var prefPitch by remember { mutableStateOf(1.0f) }
     // standalone search screen (YouTube-style) + trending tabs
@@ -363,6 +366,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefUndetermined = prefs.getBoolean("pref_undetermined", true)
             prefAudioRole = prefs.getString("pref_audio_role", "auto") ?: "auto"
             prefSkipSilence = prefs.getBoolean("pref_skip_silence", false)
+            prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
+            try { com.mohamedadel.mytube.playback.MediaCache.setMax(ctx.applicationContext, prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
             prefPitch = prefs.getFloat("pref_pitch", 1.0f)
         } catch (_: Exception) { }
@@ -573,6 +578,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             catch (_: Exception) { toast(ctx.getString(R.string.toast_hist_clear_fail)) }
         }
     }
+    fun refreshCacheLabel() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val bytes = try { com.mohamedadel.mytube.playback.MediaCache.bytesUsed(ctx.applicationContext) } catch (_: Exception) { 0L }
+            val label = try {
+                if (bytes < 1048576) ctx.getString(R.string.db_kb, (bytes / 1024).toInt())
+                else ctx.getString(R.string.db_mb, bytes / 1048576.0)
+            } catch (_: Exception) { "—" }
+            cacheSizeLabel = label
+        }
+    }
+    fun clearMediaCache() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { com.mohamedadel.mytube.playback.MediaCache.clear(ctx.applicationContext) } catch (_: Exception) { }
+            refreshCacheLabel()
+            toast(ctx.getString(R.string.toast_cache_cleared))
+        }
+    }
+    LaunchedEffect(showSettings) { if (showSettings) refreshCacheLabel() }
+
     fun dbSizeLabel(): String {
         return try {
             val f = ctx.getDatabasePath("mytube.db")
@@ -667,7 +691,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             p.prepare()
         } else {
             val httpFactory = DefaultHttpDataSource.Factory()
-            val dataSourceFactory = DefaultDataSource.Factory(ctx, httpFactory)
+            // Phase 1: cache-first media (replay within URL lifetime = zero bytes)
+            val dataSourceFactory = try {
+                com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
+            } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
             val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
             val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(selAudio)))
             val merged = MergingMediaSource(videoSource, audioSource)
@@ -1609,6 +1636,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         dbSize = dbSizeLabel(),
                         onClearFavorites = { clearFavorites() },
                         onClearHistory = { clearHistory() },
+                        cacheSize = cacheSizeLabel,
+                        cacheMaxMb = prefCacheMaxMb,
+                        onCacheMax = { mb ->
+                            prefCacheMaxMb = mb
+                            try { prefs.edit().putLong("pref_cache_max_mb", mb).apply() } catch (_: Exception) { }
+                            try { com.mohamedadel.mytube.playback.MediaCache.setMax(ctx.applicationContext, mb * 1024 * 1024) } catch (_: Exception) { }
+                            refreshCacheLabel()
+                            toast(ctx.getString(R.string.toast_cache_max))
+                        },
+                        onClearCache = { clearMediaCache() },
                         subHideAuto = prefSubHideAuto,
                         onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
                         subFg = prefSubFg,

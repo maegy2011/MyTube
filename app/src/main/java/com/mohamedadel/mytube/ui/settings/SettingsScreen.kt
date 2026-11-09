@@ -126,12 +126,17 @@ fun SettingsScreen(
     histCount: Int,
     plCount: Int,
     dbSize: String,
+    cacheSize: String = "—",
+    cacheMaxMb: Long = 500L,
+    onCacheMax: (Long) -> Unit = {},
+    onClearCache: () -> Unit = {},
     onClearFavorites: () -> Unit,
     onClearHistory: () -> Unit
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var confirmHist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var confirmCache by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     if (confirmFav) {
         AlertDialog(
             onDismissRequest = { confirmFav = false },
@@ -148,6 +153,15 @@ fun SettingsScreen(
             text = { Text(stringResource(R.string.del_hist_confirm_fmt, histCount)) },
             confirmButton = { TextButton(onClick = { onClearHistory(); confirmHist = false }) { Text(stringResource(R.string.clear)) } },
             dismissButton = { TextButton(onClick = { confirmHist = false }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
+    if (confirmCache) {
+        AlertDialog(
+            onDismissRequest = { confirmCache = false },
+            title = { Text(stringResource(R.string.clear_cache_title)) },
+            text = { Text(stringResource(R.string.clear_cache_fmt, cacheSize)) },
+            confirmButton = { TextButton(onClick = { onClearCache(); confirmCache = false }) { Text(stringResource(R.string.clear)) } },
+            dismissButton = { TextButton(onClick = { confirmCache = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     LazyColumn(
@@ -458,6 +472,29 @@ fun SettingsScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedButton(onClick = { confirmFav = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_favorites)) }
                 androidx.compose.material3.OutlinedButton(onClick = { confirmHist = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_history)) }
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.cache_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Text(
+                stringResource(R.string.cache_line_fmt, cacheSize, cacheMaxMb),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        items(listOf(100L, 250L, 500L, 1024L)) { mb ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onCacheMax(mb) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (cacheMaxMb == mb) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (cacheMaxMb == mb) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(if (mb >= 1024) stringResource(R.string.cache_gb) else stringResource(R.string.cache_mb_fmt, mb.toInt()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedButton(onClick = { confirmCache = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_cache)) }
             }
         }
         item {

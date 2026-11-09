@@ -267,4 +267,13 @@
     <string name="feed_empty">No subscriptions yet — subscribe from a channel page or import a file.</string>
     <string name="skip_silence">Skip silence (rebuilds playback)</string>
     <string name="toast_skip_restart">Playback restarts with the new setting</string>
+    <string name="cache_title">Media cache</string>
+    <string name="cache_line_fmt">Used %1$s of %2$d MB</string>
+    <string name="cache_mb_fmt">%1$d MB</string>
+    <string name="cache_gb">1 GB</string>
+    <string name="clear_cache">Clear media cache</string>
+    <string name="clear_cache_title">Clear media cache?</string>
+    <string name="clear_cache_fmt">This deletes %1$s of cached audio/video. Pinned (travel) files are NOT affected.</string>
+    <string name="toast_cache_cleared">Media cache cleared</string>
+    <string name="toast_cache_max">Cache limit applied to new playback</string>
 </resources>

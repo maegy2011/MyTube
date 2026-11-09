@@ -267,4 +267,13 @@
     <string name="feed_empty">لا اشتراكات بعد — اشترك من صفحة قناة أو استورد ملفًا.</string>
     <string name="skip_silence">تخطي الصمت (يعيد بناء التشغيل)</string>
     <string name="toast_skip_restart">يعاد التشغيل بالإعداد الجديد</string>
+    <string name="cache_title">كاش الوسائط</string>
+    <string name="cache_line_fmt">المستخدم %1$s من %2$d م.ب</string>
+    <string name="cache_mb_fmt">%1$d م.ب</string>
+    <string name="cache_gb">1 ج.ب</string>
+    <string name="clear_cache">تفريغ كاش الوسائط</string>
+    <string name="clear_cache_title">تفريغ كاش الوسائط؟</string>
+    <string name="clear_cache_fmt">سيحذف هذا %1$s من الصوت/الفيديو المخزّن. ملفات التثبيت لا تتأثر.</string>
+    <string name="toast_cache_cleared">تم تفريغ الكاش</string>
+    <string name="toast_cache_max">يطبق الحد على التشغيل الجديد</string>
 </resources>
