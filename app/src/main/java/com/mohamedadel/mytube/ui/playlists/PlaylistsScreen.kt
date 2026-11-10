@@ -32,9 +32,17 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -76,8 +84,16 @@ fun PlaylistsScreen(
     onPlayAll: (Long) -> Unit,
     onPlayFrom: (Int) -> Unit,
     onCreate: (String, String) -> Unit,
-    onSaveEdits: (Long, String, String, List<Long>) -> Unit,
+    onSaveEdits: (Long, String, String, String, List<Long>) -> Unit,
     onDelete: (Long) -> Unit,
+    onQueueItems: (List<PlaylistItemEntity>) -> Unit = {},
+    onPinItems: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = {},
+    onRemoveItems: (Long, List<Long>) -> Unit = { _, _ -> },
+    onExport: (Long) -> Unit = {},
+    tabSort: String = "custom",
+    onTabSort: (String) -> Unit = {},
+    songSort: String = "added",
+    onSongSort: (String) -> Unit = {},
     onMoveItem: (Long, Long, Int) -> Unit,
     onDeleteItem: (Long, Long) -> Unit,
     onClearItems: (Long) -> Unit,
@@ -98,8 +114,29 @@ fun PlaylistsScreen(
     var editMode by remember(openId) { mutableStateOf(false) }
     var editName by remember(openId) { mutableStateOf(openName) }
     var editEmoji by remember(openId) { mutableStateOf(openPl?.emoji ?: "🎵") }
+    var editMode2 by remember(openId) { mutableStateOf(openPl?.mode ?: "music") }
+    // multi-select (select several songs: queue / download / remove together)
+    var selecting by remember(openId) { mutableStateOf(false) }
+    var selected by remember(openId) { mutableStateOf(setOf<Long>()) }
+    var showSortSongs by remember { mutableStateOf(false) }
+    var showSortTabs by remember { mutableStateOf(false) }
     var staged by remember(openId) { mutableStateOf<List<PlaylistItemEntity>?>(null) }
-    val rows = if (editMode) staged ?: items else items
+    val viewRows = remember(items, songSort) {
+        when (songSort) {
+            "title" -> items.sortedBy { (it.title ?: "").lowercase() }
+            "artist" -> items.sortedBy { (it.channel ?: "").lowercase() }
+            "duration" -> items.sortedBy { it.durationSec ?: Long.MAX_VALUE }
+            else -> items
+        }
+    }
+    val tabList = remember(playlists, tabSort) {
+        when (tabSort) {
+            "name" -> playlists.sortedBy { it.name.lowercase() }
+            "size" -> playlists.sortedByDescending { it.count }
+            else -> playlists
+        }
+    }
+    val rows = if (editMode) staged ?: items else viewRows
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -119,6 +156,9 @@ fun PlaylistsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 if (openId == null) {
+                    IconButton(onClick = { showSortTabs = true }) {
+                        Icon(Icons.Rounded.Sort, contentDescription = stringResource(R.string.sort_playlists), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     IconButton(onClick = { showCreate = true; createEmoji = "🎵" }) {
                         Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.playlist_new), tint = MaterialTheme.colorScheme.primary)
                     }
@@ -126,7 +166,7 @@ fun PlaylistsScreen(
                     androidx.compose.material3.TextButton(onClick = {
                         val pid = openId
                         val stagedRows = staged ?: items
-                        onSaveEdits(pid, editName.trim().ifBlank { openName }, editEmoji, stagedRows.map { it.id })
+                        onSaveEdits(pid, editName.trim().ifBlank { openName }, editEmoji, editMode2, stagedRows.map { it.id })
                         editMode = false
                     }) { Text(stringResource(R.string.save)) }
                     androidx.compose.material3.TextButton(onClick = { staged = null; editMode = false }) { Text(stringResource(R.string.cancel)) }
@@ -134,9 +174,19 @@ fun PlaylistsScreen(
                     androidx.compose.material3.TextButton(onClick = {
                         editName = openName
                         editEmoji = openPl?.emoji ?: "🎵"
+                        editMode2 = openPl?.mode ?: "music"
                         staged = items
                         editMode = true
                     }) { Text(stringResource(R.string.edit)) }
+                    IconButton(onClick = { selecting = !selecting; if (selecting) selected = emptySet() }) {
+                        Icon(Icons.Rounded.Checklist, contentDescription = stringResource(R.string.select_items), tint = if (selecting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { showSortSongs = true }) {
+                        Icon(Icons.Rounded.Sort, contentDescription = stringResource(R.string.sort_songs), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { openId?.let { onExport(it) } }) {
+                        Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.export_csv), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -152,7 +202,7 @@ fun PlaylistsScreen(
                     }
                 }
             }
-            items(playlists, key = { it.id }) { p ->
+            items(tabList, key = { it.id }) { p ->
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
@@ -195,10 +245,36 @@ fun PlaylistsScreen(
                     }
                 }
             }
+            if (openId != null && selecting && !editMode) {
+                item {
+                    val sel = rows.filter { it.id in selected }
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.sel_count_fmt, sel.size), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { onQueueItems(sel) }, enabled = sel.isNotEmpty()) {
+                            Icon(Icons.Rounded.PlaylistAdd, contentDescription = stringResource(R.string.cd_add_queue_end), tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { onPinItems(sel.map { it.toVideoItem() }) }, enabled = sel.isNotEmpty()) {
+                            Icon(Icons.Rounded.Download, contentDescription = stringResource(R.string.download), tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { openId?.let { onRemoveItems(it, sel.map { r -> r.id }) }; selected = emptySet() }, enabled = sel.isNotEmpty()) {
+                            Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete_item), tint = MaterialTheme.colorScheme.error)
+                        }
+                        IconButton(onClick = { selecting = false; selected = emptySet() }) {
+                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cancel), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
             if (rows.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                         Text(stringResource(R.string.playlist_empty_items), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(selected = editMode2 == "music", onClick = { editMode2 = "music" }, label = { Text(stringResource(R.string.pl_mode_music)) })
+                        FilterChip(selected = editMode2 == "video", onClick = { editMode2 = "video" }, label = { Text(stringResource(R.string.pl_mode_video)) })
                     }
                 }
             }
@@ -218,7 +294,16 @@ fun PlaylistsScreen(
                             }
                         }
                         Spacer(Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f).clickable { if (!editMode) onPlayFrom(idx) }) {
+                        if (selecting && !editMode) {
+                            Checkbox(
+                                checked = r.id in selected,
+                                onCheckedChange = { c -> selected = if (c) selected + r.id else selected - r.id }
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f).clickable {
+                            if (selecting && !editMode) selected = if (r.id in selected) selected - r.id else selected + r.id
+                            else if (!editMode) onPlayFrom(idx)
+                        }) {
                             Text(r.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(r.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             pinBadges[r.toVideoItem().favKey()]?.let { b ->
@@ -329,6 +414,54 @@ fun PlaylistsScreen(
             },
             confirmButton = { },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { moveRow = null }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
+    // song sort (remembered per playlist by the caller via prefs)
+    if (showSortSongs) {
+        AlertDialog(
+            onDismissRequest = { showSortSongs = false },
+            title = { Text(stringResource(R.string.sort_songs)) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    listOf("added", "title", "artist", "duration").forEach { k ->
+                        Row(modifier = Modifier.fillMaxWidth().clickable { onSongSort(k); showSortSongs = false }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(when (k) { "title" -> R.string.sort_title; "artist" -> R.string.sort_artist; "duration" -> R.string.sort_duration; else -> R.string.sort_added }),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (songSort == k) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (songSort == k) Text("✓", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            },
+            confirmButton = { },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showSortSongs = false }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
+    // playlists-tab sort (name / size / custom creation order; creator is n/a — all local)
+    if (showSortTabs) {
+        AlertDialog(
+            onDismissRequest = { showSortTabs = false },
+            title = { Text(stringResource(R.string.sort_playlists)) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    listOf("custom", "name", "size").forEach { k ->
+                        Row(modifier = Modifier.fillMaxWidth().clickable { onTabSort(k); showSortTabs = false }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(when (k) { "name" -> R.string.sort_tab_name; "size" -> R.string.sort_tab_size; else -> R.string.sort_tab_custom }),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (tabSort == k) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (tabSort == k) Text("✓", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            },
+            confirmButton = { },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showSortTabs = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     // delete confirm

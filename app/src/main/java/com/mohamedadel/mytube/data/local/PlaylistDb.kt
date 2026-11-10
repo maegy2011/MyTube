@@ -23,7 +23,10 @@ data class PlaylistEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val emoji: String = "🎵",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    // "music" (audio-first) | "video" (forces a video quality on play-all/from, so
+    // video playlists don't crowd the music flow). V9 column, default keeps old rows musical.
+    val mode: String = "music"
 )
 
 // One video inside a playlist. `position` defines the play order.
@@ -143,12 +146,13 @@ data class PlaylistWithCount(
     val name: String,
     val emoji: String,
     val createdAt: Long,
-    val count: Int
+    val count: Int,
+    val mode: String = "music"
 )
 
 @Dao
 interface PlaylistDao {
-    @Query("SELECT p.id AS id, p.name AS name, p.emoji AS emoji, p.createdAt AS createdAt, COUNT(i.id) AS count FROM playlists p LEFT JOIN playlist_items i ON i.playlistId = p.id GROUP BY p.id ORDER BY p.createdAt DESC")
+    @Query("SELECT p.id AS id, p.name AS name, p.emoji AS emoji, p.createdAt AS createdAt, COUNT(i.id) AS count, p.mode AS mode FROM playlists p LEFT JOIN playlist_items i ON i.playlistId = p.id GROUP BY p.id ORDER BY p.createdAt DESC")
     fun observePlaylists(): Flow<List<PlaylistWithCount>>
 
     @Query("SELECT * FROM playlist_items WHERE playlistId = :pid ORDER BY position ASC")
@@ -159,6 +163,9 @@ interface PlaylistDao {
 
     @Query("SELECT COUNT(*) FROM playlist_items WHERE playlistId = :pid")
     suspend fun itemCount(pid: Long): Int
+
+    @Query("DELETE FROM playlist_items WHERE playlistId = :pid AND id IN (:ids)")
+    suspend fun deleteItems(pid: Long, ids: List<Long>)
 
     // Playlist cover from its songs' artwork (no stored cover, no migration): first 4 thumbs.
     @Query("SELECT thumbnail FROM playlist_items WHERE playlistId = :pid AND thumbnail IS NOT NULL AND thumbnail != '' ORDER BY position ASC LIMIT 4")
@@ -189,10 +196,14 @@ interface PlaylistDao {
     suspend fun updateItems(items: List<PlaylistItemEntity>)
 
     // Staged editor save as ONE transaction: rename + emoji + deletions + reorder succeed or fail together.
+    @Query("UPDATE playlists SET mode = :mode WHERE id = :pid")
+    suspend fun setMode(pid: Long, mode: String)
+
     @Transaction
-    suspend fun savePlaylistEdits(pid: Long, name: String, emoji: String, orderedIds: List<Long>) {
+    suspend fun savePlaylistEdits(pid: Long, name: String, emoji: String, mode: String, orderedIds: List<Long>) {
         if (name.isNotBlank()) rename(pid, name)
         setEmoji(pid, emoji.ifBlank { "🎵" })
+        setMode(pid, if (mode == "video") "video" else "music")
         val rows = itemsOnce(pid)
         rows.filter { it.id !in orderedIds }.forEach { deleteItem(pid, it.id) }
         val keep = orderedIds.mapNotNull { id -> rows.firstOrNull { it.id == id } }
@@ -347,7 +358,7 @@ data class PlayedStat(
 )
 
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class], version = 8, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class], version = 9, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -523,6 +534,13 @@ object FeedJson {
 }
 
 // v7 -> v8: channel groups (non-destructive; members CASCADE on group delete).
+// v8 -> v9: playlist video mode (non-destructive; old rows stay "music").
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE playlists ADD COLUMN mode TEXT NOT NULL DEFAULT 'music'")
+    }
+}
+
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS channel_groups (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, createdAt INTEGER NOT NULL DEFAULT 0)")

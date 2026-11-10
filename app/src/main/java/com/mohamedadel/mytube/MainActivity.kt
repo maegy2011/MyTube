@@ -149,6 +149,7 @@ import com.mohamedadel.mytube.data.local.MIGRATION_4_5
 import com.mohamedadel.mytube.data.local.MIGRATION_5_6
 import com.mohamedadel.mytube.data.local.MIGRATION_6_7
 import com.mohamedadel.mytube.data.local.MIGRATION_7_8
+import com.mohamedadel.mytube.data.local.MIGRATION_8_9
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
@@ -310,7 +311,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }
@@ -968,6 +969,36 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun toast(msg: String) {
         try { Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
     }
+    // playlist tools: tab sort + per-playlist song sort (prefs) + video-mode queue flag
+    var plTabSort by remember { mutableStateOf("custom") }
+    var plSongSort by remember { mutableStateOf("added") }
+    var videoModeQueue by remember { mutableStateOf(false) }
+    fun loadPlSorts(pid: Long?) {
+        try { plTabSort = prefs.getString("pl_tab_sort", "custom") ?: "custom" } catch (_: Exception) { }
+        try { plSongSort = if (pid == null) "added" else (prefs.getString("pl_sort_" + pid, "added") ?: "added") } catch (_: Exception) { plSongSort = "added" }
+    }
+    fun exportPlaylistCsv(pid: Long) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val rows = dao.itemsOnce(pid)
+                if (rows.isEmpty()) { toast(ctx.getString(R.string.toast_csv_empty)); return@launch }
+                val sb = StringBuilder("title,channel,url,duration_sec\n")
+                for (r in rows) {
+                    fun q(v: String?): String = "\"" + (v ?: "").replace("\"", "\"\"") + "\""
+                    sb.append(q(r.title)).append(',').append(q(r.channel)).append(',')
+                        .append(q(r.url)).append(',').append(r.durationSec ?: "").append('\n')
+                }
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+                }
+                val chooser = android.content.Intent.createChooser(send, try { ctx.getString(R.string.export_csv) } catch (_: Exception) { "CSV" })
+                chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(chooser)
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_csv_fail)) }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(showPlaylists, openPlaylistId) { if (showPlaylists) loadPlSorts(openPlaylistId) }
     val subsImportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri ->
@@ -1324,6 +1355,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             queue = listOf(v)
             autoAdvance = false
             radioOn = false
+            videoModeQueue = false
         } else {
             autoAdvance = true
         }
@@ -1472,9 +1504,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // label the auto entry with the speed-based target so the user sees what auto will pick
             val kbps = ctx.estimatedDownstreamKbps()
             qualityList = qualityEntriesFor(s, kbps)
-            // default quality preference (applies to every new video); audio-only sources skip video picking
             val startQ = if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
-            quality = startQ
+            // video-mode playlist: never start audio-only (keeps videos out of the music flow)
+            quality = if (videoModeQueue && startQ == "audio-only (default)" && s.videoUrlByQuality.isNotEmpty()) {
+                qualityList.firstOrNull { it != "audio-only (default)" } ?: startQ
+            } else startQ
             applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
             if (CastManager.connected.value) castCurrent(autoplay = true)
             // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
@@ -1516,6 +1550,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 queue = listOf(v) + fresh.filter { it.favKey() != v.favKey() }
                 queueIndex = 0
                 radioOn = true
+                videoModeQueue = false
                 toast(ctx.getString(R.string.toast_radio_started))
                 playVideo(v, inQueue = true)
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_radio_fail)) }
@@ -3429,6 +3464,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                     results = list
                                     queue = list
                                     currentQuery = ""
+                                    radioOn = false
+                                    videoModeQueue = playlists.firstOrNull { it.id == pid }?.mode == "video"
                                     playVideo(list[0], inQueue = true)
                                 }
                             }
@@ -3440,16 +3477,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 results = list
                                 queue = list
                                 currentQuery = ""
+                                radioOn = false
+                                videoModeQueue = playlists.firstOrNull { it.id == openPlaylistId }?.mode == "video"
                                 playVideo(list[idx], inQueue = true)
                             }
                         },
                         onCreate = { name, emoji ->
                             scope.launch { dao.insertPlaylist(PlaylistEntity(name = name, emoji = emoji)) }
                         },
-                        onSaveEdits = { pid, name, emoji, orderedIds ->
+                        onSaveEdits = { pid, name, emoji, mode, orderedIds ->
                             scope.launch {
                                 try {
-                                    dao.savePlaylistEdits(pid, name, emoji, orderedIds)
+                                    dao.savePlaylistEdits(pid, name, emoji, mode, orderedIds)
                                     toast(ctx.getString(R.string.toast_playlist_saved))
                                 } catch (_: Exception) { toast(ctx.getString(R.string.toast_playlist_save_fail)) }
                             }
@@ -3490,7 +3529,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onBack = { showPlaylists = false; openPlaylistId = null },
                         pinBadges = pinBadges,
                         onLongClick = { optionsFor = it },
-                        covers = plCovers
+                        covers = plCovers,
+                        onQueueItems = { sel ->
+                            val fresh = sel.map { it.toVideoItem() }.filter { !isQueued(it) }
+                            if (fresh.isNotEmpty()) {
+                                queue = queue + fresh
+                                if (playing == null) playVideo(fresh[0], inQueue = true)
+                            }
+                        },
+                        onPinItems = { vs -> scope.launch { for (v in vs) { try { quickPin(v, null) } catch (_: Exception) { } } } },
+                        onRemoveItems = { pid, ids -> scope.launch { try { dao.deleteItems(pid, ids) } catch (_: Exception) { } } },
+                        onExport = { pid -> exportPlaylistCsv(pid) },
+                        tabSort = plTabSort,
+                        onTabSort = { v -> plTabSort = v; try { prefs.edit().putString("pl_tab_sort", v).apply() } catch (_: Exception) { } },
+                        songSort = plSongSort,
+                        onSongSort = { v ->
+                            plSongSort = v
+                            try { openPlaylistId?.let { prefs.edit().putString("pl_sort_" + it, v).apply() } } catch (_: Exception) { }
+                        }
                     )
                 }
                 openRemote != null -> {

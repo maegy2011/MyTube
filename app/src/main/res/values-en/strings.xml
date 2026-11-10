@@ -470,4 +470,21 @@
     <string name="start_radio">Radio</string>
     <string name="toast_radio_started">Radio started — an endless queue of suggestions</string>
     <string name="toast_radio_fail">Could not start radio for this item</string>
+    <string name="select_items">Select items</string>
+    <string name="sort_songs">Sort songs</string>
+    <string name="sort_playlists">Sort playlists</string>
+    <string name="export_csv">Export CSV</string>
+    <string name="sort_title">Title</string>
+    <string name="sort_artist">Artist</string>
+    <string name="sort_duration">Length</string>
+    <string name="sort_added">Date added</string>
+    <string name="sort_tab_name">Name</string>
+    <string name="sort_tab_size">Size</string>
+    <string name="sort_tab_custom">Custom order</string>
+    <string name="sel_count_fmt">Selected: %d</string>
+    <string name="pl_mode_music">Music</string>
+    <string name="pl_mode_video">Video</string>
+    <string name="toast_csv_empty">Playlist is empty — nothing to export</string>
+    <string name="toast_csv_fail">Export failed</string>
+    <string name="download">Download</string>
 </resources>

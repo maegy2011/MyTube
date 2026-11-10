@@ -470,4 +470,21 @@
     <string name="start_radio">راديو</string>
     <string name="toast_radio_started">بدأ الراديو — قائمة لا تنتهي من المقترحات</string>
     <string name="toast_radio_fail">تعذّر بدء الراديو لهذا العنصر</string>
+    <string name="select_items">تحديد عناصر</string>
+    <string name="sort_songs">فرز الأغاني</string>
+    <string name="sort_playlists">فرز القوائم</string>
+    <string name="export_csv">تصدير CSV</string>
+    <string name="sort_title">العنوان</string>
+    <string name="sort_artist">الفنان</string>
+    <string name="sort_duration">المدة</string>
+    <string name="sort_added">تاريخ الإضافة</string>
+    <string name="sort_tab_name">بالاسم</string>
+    <string name="sort_tab_size">بالحجم</string>
+    <string name="sort_tab_custom">ترتيب مخصص</string>
+    <string name="sel_count_fmt">محدد: %d</string>
+    <string name="pl_mode_music">موسيقى</string>
+    <string name="pl_mode_video">فيديو</string>
+    <string name="toast_csv_empty">القائمة فارغة — لا شيء للتصدير</string>
+    <string name="toast_csv_fail">تعذّر التصدير</string>
+    <string name="download">تنزيل</string>
 </resources>
