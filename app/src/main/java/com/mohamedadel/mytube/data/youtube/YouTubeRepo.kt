@@ -12,7 +12,7 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 
-data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null, val channelAvatar: String? = null, val verified: Boolean = false, val uploadDate: String? = null, val isShort: Boolean = false, val channelUrl: String? = null, val ageLimit: Int = 0)
+data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null, val channelAvatar: String? = null, val verified: Boolean = false, val uploadDate: String? = null, val isShort: Boolean = false, val channelUrl: String? = null, val ageLimit: Int = 0, val isChannel: Boolean = false)
 data class SubtitleItem(val url: String, val langTag: String, val label: String, val auto: Boolean, val mime: String)
 data class AudioTrackItem(val url: String, val bitrate: Int, val trackId: String?, val name: String?, val localeTag: String?, val type: String?)
 data class ChapterItem(val title: String, val startSec: Int)
@@ -158,6 +158,22 @@ object YouTubeRepo {
             for (info in items) {
                 if (info is org.schabi.newpipe.extractor.playlist.PlaylistInfoItem) {
                     // playlists surface separately via searchPlaylists(); skipped in the video list
+                    continue
+                }
+                if (info is org.schabi.newpipe.extractor.channel.ChannelInfoItem) {
+                    // artists/channels tab: row opens the channel screen (isChannel routes the tap)
+                    val url: String? = try { info.url } catch (_: Exception) { null }
+                    if (url.isNullOrBlank()) continue
+                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                    var thumb: String? = null
+                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
+                    var subs: Long? = null
+                    try { subs = info.subscriberCount.takeIf { it >= 0 } } catch (_: Exception) {}
+                    var verified = false
+                    try { verified = info.isVerified } catch (_: Exception) { }
+                    var desc: String? = null
+                    try { desc = info.description?.take(140) } catch (_: Exception) { }
+                    out.add(VideoItem(id = null, title = name, channel = desc, thumbnail = thumb, durationSec = null, viewCount = subs, url = url, channelAvatar = thumb, verified = verified, uploadDate = null, isShort = false, channelUrl = url, ageLimit = 0, isChannel = true))
                     continue
                 }
                 if (info is StreamInfoItem) {
@@ -596,12 +612,18 @@ object YouTubeRepo {
 
     // SoundCloud (separate tab): search + audio-stream resolve. Best-effort; failures = empty/error.
     // SC items carry soundcloud.com URLs with null ids (favKey falls back to url).
-    suspend fun scSearch(query: String): SearchPage = withContext(Dispatchers.IO) {
+    suspend fun scSearch(query: String, page: Page? = null): SearchPage = withContext(Dispatchers.IO) {
         try {
+            // fresh extractor per call: extractors are single-use cursors, getPage needs its own
             val ext = scService().getSearchExtractor(query)
-            ext.fetchPage()
+            val lp = if (page == null) {
+                try { ext.fetchPage() } catch (_: Exception) { }
+                try { ext.initialPage } catch (_: Exception) { null }
+            } else {
+                try { ext.getPage(page) } catch (_: Exception) { null }
+            } ?: return@withContext SearchPage(emptyList(), null, false, "empty", null, false)
             val out = mutableListOf<VideoItem>()
-            for (info in ext.initialPage.items) {
+            for (info in lp.items) {
                 if (info is org.schabi.newpipe.extractor.stream.StreamInfoItem) {
                     val url: String? = try { info.url } catch (_: Exception) { null }
                     val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
@@ -611,9 +633,18 @@ object YouTubeRepo {
                     var dur: Long? = null
                     try { dur = info.duration } catch (_: Exception) {}
                     out.add(VideoItem(null, name, up, thumb, dur, null, url, null, false, null, false, null))
+                } else if (info is org.schabi.newpipe.extractor.channel.ChannelInfoItem) {
+                    val url: String? = try { info.url } catch (_: Exception) { null }
+                    if (url.isNullOrBlank()) continue
+                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                    var thumb: String? = null
+                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
+                    out.add(VideoItem(null, name, null, thumb, null, null, url, thumb, false, null, false, url, 0, true))
                 }
             }
-            SearchPage(out, null, false, null, null, false)
+            val hasNext = try { lp.hasNextPage() } catch (_: Exception) { false }
+            val next = if (hasNext) try { lp.nextPage } catch (_: Exception) { null } else null
+            SearchPage(out, next, hasNext, null, null, false)
         } catch (e: Exception) {
             SearchPage(emptyList(), null, false, e.message, null, false)
         }

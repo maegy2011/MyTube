@@ -454,7 +454,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Music-tab source: 0 = SoundCloud, 1 = YouTube Music (native music_songs filter).
     var scSource by remember { mutableIntStateOf(0) }
     // Music-tab YTM kind filter (SoundCloud source stays unfiltered — its extractor has one list).
-    var scKind by remember { mutableStateOf("songs") } // songs | albums | playlists
+    var scKind by remember { mutableStateOf("songs") } // songs | albums | artists | playlists
+    // YTM tabs paging mirrors the main search list (auto-append near the end); history in prefs (on-device only).
+    var scNextPage by remember { mutableStateOf<org.schabi.newpipe.extractor.Page?>(null) }
+    var scHasMore by remember { mutableStateOf(false) }
+    var scLoadingMore by remember { mutableStateOf(false) }
+    val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var recentMusicSearches by remember { mutableStateOf(listOf<String>()) }
     var trendTab by remember { mutableStateOf(0) }
     var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
     var trendingLoading by remember { mutableStateOf(false) }
@@ -617,6 +623,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
             if (raw.isNotBlank()) recentSearches = raw.split("\u001f").filter { it.isNotBlank() }.take(6)
+            try { prefs.getString("recent_music_searches", "")?.let { m -> if (m.isNotBlank()) recentMusicSearches = m.split("\u001f").filter { it.isNotBlank() }.take(6) } } catch (_: Exception) { }
         } catch (_: Exception) { }
     }
     // playback speed/pitch (ExoPlayer PlaybackParameters): applied live, persisted
@@ -1828,13 +1835,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scJob = scope.launch {
             try {
                 val region = if (prefCountry == "global") null else prefCountry
+                val musicFilter = when (kind) {
+                    "albums" -> "music_albums"
+                    "playlists" -> "music_playlists"
+                    "artists" -> "music_artists"
+                    else -> "music_songs"
+                }
                 suspend fun mainPage(): com.mohamedadel.mytube.data.youtube.SearchPage {
                     if (src == 1 && kind == "albums")
                         return com.mohamedadel.mytube.data.youtube.SearchPage(emptyList(), null, false, null)
                     var last: com.mohamedadel.mytube.data.youtube.SearchPage? = null
                     repeat(2) {
                         last = if (src == 1)
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, region, "music_songs")
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, region, musicFilter)
                         else
                             com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
                         if (last!!.error == null && last!!.items.isNotEmpty()) return last!!
@@ -1850,6 +1863,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     remotePlaylists = emptyList()
                 } else {
                     scResults = page.items
+                    scNextPage = page.nextPage
+                    scHasMore = page.hasNext && page.nextPage != null
+                    if (!recentMusicSearches.contains(q)) {
+                        recentMusicSearches = (listOf(q) + recentMusicSearches).take(6)
+                        try { prefs.edit().putString("recent_music_searches", recentMusicSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
+                    }
                     // playlist cards: best-effort, never fatal
                     remotePlaylists = try {
                         if (src == 1 && kind == "albums")
@@ -1870,6 +1889,46 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 scLoading = false
             }
         }
+    }
+    fun loadScMore() {
+        val q = scQuery
+        val pg = scNextPage
+        if (q.isBlank() || pg == null || scLoadingMore || scLoading || !scHasMore) return
+        scLoadingMore = true
+        scope.launch {
+            try {
+                val region = if (prefCountry == "global") null else prefCountry
+                val res = if (scSource == 1) {
+                    val mf = when (scKind) {
+                        "albums" -> "music_albums"
+                        "playlists" -> "music_playlists"
+                        "artists" -> "music_artists"
+                        else -> "music_songs"
+                    }
+                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, pg, region, mf)
+                } else {
+                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q, pg)
+                }
+                val seen = scResults.mapNotNull { it.url ?: it.id }.toSet()
+                val fresh = res.items.filter { (it.url ?: it.id ?: it.title) !in seen }
+                scResults = scResults + fresh
+                scNextPage = res.nextPage
+                scHasMore = res.hasNext && res.nextPage != null
+            } catch (_: Exception) {
+                scHasMore = false
+            } finally {
+                scLoadingMore = false
+            }
+        }
+    }
+    // music-tab paging: auto-append when the tail approaches (same pattern as main search)
+    val scTail = try {
+        val last = scListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        val total = scListState.layoutInfo.totalItemsCount
+        total > 0 && last >= total - 3
+    } catch (_: Exception) { false }
+    LaunchedEffect(scTail, scQuery) {
+        if (scTail && scHasMore && !scLoadingMore && !scLoading && scQuery.isNotBlank()) loadScMore()
     }
     // Voice search: permission -> system recognizer -> query + search. Best-effort throughout.
     val voiceResultLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -3082,7 +3141,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             onSearch = { q -> doScSearch(q) },
                             onClose = { goHome() },
                             onClear = { scQuery = ""; scResults = emptyList(); scError = null },
-                            showDropdown = false,
+                            showDropdown = true,
+                            dropRecents = if (scQuery.isBlank()) recentMusicSearches else recentMusicSearches.filter { r -> r.contains(scQuery, ignoreCase = true) },
+                            onPickSuggestion = { picked -> doScSearch(picked) },
+                            onClearRecents = { recentMusicSearches = emptyList(); try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { } },
                             onVoice = { startVoiceSearch() }
                         )
                         androidx.compose.foundation.layout.Row(
@@ -3105,11 +3167,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
                                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
                             ) {
-                                listOf("songs", "albums", "playlists").forEach { k ->
+                                listOf("songs", "albums", "artists", "playlists").forEach { k ->
                                     androidx.compose.material3.FilterChip(
                                         selected = scKind == k,
                                         onClick = { if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
-                                        label = { Text(stringResource(when (k) { "songs" -> R.string.filter_songs; "albums" -> R.string.filter_albums; else -> R.string.filter_playlists })) }
+                                        label = { Text(stringResource(when (k) { "songs" -> R.string.filter_songs; "albums" -> R.string.filter_albums; "artists" -> R.string.filter_artists; else -> R.string.filter_playlists })) }
                                     )
                                 }
                             }
@@ -3133,19 +3195,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
                             }
                         }
-                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxSize(), state = scListState) {
                             itemsIndexed(items = scResults, key = { idx, v -> "$idx|${v.url ?: v.title ?: "n/a"}" }) { _, v ->
                                 SearchRow(
                                     v = v,
                                     isCurrent = playing?.url == v.url,
                                     isPlaying = isPlaying && playing?.url == v.url,
                                     isFav = v.favKey() in favoriteSet,
-                                    onClick = { playVideo(v) },
-                                    onLongClick = { optionsFor = it },
+                                    // channel/artist rows open the channel screen — never the player
+                                    onClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
+                                    onLongClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else { optionsFor = it } },
                                     onFav = { toggleFavorite(it) },
                                     pinBadge = pinBadges[v.favKey()],
                                     pinning = pinningKeys.contains(v.favKey())
                                 )
+                            }
+                            if (scHasMore || scLoadingMore) {
+                                item(key = "sc-more") {
+                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                                        if (scLoadingMore) CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                        else androidx.compose.material3.TextButton(onClick = { loadScMore() }) { Text(stringResource(R.string.load_more)) }
+                                    }
+                                }
                             }
                         }
                     }

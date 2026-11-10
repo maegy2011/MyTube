@@ -463,4 +463,6 @@
     <string name="pin_orphans_fmt">Orphaned files on external: %d (%s) — tap to clean</string>
     <string name="pin_orphans_cleaned_fmt">Cleaned %d orphaned items</string>
     <string name="err_search_detail_fmt">Search failed (%1$s) — copy this message for diagnosis.</string>
+    <string name="filter_artists">Artists</string>
+    <string name="load_more">Load more</string>
 </resources>

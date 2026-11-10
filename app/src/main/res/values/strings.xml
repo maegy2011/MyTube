@@ -463,4 +463,6 @@
     <string name="pin_orphans_fmt">ملفات يتيمة على الخارجي: %d (%s) — اضغط للتنظيف</string>
     <string name="pin_orphans_cleaned_fmt">نُظف %d عنصرًا يتيمًا</string>
     <string name="err_search_detail_fmt">تعذّر البحث (%1$s) — انسخ الرسالة وأرسلها للتشخيص.</string>
+    <string name="filter_artists">فنانون</string>
+    <string name="load_more">تحميل المزيد</string>
 </resources>
