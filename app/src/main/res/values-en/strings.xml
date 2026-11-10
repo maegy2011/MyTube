@@ -425,4 +425,15 @@
     <string name="age_warn_title">Adult content (18+)</string>
     <string name="age_warn_text">This video is rated for adults only. Play it?</string>
     <string name="age_warn_play">Play</string>
+    <string name="player_content_title">Visible player elements</string>
+    <string name="vis_comments">Comments button</string>
+    <string name="vis_comments_desc">Show the comments pill in the player</string>
+    <string name="vis_related">Up-next videos</string>
+    <string name="vis_related_desc">Show suggestions below the player</string>
+    <string name="vis_info">Video info</string>
+    <string name="vis_info_desc">Show description, category and tags</string>
+    <string name="vis_subs">Subtitles and captions</string>
+    <string name="vis_subs_desc">Show the subtitle language picker</string>
+    <string name="live_badge">LIVE</string>
+    <string name="err_pin_live">Live streams cannot be pinned — watch live</string>
 </resources>

@@ -485,6 +485,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showDownloads by remember { mutableStateOf(false) }
     var prefKeepalive by remember { mutableStateOf(false) }
     var prefAgeMode by remember { mutableStateOf("block") } // block | warn | allow
+    var prefShowComments by remember { mutableStateOf(true) }
+    var prefShowRelated by remember { mutableStateOf(true) }
+    var prefShowInfo by remember { mutableStateOf(true) }
+    var prefShowSubs by remember { mutableStateOf(true) }
     var agePending by remember { mutableStateOf<Pair<VideoItem, Boolean>?>(null) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
     val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
@@ -569,6 +573,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefOffline = prefs.getBoolean("pref_offline", false)
             prefKeepalive = prefs.getBoolean("pref_keepalive", false)
             prefAgeMode = prefs.getString("pref_age_mode", "block") ?: "block"
+            prefShowComments = prefs.getBoolean("pref_show_comments", true)
+            prefShowRelated = prefs.getBoolean("pref_show_related", true)
+            prefShowInfo = prefs.getBoolean("pref_show_info", true)
+            prefShowSubs = prefs.getBoolean("pref_show_subtitles", true)
             try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
             prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
@@ -1277,6 +1285,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     return@launch
                 }
             }
+            if (s.isLive) {
+                // live edge: single URL, no quality ladder, no cache (cache would pin a stale edge)
+                qualityList = listOf("live")
+                quality = "live"
+                streamData = s
+                applyQuality("live", s, player, autoplay = wasPlayingQueue, local = true)
+                if (CastManager.connected.value) castCurrent(autoplay = true)
+                return@launch
+            }
             streamData = s
             // label the auto entry with the speed-based target so the user sees what auto will pick
             val kbps = ctx.estimatedDownstreamKbps()
@@ -1800,6 +1817,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // requestPin: player context passes resolved sd+selection (no re-resolve); list context resolves first.
     fun requestPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?, q: String?, aIdx: Int?, sIdx: Int?) {
+        if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
+            toast(ctx.getString(R.string.err_pin_live)); return
+        }
         val key = v.favKey()
         if (pinKeys.contains(key) || pinningKeys.contains(key)) return
         pinningKeys = pinningKeys + key
@@ -2244,7 +2264,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onToggleFullscreen = { setFullscreen(!isFullscreen) },
                     onSetMode = { setMode(it) },
                     onSetShuffle = { setShuffle(it) },
-                    subtitles = (streamData?.subtitles ?: emptyList()).let { if (prefSubHideAuto) it.filter { t -> !t.auto } else it },
+                    subtitles = if (!prefShowSubs) emptyList() else (streamData?.subtitles ?: emptyList()).let { if (prefSubHideAuto) it.filter { t -> !t.auto } else it },
                     subIdx = subTrackIdx,
                     onSubtitleTrack = { i ->
                         // manual pick becomes the saved subtitle preference (applies to all future videos)
@@ -2296,6 +2316,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     description = streamData?.description,
                     chapters = streamData?.chapters ?: emptyList(),
                     related = streamData?.related ?: emptyList(),
+                    showRelated = prefShowRelated,
+                    showInfo = prefShowInfo,
+                    showSubs = prefShowSubs,
+                    showCommentsPill = prefShowComments,
+                    isLive = streamData?.isLive == true,
                     // Fix: chapter tap starts playback too — seeking a never-started player left silence.
                     onChapterSeek = { pos -> try { player?.seekTo(pos); playerError = null; player?.play() } catch (_: Exception) { } },
                     onRelatedPlay = { rv -> playVideo(rv) },
@@ -2490,6 +2515,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onAgeMode = { m ->
                         prefAgeMode = m
                         try { prefs.edit().putString("pref_age_mode", m).apply() } catch (_: Exception) { }
+                    },
+                    showComments = prefShowComments,
+                    onShowComments = { v ->
+                        prefShowComments = v
+                        try { prefs.edit().putBoolean("pref_show_comments", v).apply() } catch (_: Exception) { }
+                    },
+                    showRelated = prefShowRelated,
+                    onShowRelated = { v ->
+                        prefShowRelated = v
+                        try { prefs.edit().putBoolean("pref_show_related", v).apply() } catch (_: Exception) { }
+                    },
+                    showInfo = prefShowInfo,
+                    onShowInfo = { v ->
+                        prefShowInfo = v
+                        try { prefs.edit().putBoolean("pref_show_info", v).apply() } catch (_: Exception) { }
+                    },
+                    showSubs = prefShowSubs,
+                    onShowSubs = { v ->
+                        prefShowSubs = v
+                        try { prefs.edit().putBoolean("pref_show_subtitles", v).apply() } catch (_: Exception) { }
                     },
                     pinsCount = pinsCount,
                     pinsSize = pinsSizeLabel,

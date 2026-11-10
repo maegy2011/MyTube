@@ -19,7 +19,7 @@ data class ChapterItem(val title: String, val startSec: Int)
 data class Storyboard(val urls: List<String>, val total: Int, val perX: Int, val perY: Int, val fw: Int, val fh: Int, val durPerFrame: Int)
 data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
 data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0)
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0, val isLive: Boolean = false)
 data class RemotePlaylist(
     val title: String? = null,
     val uploader: String? = null,
@@ -200,6 +200,23 @@ object YouTubeRepo {
         try {
             val ext = service().getStreamExtractor(url)
             ext.fetchPage()
+            // Livestreams: no progressive/DASH-video map — single HLS (or DASH manifest) URL.
+            // ExoPlayer sniffs HLS/DASH automatically once the hls/dash modules are on classpath.
+            try {
+                if (ext.streamType == org.schabi.newpipe.extractor.stream.StreamType.LIVE_STREAM) {
+                    val liveUrl: String? = try { ext.hlsUrl } catch (_: Exception) { null }
+                        ?: try { ext.dashMpdUrl } catch (_: Exception) { null }
+                    if (!liveUrl.isNullOrBlank()) {
+                        return@withContext StreamData(
+                            videoUrlByQuality = mapOf("live" to liveUrl),
+                            muxedQualities = setOf("live"),
+                            title = try { ext.name } catch (_: Exception) { null },
+                            channelUrl = try { ext.uploaderUrl } catch (_: Exception) { null },
+                            isLive = true
+                        )
+                    }
+                }
+            } catch (_: Exception) { }
             val audios = try { ext.audioStreams } catch (_: Exception) { null } ?: emptyList()
             val lowest = audios.sortedBy { a -> try { a.averageBitrate } catch (_: Exception) { Int.MAX_VALUE } }.firstOrNull()
             val audioUrl: String? = try { lowest?.content } catch (_: Exception) { null }

@@ -186,6 +186,14 @@ fun SettingsScreen(
     onKeepAlive: (Boolean) -> Unit = {},
     ageMode: String = "block",
     onAgeMode: (String) -> Unit = {},
+    showComments: Boolean = true,
+    onShowComments: (Boolean) -> Unit = {},
+    showRelated: Boolean = true,
+    onShowRelated: (Boolean) -> Unit = {},
+    showInfo: Boolean = true,
+    onShowInfo: (Boolean) -> Unit = {},
+    showSubs: Boolean = true,
+    onShowSubs: (Boolean) -> Unit = {},
     pinsCount: Int = 0,
     pinsSize: String = "—",
     pinsBytes: Long = 0L,
@@ -780,6 +788,21 @@ fun SettingsScreen(
             AgeModeRow(mode = "allow", sel = ageMode, onPick = onAgeMode)
         }
         item {
+            Text(stringResource(R.string.player_content_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            VisRow(on = showComments, label = stringResource(R.string.vis_comments), desc = stringResource(R.string.vis_comments_desc), onToggle = { onShowComments(!showComments) })
+        }
+        item {
+            VisRow(on = showRelated, label = stringResource(R.string.vis_related), desc = stringResource(R.string.vis_related_desc), onToggle = { onShowRelated(!showRelated) })
+        }
+        item {
+            VisRow(on = showInfo, label = stringResource(R.string.vis_info), desc = stringResource(R.string.vis_info_desc), onToggle = { onShowInfo(!showInfo) })
+        }
+        item {
+            VisRow(on = showSubs, label = stringResource(R.string.vis_subs), desc = stringResource(R.string.vis_subs_desc), onToggle = { onShowSubs(!showSubs) })
+        }
+        item {
             Row(modifier = Modifier.fillMaxWidth().clickable { onKeepAlive(!keepAlive) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (keepAlive) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (keepAlive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(12.dp))
@@ -878,6 +901,18 @@ private fun AgeModeRow(mode: String, sel: String, onPick: (String) -> Unit) {
     }
     Row(modifier = Modifier.fillMaxWidth().clickable { onPick(mode) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(if (sel == mode) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (sel == mode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun VisRow(on: Boolean, label: String, desc: String, onToggle: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().clickable { onToggle() }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (on) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)

@@ -41,6 +41,8 @@ dependencies {
     implementation(libs.compose.material.icons.extended)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
     implementation(libs.coil.compose)
     implementation(libs.paging.runtime)

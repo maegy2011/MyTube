@@ -189,7 +189,12 @@ fun PlayerArea(
     titleOverride: String? = null,
     onShare: () -> Unit = {},
     onRelatedOptions: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
-    storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList()
+    storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList(),
+    showRelated: Boolean = true,
+    showInfo: Boolean = true,
+    showSubs: Boolean = true,
+    showCommentsPill: Boolean = true,
+    isLive: Boolean = false
 ) {
     val lctx = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
@@ -570,14 +575,22 @@ fun PlayerArea(
             if (!isFullscreen) {
             Column(modifier = Modifier.padding(bottom = 8.dp)) {
                 // title (16sp semi-bold, 2 lines) + views meta (12sp gray)
-                Text(
-                    text = titleOverride ?: video.title ?: "",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (isLive) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFB71C1C)) {
+                            Text(text = stringResource(R.string.live_badge), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = titleOverride ?: video.title ?: "",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 val meta = buildString {
                     video.viewCount?.takeIf { it > 0 }?.let { append(lctx.formatViews(it)) }
                     video.durationSec?.takeIf { it > 0 }?.let { if (isNotEmpty()) append(" • "); append(formatDuration(it)) }
@@ -693,7 +706,7 @@ fun PlayerArea(
                         selected = false,
                         onClick = onEnterPip
                     )
-                    ActionPill(
+                    if (showCommentsPill) ActionPill(
                         icon = { Icon(Icons.Rounded.Comment, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
                         label = stringResource(R.string.pill_comments),
                         selected = false,
@@ -725,7 +738,7 @@ fun PlayerArea(
                     }
                 }
                 // description (collapsible, like YouTube)
-                if (!description.isNullOrBlank()) {
+                if (showInfo && !description.isNullOrBlank()) {
                     Spacer(Modifier.height(6.dp))
                     Surface(
                         onClick = { descExpanded = !descExpanded },
@@ -744,7 +757,7 @@ fun PlayerArea(
                     }
                 }
                 // category + tags (from the same stream() call)
-                if (!category.isNullOrBlank() || tags.isNotEmpty()) {
+                if (showInfo && (!category.isNullOrBlank() || tags.isNotEmpty())) {
                     Spacer(Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!category.isNullOrBlank()) {
@@ -771,7 +784,7 @@ fun PlayerArea(
                     }
                 }
                 // related (Up next — YouTube algorithm via getRelatedStreams)
-                if (related.isNotEmpty()) {
+                if (showRelated && related.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     Text(stringResource(R.string.related_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp))
                     Spacer(Modifier.height(4.dp))
@@ -810,7 +823,7 @@ fun PlayerArea(
                                 }
                             }
                             // subtitles
-                            if (subtitles.isNotEmpty()) {
+                            if (showSubs && subtitles.isNotEmpty()) {
                                 val cur = subtitles.getOrNull(subIdx)
                                 Box {
                                     androidx.compose.material3.FilterChip(selected = false, onClick = { subExpanded = true }, label = { Text(if (subIdx >= 0) (cur?.label?.takeIf { it.isNotBlank() } ?: cur?.langTag ?: stringResource(R.string.subtitles)) else stringResource(R.string.subtitles)) })
