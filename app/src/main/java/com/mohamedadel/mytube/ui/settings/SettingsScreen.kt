@@ -131,6 +131,8 @@ fun SettingsScreen(
     uiLang: String,
     onUiLang: (String) -> Unit,
     playMode: String,
+    pipAuto: Boolean = true,
+    onPip: (Boolean) -> Unit = {},
     onPlayMode: (String) -> Unit,
     subHideAuto: Boolean = false,
     onSubHideAuto: (Boolean) -> Unit = {},
@@ -556,6 +558,14 @@ fun SettingsScreen(
         item {
             Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.playmode_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            // Auto-PiP on leave (manual PiP button always stays available).
+            Row(modifier = Modifier.fillMaxWidth().clickable { onPip(!pipAuto) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (pipAuto) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pipAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.pip_auto), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
         }
         items(PLAYMODE_OPTIONS) { (code, label) ->
             Row(

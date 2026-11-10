@@ -231,7 +231,9 @@ class MainActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         val h: Int = try { player?.videoSize?.height ?: 0 } catch (_: Exception) { 0 }
         val playing: Boolean = try { player?.isPlaying == true } catch (_: Exception) { false }
-        if (playing && h > 0) enterPip()
+        // Auto-PiP obeys the pref (default on = current behavior); the manual PiP button always works.
+        val autoPip = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_pip", true) } catch (_: Exception) { true }
+        if (playing && h > 0 && autoPip) enterPip()
         super.onUserLeaveHint()
     }
     // H1: NEVER release here — the ExoPlayer instance is owned by PlaybackService (shared reference).
@@ -323,6 +325,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // app theme: dark (default) | light (large-type friendly) | system
     var prefTheme by remember { mutableStateOf("dark") }
     var prefAccent by remember { mutableStateOf("red") }
+    var prefPip by remember { mutableStateOf(true) }
     // UI language: ar (default, RTL) | en (LTR). Applies via recreate().
     var prefUiLang by remember { mutableStateOf("ar") }
     // default video quality for every new video: audio-only | auto | saver | high
@@ -481,6 +484,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
+            prefPip = try { prefs.getBoolean("pref_pip", true) } catch (_: Exception) { true }
             prefAccent = prefs.getString("pref_accent", "red") ?: "red"
             eqEnabled = try { prefs.getBoolean("eq_enabled", false) } catch (_: Exception) { false }
             eqPreset = try { prefs.getInt("eq_preset", 0) } catch (_: Exception) { 0 }
@@ -2137,6 +2141,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlayMode = { v ->
                             setMode(v)
                             toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
+                        },
+                        pipAuto = prefPip,
+                        onPip = { v ->
+                            prefPip = v
+                            try { prefs.edit().putBoolean("pref_pip", v).apply() } catch (_: Exception) { }
                         },
                         favCount = favoriteKeys.size,
                         histCount = histCount,

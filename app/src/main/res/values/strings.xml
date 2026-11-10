@@ -360,4 +360,5 @@
     <string name="sub_preview_text">مثال على شكل الترجمة</string>
     <string name="sub_size_title">الحجم</string>
     <string name="sub_bg_opacity">شفافية الخلفية</string>
+    <string name="pip_auto">نافذة عائمة تلقائية عند الخروج</string>
 </resources>

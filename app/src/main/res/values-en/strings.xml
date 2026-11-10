@@ -360,4 +360,5 @@
     <string name="sub_preview_text">Subtitle style preview</string>
     <string name="sub_size_title">Size</string>
     <string name="sub_bg_opacity">Background opacity</string>
+    <string name="pip_auto">Auto floating window on exit</string>
 </resources>
