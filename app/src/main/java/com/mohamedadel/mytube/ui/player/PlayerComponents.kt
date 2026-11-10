@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -153,7 +154,8 @@ fun MiniPlayer(
 fun SleepTimerDialog(
     currentLabel: String?,
     onPick: (Int?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEndOfTrack: (() -> Unit)? = null
 ) {
     val options = listOf(5, 10, 15, 30, 45, 60)
     androidx.compose.material3.AlertDialog(
@@ -171,6 +173,16 @@ fun SleepTimerDialog(
                         Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
                         Text(stringResource(R.string.sleep_in_fmt, m), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                if (onEndOfTrack != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { onEndOfTrack() }.padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.sleep_track), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 if (currentLabel != null) {

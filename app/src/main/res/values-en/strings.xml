@@ -487,4 +487,18 @@
     <string name="toast_csv_empty">Playlist is empty — nothing to export</string>
     <string name="toast_csv_fail">Export failed</string>
     <string name="download">Download</string>
+    <string name="sleep_track">After this track</string>
+    <string name="local_audio">On-device audio</string>
+    <string name="local_audio_title">On-device audio (%1$d)</string>
+    <string name="local_perm_hint">Allow audio-file access to list and play what is on your device — everything stays local.</string>
+    <string name="local_perm_grant">Grant permission</string>
+    <string name="local_all">All</string>
+    <string name="local_scan_strict">Scan mode: strict (songs only)</string>
+    <string name="local_scan_compat">Scan mode: compat (all long audio)</string>
+    <string name="local_use_strict">Strict</string>
+    <string name="local_use_compat">Compat</string>
+    <string name="local_excluded">Excluded:</string>
+    <string name="local_empty">No audio files</string>
+    <string name="local_empty_hint">Grant permission then rescan, or try compat mode.</string>
+    <string name="rescan">Rescan</string>
 </resources>

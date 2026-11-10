@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.UploadFile
@@ -43,6 +44,7 @@ fun LibraryScreen(
     onFavorites: () -> Unit,
     onPlaylists: () -> Unit,
     onDownloads: () -> Unit = {},
+    onLocalAudio: () -> Unit = {},
     pinCount: Int = 0,
     onGroups: () -> Unit = {},
     groupCount: Int = 0,
@@ -100,6 +102,13 @@ fun LibraryScreen(
                 icon = { Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp)) },
                 label = stringResource(R.string.nav_playlists),
                 onClick = onPlaylists
+            )
+        }
+        item {
+            LibraryRow(
+                icon = { Icon(Icons.Rounded.Audiotrack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp)) },
+                label = stringResource(R.string.local_audio),
+                onClick = onLocalAudio
             )
         }
         // subscriptions (local-only): channel rows + import + feed entry

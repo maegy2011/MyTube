@@ -487,4 +487,18 @@
     <string name="toast_csv_empty">القائمة فارغة — لا شيء للتصدير</string>
     <string name="toast_csv_fail">تعذّر التصدير</string>
     <string name="download">تنزيل</string>
+    <string name="sleep_track">بعد هذا المقطع</string>
+    <string name="local_audio">صوتيات الجهاز</string>
+    <string name="local_audio_title">صوتيات الجهاز (%1$d)</string>
+    <string name="local_perm_hint">السماح بالوصول لملفات الصوت لعرض ما على جهازك وتشغيله — يبقى كل شيء محليًا.</string>
+    <string name="local_perm_grant">منح الإذن</string>
+    <string name="local_all">الكل</string>
+    <string name="local_scan_strict">وضع المسح: دقيق (الأغاني فقط)</string>
+    <string name="local_scan_compat">وضع المسح: شامل (كل الصوتيات الطويلة)</string>
+    <string name="local_use_strict">دقيق</string>
+    <string name="local_use_compat">شامل</string>
+    <string name="local_excluded">مستبعدة:</string>
+    <string name="local_empty">لا ملفات صوتية</string>
+    <string name="local_empty_hint">امنح الإذن ثم أعد المسح، أو جرّب الوضع الشامل.</string>
+    <string name="rescan">إعادة مسح</string>
 </resources>

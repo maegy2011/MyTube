@@ -132,6 +132,8 @@ import com.mohamedadel.mytube.util.autoUrl
 import com.mohamedadel.mytube.util.batteryExemptionIntent
 import com.mohamedadel.mytube.util.estimatedDownstreamKbps
 import com.mohamedadel.mytube.util.isBatteryExempt
+import com.mohamedadel.mytube.util.isLocalAudioUri
+import com.mohamedadel.mytube.util.scanLocalAudio
 import com.mohamedadel.mytube.util.openInYoutubeCtx
 import com.mohamedadel.mytube.util.shareVideoCtx
 import com.mohamedadel.mytube.util.qualityHeight
@@ -482,6 +484,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var sleepAtMs by remember { mutableStateOf<Long?>(null) }
     var sleepLeft by remember { mutableStateOf("") }
     var showSleep by remember { mutableStateOf(false) }
+    // end-of-track mode: stop when the current track ends instead of after N minutes
+    var sleepEndOfTrack by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var channelDetail by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.ChannelDetail?>(null) }
@@ -632,6 +636,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
             if (raw.isNotBlank()) recentSearches = raw.split("\u001f").filter { it.isNotBlank() }.take(6)
+            // sleep timer is playback-bound and persisted: leaving/killing the app must not cancel it
+            try {
+                val dl = prefs.getLong("sleep_deadline", 0L)
+                if (dl > android.os.SystemClock.uptimeMillis() + 30000L) {
+                    sleepAtMs = dl
+                } else if (dl > 0L) {
+                    try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
+                }
+            } catch (_: Exception) { }
             try { prefs.getString("recent_music_searches", "")?.let { m -> if (m.isNotBlank()) recentMusicSearches = m.split("\u001f").filter { it.isNotBlank() }.take(6) } } catch (_: Exception) { }
         } catch (_: Exception) { }
     }
@@ -950,6 +963,62 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext) } } catch (_: Exception) { }
     }
     androidx.compose.runtime.LaunchedEffect(groups) { refreshGroupCounts(groups) }
+    // On-device audio (MediaStore): tracks, folder filter/exclusion, scan mode.
+    var showLocal by remember { mutableStateOf(false) }
+    var localTracks by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.util.LocalTrack>()) }
+    var localFolder by remember { mutableStateOf<String?>(null) }
+    var localExcl by remember { mutableStateOf(setOf<String>()) }
+    var localCompat by remember { mutableStateOf(false) }
+    var localHasPerm by remember { mutableStateOf(false) }
+    fun localAudioPerm(): String = if (android.os.Build.VERSION.SDK_INT >= 33)
+        android.Manifest.permission.READ_MEDIA_AUDIO else android.Manifest.permission.READ_EXTERNAL_STORAGE
+    fun checkLocalPerm() {
+        try {
+            localHasPerm = ctx.checkSelfPermission(localAudioPerm()) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } catch (_: Exception) { localHasPerm = false }
+    }
+    fun refreshLocalAudio() {
+        checkLocalPerm()
+        if (!localHasPerm) return
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val excl = try { prefs.getStringSet("local_excl", emptySet()) ?: emptySet() } catch (_: Exception) { emptySet() }
+                localExcl = excl
+                localCompat = try { prefs.getBoolean("local_scan_compat", false) } catch (_: Exception) { false }
+                val all = try { ctx.scanLocalAudio(localCompat) } catch (_: Exception) { emptyList() }
+                localTracks = all.filter { t -> (t.folder ?: "") !in excl }
+            } catch (_: Exception) { }
+        }
+    }
+    fun excludeLocalFolder(f: String) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val cur = (try { prefs.getStringSet("local_excl", emptySet()) } catch (_: Exception) { emptySet() }) ?: emptySet()
+                val next = (cur + f).take(50).toSet()
+                prefs.edit().putStringSet("local_excl", next).apply()
+                localExcl = next
+                localTracks = localTracks.filter { (it.folder ?: "") !in next }
+                if (localFolder == f) localFolder = null
+            } catch (_: Exception) { }
+        }
+    }
+    fun unexcludeLocalFolder(f: String) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val cur = (try { prefs.getStringSet("local_excl", emptySet()) } catch (_: Exception) { emptySet() }) ?: emptySet()
+                val next = cur - f
+                prefs.edit().putStringSet("local_excl", next).apply()
+                localExcl = next
+                refreshLocalAudio()
+            } catch (_: Exception) { }
+        }
+    }
+    val localPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        localHasPerm = granted
+        if (granted) refreshLocalAudio()
+    }
     // playlist artwork covers (first 4 song thumbs per playlist, refreshed on change)
     var plCovers by remember { mutableStateOf(mapOf<Long, List<String>>()) }
     fun refreshPlCovers() {
@@ -1377,6 +1446,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 toast(ctx.getString(R.string.err_pin_first))
                 return@launch
             }
+            playingPinned = false
+            // On-device file (MediaStore content:// or file://): zero-network playback,
+            // same local path as pins (no cache, no autoplay change).
+            if (v.url?.isLocalAudioUri() == true) {
+                try {
+                    audioTrackIdx = 0
+                    subTrackIdx = -1
+                    val s = com.mohamedadel.mytube.data.youtube.StreamData(
+                        audioLowestUrl = v.url,
+                        title = v.title,
+                        subtitles = emptyList()
+                    )
+                    streamData = s
+                    qualityList = listOf("audio-only (default)")
+                    quality = "audio-only (default)"
+                    applyQuality("audio-only (default)", s, player, autoplay = wasPlayingQueue, local = true)
+                    if (CastManager.connected.value) castCurrent(autoplay = true)
+                    return@launch
+                } catch (_: Exception) {
+                    playerLoading = false
+                    playerError = ctx.getString(R.string.toast_pin_fail)
+                    return@launch
+                }
+            }
             playingPinned = pinned
             if (pinned) {
                 // Phase 4: zero-network playback from the faithful snapshot
@@ -1518,7 +1611,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     if (nxt != null) {
                         val nk = nxt.favKey()
                         val app2 = ctx.applicationContext
-                        if (!com.mohamedadel.mytube.data.local.PinFiles.isPinned(app2, nk) && !prefetched.containsKey(nk) && nxt.url != null) {
+                        if (!com.mohamedadel.mytube.data.local.PinFiles.isPinned(app2, nk) && !prefetched.containsKey(nk) && nxt.url != null && nxt.url?.isLocalAudioUri() != true) {
                             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                 try {
                                     val s2 = YouTubeRepo.streamRouted(nxt.url ?: return@launch) ?: return@launch
@@ -1554,6 +1647,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 toast(ctx.getString(R.string.toast_radio_started))
                 playVideo(v, inQueue = true)
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_radio_fail)) }
+        }
+    }
+    // 5-second fade-out instead of a hard cut; volume is restored after the pause
+    fun fadeOutAndPause() {
+        scope.launch {
+            try {
+                val pl = player ?: return@launch
+                val base = try { (volumeLive.value as Float).coerceIn(0f, 1f) } catch (_: Exception) { 1f }
+                if (base <= 0f) { try { pl.pause() } catch (_: Exception) { }; return@launch }
+                repeat(10) { i ->
+                    try { pl.volume = base * (1f - (i + 1) / 10f) } catch (_: Exception) { return@repeat }
+                    try { kotlinx.coroutines.delay(500) } catch (_: Exception) { return@repeat }
+                }
+                try { pl.pause() } catch (_: Exception) { }
+                try { pl.volume = base } catch (_: Exception) { }
+            } catch (_: Exception) { try { player?.pause() } catch (_: Exception) { } }
         }
     }
     fun playNextInQueue() {
@@ -1700,6 +1809,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 if (state == Player.STATE_READY) playerError = null
                 // queue end: repeat one -> replay; shuffle -> random; repeat all -> wrap; order -> next (stops at end)
                 if (state == Player.STATE_ENDED && autoAdvance) {
+                    if (sleepEndOfTrack) {
+                        // stop at end of track: no advance, no repeat, no radio refill
+                        sleepEndOfTrack = false
+                        autoAdvance = false
+                        radioOn = false
+                        videoModeQueue = false
+                        sleepLeft = ""
+                        return
+                    }
                     when {
                         playMode == "repeatOne" -> try { player?.seekTo(0L); player?.play() } catch (_: Exception) { }
                         shuffleOn -> playRandomInQueue()
@@ -1820,9 +1938,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 sleepAtMs?.let { deadline ->
                     val left = deadline - android.os.SystemClock.uptimeMillis()
                     if (left <= 0) {
-                        try { p.pause() } catch (_: Exception) { }
+                        fadeOutAndPause()
                         sleepAtMs = null
                         sleepLeft = ""
+                        try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
                     } else {
                         val m = (left / 60000).toInt()
                         sleepLeft = if (m >= 1) ctx.getString(R.string.sleep_left_min, m) else ctx.getString(R.string.sleep_left_sec, (left / 1000).toInt())
@@ -2372,6 +2491,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         if (showDownloads) {
             showDownloads = false
+            if (fromLibrary) { fromLibrary = false; showLibrary = true }
+            return true
+        }
+        if (showLocal) {
+            showLocal = false
             if (fromLibrary) { fromLibrary = false; showLibrary = true }
             return true
         }
@@ -3181,6 +3305,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         pinCount = pins.size,
                         onFavorites = { showLibrary = false; fromLibrary = true; showFavorites = true },
                         onPlaylists = { showLibrary = false; fromLibrary = true; showPlaylists = true },
+                        onLocalAudio = { showLibrary = false; fromLibrary = true; showLocal = true; checkLocalPerm(); refreshLocalAudio() },
                         subscriptions = subscriptions,
                         onOpenFeed = { showLibrary = false; fromLibrary = true; showFeed = true; if (feedItems.isEmpty()) refreshFeed() },
                         onUnsubscribe = { url -> scope.launch { try { dao.deleteSubscription(url) } catch (_: Exception) { } } },
@@ -3202,6 +3327,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         orphanCount = orphanInfo.first,
                         orphanBytes = orphanInfo.second,
                         onCleanOrphans = { cleanOrphans() }
+                    )
+                }
+                showLocal -> {
+                    com.mohamedadel.mytube.ui.library.LocalAudioRoute(
+                        tracks = localTracks,
+                        folderFilter = localFolder,
+                        onFolder = { localFolder = it },
+                        onExcludeFolder = { f -> excludeLocalFolder(f) },
+                        excluded = localExcl,
+                        onUnexclude = { f -> unexcludeLocalFolder(f) },
+                        compat = localCompat,
+                        onCompat = { c ->
+                            localCompat = c
+                            try { prefs.edit().putBoolean("local_scan_compat", c).apply() } catch (_: Exception) { }
+                            refreshLocalAudio()
+                        },
+                        needsPermission = !localHasPerm,
+                        onRequestPermission = { try { localPermLauncher.launch(localAudioPerm()) } catch (_: Exception) { } },
+                        onRescan = { refreshLocalAudio() },
+                        onBack = { smartBack() },
+                        onPlay = { v -> showLocal = false; fromLibrary = false; playVideo(v) },
+                        isFav = { v -> v.favKey() in favoriteSet },
+                        onFav = { toggleFavorite(it) },
+                        onLongClick = { optionsFor = it }
                     )
                 }
                 showGroups -> {
@@ -3295,69 +3444,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 }
                             }
                         }
-                        // Local-profile recommendations (no account): taste chips + quick picks + YTM mix.
-                        // Visible only on the idle tab (no query, no results, no error).
-                        if (scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true)) {
-                            Text(
-                                stringResource(R.string.quick_picks),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            )
-                            if (tasteProfile?.terms?.isNotEmpty() == true) {
-                                androidx.compose.foundation.layout.Row(
-                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
-                                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
-                                ) {
-                                    tasteProfile!!.terms.forEach { t ->
-                                        androidx.compose.material3.FilterChip(
-                                            selected = false,
-                                            onClick = { scQuery = t; doScSearch(t) },
-                                            label = { Text(t) }
-                                        )
-                                    }
-                                }
-                            }
-                            (tasteProfile?.picks ?: emptyList()).take(5).forEach { v ->
-                                SearchRow(
-                                    v = v,
-                                    isCurrent = playing?.url == v.url,
-                                    isPlaying = isPlaying && playing?.url == v.url,
-                                    isFav = v.favKey() in favoriteSet,
-                                    onClick = { playVideo(v) },
-                                    onLongClick = { optionsFor = it },
-                                    onFav = { toggleFavorite(it) },
-                                    pinBadge = pinBadges[v.favKey()],
-                                    pinning = pinningKeys.contains(v.favKey())
-                                )
-                            }
-                            if (tasteMixLoading || tasteMix.isNotEmpty()) {
-                                Text(
-                                    try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                )
-                                if (tasteMixLoading && tasteMix.isEmpty()) {
-                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                                    }
-                                }
-                                tasteMix.forEach { v ->
-                                    SearchRow(
-                                        v = v,
-                                        isCurrent = playing?.url == v.url,
-                                        isPlaying = isPlaying && playing?.url == v.url,
-                                        isFav = v.favKey() in favoriteSet,
-                                        onClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
-                                        onLongClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else { optionsFor = it } },
-                                        onFav = { toggleFavorite(it) },
-                                        pinBadge = pinBadges[v.favKey()],
-                                        pinning = pinningKeys.contains(v.favKey())
-                                    )
-                                }
-                            }
-                        }
+                        com.mohamedadel.mytube.ui.library.MusicTasteSection(
+                            visible = scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true),
+                            profile = tasteProfile,
+                            mix = tasteMix,
+                            mixTitle = try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
+                            mixLoading = tasteMixLoading,
+                            playingUrl = playing?.url,
+                            isPlaying = isPlaying,
+                            isFav = { v -> v.favKey() in favoriteSet },
+                            pinBadge = { v -> pinBadges[v.favKey()] },
+                            pinning = { v -> pinningKeys.contains(v.favKey()) },
+                            onPickTerm = { t -> scQuery = t; doScSearch(t) },
+                            onPlay = { v -> playVideo(v) },
+                            onOpenChannel = { url -> openChannel(url) },
+                            onLongClick = { optionsFor = it },
+                            onFav = { toggleFavorite(it) }
+                        )
                         if (scError != null) {
                             Text(
                                 scError ?: "",
@@ -3765,8 +3868,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 SleepTimerDialog(
                     currentLabel = sleepLeft.ifBlank { null },
                     onPick = { m ->
+                        sleepEndOfTrack = false
                         sleepAtMs = if (m == null) null else android.os.SystemClock.uptimeMillis() + m * 60000L
-                        if (m == null) sleepLeft = ""
+                        if (m == null) {
+                            sleepLeft = ""
+                            try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
+                        } else {
+                            try { prefs.edit().putLong("sleep_deadline", sleepAtMs ?: 0L).apply() } catch (_: Exception) { }
+                        }
+                        showSleep = false
+                    },
+                    onEndOfTrack = {
+                        sleepAtMs = null
+                        try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
+                        sleepEndOfTrack = true
+                        sleepLeft = try { ctx.getString(R.string.sleep_track) } catch (_: Exception) { "..." }
                         showSleep = false
                     },
                     onDismiss = { showSleep = false }
