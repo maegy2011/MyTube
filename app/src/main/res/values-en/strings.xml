@@ -390,4 +390,6 @@
     <string name="country_fr">🇫🇷 France</string>
     <string name="country_de">🇩🇪 Germany</string>
     <string name="sc_title">SoundCloud</string>
+    <string name="sc_source_sc">SoundCloud</string>
+    <string name="sc_source_ytm">YouTube Music</string>
 </resources>

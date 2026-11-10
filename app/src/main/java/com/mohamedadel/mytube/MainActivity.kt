@@ -68,7 +68,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -420,6 +423,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var scResults by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
     var scLoading by remember { mutableStateOf(false) }
     var scError by remember { mutableStateOf<String?>(null) }
+    // Music-tab source: 0 = SoundCloud, 1 = YouTube Music (native music_songs filter).
+    var scSource by remember { mutableIntStateOf(0) }
     var trendTab by remember { mutableStateOf(0) }
     var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
     var trendingLoading by remember { mutableStateOf(false) }
@@ -1550,7 +1555,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // SoundCloud search (separate tab, own state; failures surface with retry).
     var scJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    fun doScSearch(q: String) {
+    fun doScSearch(q: String, src: Int = scSource) {
         if (q.isBlank()) return
         scQuery = q
         scLoading = true
@@ -1558,7 +1563,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scJob?.cancel()
         scJob = scope.launch {
             try {
-                val page = com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
+                val page = if (src == 1)
+                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(
+                        q, null, if (prefCountry == "global") null else prefCountry, "music_songs")
+                else
+                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
                 if (page.error != null && page.items.isEmpty()) {
                     scError = ctx.getString(R.string.err_search)
                     scResults = emptyList()
@@ -2315,6 +2324,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             showDropdown = false,
                             onVoice = { startVoiceSearch() }
                         )
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                        ) {
+                            androidx.compose.material3.FilterChip(
+                                selected = scSource == 0,
+                                onClick = { if (scSource != 0) { scSource = 0; scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 0) } },
+                                label = { Text(stringResource(R.string.sc_source_sc)) }
+                            )
+                            androidx.compose.material3.FilterChip(
+                                selected = scSource == 1,
+                                onClick = { if (scSource != 1) { scSource = 1; scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 1) } },
+                                label = { Text(stringResource(R.string.sc_source_ytm)) }
+                            )
+                        }
                         if (scError != null) {
                             Text(
                                 scError ?: "",
