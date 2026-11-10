@@ -139,6 +139,7 @@ import androidx.compose.ui.draw.clip
 import com.mohamedadel.mytube.util.formatViews
 import com.mohamedadel.mytube.util.smartError
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
+import com.mohamedadel.mytube.playback.CastManager
 import com.mohamedadel.mytube.playback.PlaybackService
 import androidx.room.Room
 import com.mohamedadel.mytube.data.local.MIGRATION_1_2
@@ -1094,6 +1095,41 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             else -> "audio-only (default)"
         }
     }
+    // Chromecast: guess the receiver content type from the resolved stream URL.
+    // Falls back to audio/mp4 + video/mp4 (progressive — what the extractor hands us).
+    fun castMimeFor(url: String, audioOnly: Boolean): String {
+        return try {
+            val q = android.net.Uri.parse(url).getQueryParameter("mime")?.let {
+                java.net.URLDecoder.decode(it, "UTF-8")
+            }
+            if (!q.isNullOrBlank() && q.contains("/")) q else if (audioOnly) "audio/mp4" else "video/mp4"
+        } catch (_: Exception) { if (audioOnly) "audio/mp4" else "video/mp4" }
+    }
+
+    // Push the current stream to the Cast receiver at the local position, then pause local.
+    // Called on session start and whenever a new video starts while connected.
+    fun castCurrent(autoplay: Boolean = true) {
+        try {
+            val s = streamData ?: return
+            val triple = try { resolvePlaybackUrl(quality, s) } catch (_: Exception) { null } ?: return
+            val url = triple.first
+            val mime = castMimeFor(url, quality == "audio-only (default)")
+            val pos = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }
+            val ok = CastManager.load(url, playing?.title ?: s.title, playing?.thumbnail, mime, pos, autoplay)
+            if (ok) {
+                try { player?.pause() } catch (_: Exception) { }
+                toast(ctx.getString(R.string.toast_cast_started))
+            }
+        } catch (_: Exception) { }
+    }
+
+    // Chromecast session wiring: push current media on connect, note the handoff on end.
+    LaunchedEffect(Unit) {
+        CastManager.onSessionStarted = { castCurrent(autoplay = true) }
+        CastManager.onSessionEnded = {
+            try { toast(ctx.getString(R.string.toast_cast_ended)) } catch (_: Exception) { }
+        }
+    }
     fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true) {
         playing = v
         recordHistory(v)
@@ -1197,6 +1233,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val startQ = if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
             quality = startQ
             applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
+            if (CastManager.connected.value) castCurrent(autoplay = true)
             // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
             try {
                 if (prefPreloadNext && !prefOffline && autoAdvance && prefetched.size < 2 && (!prefPreloadWifiOnly || isUnmeteredNet())) {
@@ -2136,6 +2173,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onPrev = { playPrevInQueue() },
                     onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
                     onEnterPip = onEnterPip,
+                    castAvailable = CastManager.available.value,
+                    isCasting = CastManager.connected.value,
                     sleepLabel = sleepLeft.ifBlank { null },
                     onSleepClick = { showSleep = true },
                     isFav = cur.favKey() in favoriteSet,

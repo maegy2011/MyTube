@@ -162,6 +162,8 @@ fun PlayerArea(
     onToggleFullscreen: () -> Unit = {},
     onFallbackYoutube: () -> Unit,
     onEnterPip: () -> Unit,
+    castAvailable: Boolean = false,
+    isCasting: Boolean = false,
     sleepLabel: String? = null,
     onSleepClick: () -> Unit = {},
     isFav: Boolean = false,
@@ -634,6 +636,18 @@ fun PlayerArea(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Chromecast route button (real MediaRouteButton: opens the device chooser;
+                    // after connect it opens the session dialog). Hidden without Play Services.
+                    if (castAvailable) {
+                        androidx.compose.ui.viewinterop.AndroidView(
+                            factory = { c ->
+                                androidx.mediarouter.app.MediaRouteButton(c).apply {
+                                    try { com.mohamedadel.mytube.playback.CastManager.selector()?.let { routeSelector = it } } catch (_: Exception) { }
+                                }
+                            },
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
                     ActionPill(
                         icon = { Icon(if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = null, tint = if (isFav) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
                         label = stringResource(R.string.cd_fav_add),

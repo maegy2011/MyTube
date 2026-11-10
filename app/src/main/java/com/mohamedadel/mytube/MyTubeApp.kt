@@ -13,6 +13,8 @@ import coil.memory.MemoryCache
 class MyTubeApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        // Chromecast sender: no-op on devices without Google Play Services.
+        runCatching { com.mohamedadel.mytube.playback.CastManager.init(this) }
         // Gate-2: debug-only StrictMode — logs main-thread IO leaks for future work, never crashes.
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) {
             try {

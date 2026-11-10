@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.okhttp)
     implementation(libs.newpipe.extractor)
+    implementation(libs.play.services.cast.framework)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)

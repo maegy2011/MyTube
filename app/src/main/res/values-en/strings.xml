@@ -392,4 +392,6 @@
     <string name="sc_title">SoundCloud</string>
     <string name="sc_source_sc">SoundCloud</string>
     <string name="sc_source_ytm">YouTube Music</string>
+    <string name="toast_cast_started">Casting to Chromecast (local paused)</string>
+    <string name="toast_cast_ended">Cast ended — resume from the local player</string>
 </resources>
