@@ -332,4 +332,5 @@
     <string name="tab_suggestions">اقتراحات</string>
     <string name="sugg_based">مقترحات لك بناءً على نشاطك (اقتراحات NewPipe)</string>
     <string name="share">مشاركة</string>
+    <string name="err_player_unavailable">تعذّر بدء مشغّل الصوت — أعد فتح التطبيق</string>
 </resources>

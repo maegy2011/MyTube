@@ -219,7 +219,9 @@ class MainActivity : ComponentActivity() {
         if (playing && h > 0) enterPip()
         super.onUserLeaveHint()
     }
-    override fun onDestroy() { player?.release(); player = null; super.onDestroy() }
+    // H1: NEVER release here — the ExoPlayer instance is owned by PlaybackService (shared reference).
+    // Releasing it killed background audio on activity exit + double-released with the service.
+    override fun onDestroy() { player = null; super.onDestroy() }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1135,9 +1137,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             ctx.startService(Intent(ctx, PlaybackService::class.java))
         } catch (_: Exception) { }
         var p: ExoPlayer? = null
-        while (p == null) {
+        // H3: bounded wait (~5s) — an unbounded loop hung the app with no message if the service failed to start.
+        var tries = 0
+        while (p == null && tries < 50) {
             p = PlaybackService.player
-            if (p == null) kotlinx.coroutines.delay(100)
+            if (p == null) { kotlinx.coroutines.delay(100); tries++ }
+        }
+        if (p == null) {
+            playerError = ctx.getString(R.string.err_player_unavailable)
+            toast(ctx.getString(R.string.err_player_unavailable))
+            return@LaunchedEffect
         }
         player = p
         onPlayerReady(p)

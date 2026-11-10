@@ -332,4 +332,5 @@
     <string name="tab_suggestions">Suggestions</string>
     <string name="sugg_based">Suggested for you, based on your activity (NewPipe suggestions)</string>
     <string name="share">Share</string>
+    <string name="err_player_unavailable">Couldn\'t start the audio player — please reopen the app</string>
 </resources>

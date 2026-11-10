@@ -23,7 +23,15 @@ data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality:
 data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false, val error: String? = null, val suggestion: String? = null, val corrected: Boolean = false)
 
 object YouTubeRepo {
-    private val client = OkHttpClient()
+    // H2: bare OkHttpClient hung IO threads forever on stalled connections (pool exhaustion).
+    // Same pattern as PinManager: fail fast, surface the error.
+    private val client: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
+            .build()
+    }
     private fun decodeHtml(s: String): String {
         return try { Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString() } catch (_: Exception) { s }
     }
