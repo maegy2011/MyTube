@@ -12,14 +12,14 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 
-data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null, val channelAvatar: String? = null, val verified: Boolean = false, val uploadDate: String? = null, val isShort: Boolean = false, val channelUrl: String? = null)
+data class VideoItem(val id: String? = null, val title: String? = null, val channel: String? = null, val thumbnail: String? = null, val durationSec: Long? = null, val viewCount: Long? = null, val url: String? = null, val channelAvatar: String? = null, val verified: Boolean = false, val uploadDate: String? = null, val isShort: Boolean = false, val channelUrl: String? = null, val ageLimit: Int = 0)
 data class SubtitleItem(val url: String, val langTag: String, val label: String, val auto: Boolean, val mime: String)
 data class AudioTrackItem(val url: String, val bitrate: Int, val trackId: String?, val name: String?, val localeTag: String?, val type: String?)
 data class ChapterItem(val title: String, val startSec: Int)
 data class Storyboard(val urls: List<String>, val total: Int, val perX: Int, val perY: Int, val fw: Int, val fh: Int, val durPerFrame: Int)
 data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
 data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList())
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0)
 data class RemotePlaylist(
     val title: String? = null,
     val uploader: String? = null,
@@ -274,6 +274,8 @@ object YouTubeRepo {
             try { lang = ext.languageInfo?.toLanguageTag() } catch (_: Exception) {}
             var chUrl: String? = null
             try { chUrl = ext.uploaderUrl } catch (_: Exception) {}
+            var age = 0
+            try { age = ext.ageLimit } catch (_: Exception) {}
             var chapters: List<ChapterItem> = emptyList()
             try { chapters = ext.streamSegments?.mapNotNull { seg ->
                 val t = try { seg.title } catch (_: Exception) { null }
@@ -302,7 +304,7 @@ object YouTubeRepo {
             try { boards = ext.frames?.mapNotNull { f ->
                 try { Storyboard(f.urls, f.totalCount, f.framesPerPageX, f.framesPerPageY, f.frameWidth, f.frameHeight, f.durationPerFrame) } catch (_: Exception) { null }
             } ?: emptyList() } catch (_: Exception) {}
-            StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chUrl, chapters, related, boards)
+            StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chUrl, chapters, related, boards, ageLimit = age)
         } catch (_: Exception) { StreamData() }
     }
 

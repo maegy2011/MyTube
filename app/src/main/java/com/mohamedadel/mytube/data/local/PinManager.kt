@@ -29,6 +29,8 @@ object PinManager {
         val quality: String,
         val audioTag: String?,
         val subTag: String?
+,
+        val ageLimit: Int = 0
     )
 
     // Same URL math as MainActivity.applyQuality (muxed vs merged, auto mapping).
@@ -44,7 +46,7 @@ object PinManager {
         } ?: return null
         if (quality == "audio-only (default)") {
             val sub = sd.subtitles.getOrNull(subIdx)
-            return PinPlan(null, selAudio, sub?.url, sub?.mime, sub?.langTag, "audio", quality, audioTag, sub?.label ?: sub?.langTag)
+            return PinPlan(null, selAudio, sub?.url, sub?.mime, sub?.langTag, "audio", quality, audioTag, sub?.label ?: sub?.langTag, ageLimit = sd.ageLimit)
         }
         val muxedUrls = sd.videoUrlByQuality.filter { sd.muxedQualities.contains(it.key) }.values.toSet()
         val isMuxed = url in muxedUrls
@@ -53,7 +55,8 @@ object PinManager {
             videoUrl = url,
             audioUrl = if (isMuxed) null else selAudio,
             subUrl = sub?.url, subMime = sub?.mime, subLang = sub?.langTag,
-            kind = "video", quality = quality, audioTag = audioTag, subTag = sub?.label ?: sub?.langTag
+            kind = "video", quality = quality, audioTag = audioTag, subTag = sub?.label ?: sub?.langTag,
+            ageLimit = sd.ageLimit
         )
     }
 
@@ -161,6 +164,7 @@ object PinManager {
                 .put("subTag", plan.subTag ?: "")
                 .put("subMime", plan.subMime ?: "")
                 .put("subLang", plan.subLang ?: "")
+                .put("age", plan.ageLimit)
                 .put("videoId", v.id ?: "")
                 .put("title", v.title ?: "")
             File(staging, "meta.json").writeText(meta.toString())

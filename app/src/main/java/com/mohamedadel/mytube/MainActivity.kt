@@ -484,6 +484,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pinProgress by remember { mutableStateOf(mapOf<String, Float>()) }
     var showDownloads by remember { mutableStateOf(false) }
     var prefKeepalive by remember { mutableStateOf(false) }
+    var prefAgeMode by remember { mutableStateOf("block") } // block | warn | allow
+    var agePending by remember { mutableStateOf<Pair<VideoItem, Boolean>?>(null) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
     val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
     val histFlowPinned = remember(pinKeys) {
@@ -566,6 +568,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
             prefOffline = prefs.getBoolean("pref_offline", false)
             prefKeepalive = prefs.getBoolean("pref_keepalive", false)
+            prefAgeMode = prefs.getString("pref_age_mode", "block") ?: "block"
             try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
             prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
@@ -1154,7 +1157,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try { toast(ctx.getString(R.string.toast_cast_ended)) } catch (_: Exception) { }
         }
     }
-    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true) {
+    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true, ageOk: Boolean = false) {
         playing = v
         recordHistory(v)
         if (expand) playerExpanded = true
@@ -1194,6 +1197,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     val sFile = File(dir, "sub.vtt")
                     if (!vFile.exists()) throw IllegalStateException("pin missing")
                     val meta = try { org.json.JSONObject(File(dir, "meta.json").readText()) } catch (_: Exception) { org.json.JSONObject() }
+                    val pinAge = try { meta.optInt("age", 0) } catch (_: Exception) { 0 }
+                    if (pinAge >= 18 && !ageOk) {
+                        if (prefAgeMode == "block") {
+                            playerLoading = false
+                            playerError = ctx.getString(R.string.err_age_blocked)
+                            toast(ctx.getString(R.string.err_age_blocked))
+                            return@launch
+                        } else if (prefAgeMode == "warn") {
+                            playerLoading = false
+                            agePending = v to inQueue
+                            return@launch
+                        }
+                    }
                     val label = meta.optString("quality", "audio-only (default)").takeIf { it.isNotBlank() } ?: "audio-only (default)"
                     val hasAudio = aFile.exists()
                     val hasSub = sFile.exists()
@@ -1248,6 +1264,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 playerLoading = false
                 playerError = ctx.getString(R.string.err_no_sources)
                 return@launch
+            }
+            if (s.ageLimit >= 18 && !ageOk) {
+                if (prefAgeMode == "block") {
+                    playerLoading = false
+                    playerError = ctx.getString(R.string.err_age_blocked)
+                    toast(ctx.getString(R.string.err_age_blocked))
+                    return@launch
+                } else if (prefAgeMode == "warn") {
+                    playerLoading = false
+                    agePending = v to inQueue
+                    return@launch
+                }
             }
             streamData = s
             // label the auto entry with the speed-based target so the user sees what auto will pick
@@ -2458,6 +2486,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
                         if (!v) toast(ctx.getString(R.string.keepalive_off))
                     },
+                    ageMode = prefAgeMode,
+                    onAgeMode = { m ->
+                        prefAgeMode = m
+                        try { prefs.edit().putString("pref_age_mode", m).apply() } catch (_: Exception) { }
+                    },
                     pinsCount = pinsCount,
                     pinsSize = pinsSizeLabel,
                     pinsBytes = pinsBytes,
@@ -3089,6 +3122,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         showSleep = false
                     },
                     onDismiss = { showSleep = false }
+                )
+            }
+            // age-gate warn dialog lives in the library file (Scaffold content is at the 64KB limit)
+            agePending?.let { ap ->
+                com.mohamedadel.mytube.ui.library.AgeWarnDialog(
+                    title = ap.first.title,
+                    onPlay = { val x = ap; agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true) },
+                    onDismiss = { agePending = null }
                 )
             }
             // pin confirm: own file (Scaffold content is at the 64KB method limit)

@@ -414,4 +414,15 @@
     <string name="keepalive_off">أُوقفت الحماية الدائمة</string>
     <string name="keepalive_setting">إشعار دائم ضد الإغلاق التلقائي</string>
     <string name="keepalive_setting_desc">يُبقي التطبيق حيًا على أجهزة أوبو/فيفو/شاومي/سامسونج — أيقونة دائمة مقابل عدم قتله</string>
+    <string name="err_age_blocked">محتوى للكبار (18+) — محظور حسب إعداداتك</string>
+    <string name="age_title">المحتوى المقيّد عمريًا (18+)</string>
+    <string name="age_block">حظر</string>
+    <string name="age_block_desc">لا يُشغَّل المحتوى المقيّد إطلاقًا (الافتراضي)</string>
+    <string name="age_warn">تحذير</string>
+    <string name="age_warn_desc">تنبيه مع موافقة صريحة قبل كل تشغيل</string>
+    <string name="age_allow">سماح</string>
+    <string name="age_allow_desc">تشغيل كل المحتوى بلا قيود</string>
+    <string name="age_warn_title">محتوى للكبار (18+)</string>
+    <string name="age_warn_text">هذا المقطع مصنّف للكبار فقط. هل تريد تشغيله؟</string>
+    <string name="age_warn_play">تشغيل</string>
 </resources>

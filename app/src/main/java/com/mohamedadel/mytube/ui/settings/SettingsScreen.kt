@@ -184,6 +184,8 @@ fun SettingsScreen(
     onOfflineMode: (Boolean) -> Unit = {},
     keepAlive: Boolean = false,
     onKeepAlive: (Boolean) -> Unit = {},
+    ageMode: String = "block",
+    onAgeMode: (String) -> Unit = {},
     pinsCount: Int = 0,
     pinsSize: String = "—",
     pinsBytes: Long = 0L,
@@ -766,6 +768,18 @@ fun SettingsScreen(
             }
         }
         item {
+            Text(stringResource(R.string.age_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            AgeModeRow(mode = "block", sel = ageMode, onPick = onAgeMode)
+        }
+        item {
+            AgeModeRow(mode = "warn", sel = ageMode, onPick = onAgeMode)
+        }
+        item {
+            AgeModeRow(mode = "allow", sel = ageMode, onPick = onAgeMode)
+        }
+        item {
             Row(modifier = Modifier.fillMaxWidth().clickable { onKeepAlive(!keepAlive) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (keepAlive) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (keepAlive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(12.dp))
@@ -846,6 +860,28 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun AgeModeRow(mode: String, sel: String, onPick: (String) -> Unit) {
+    val label = when (mode) {
+        "block" -> stringResource(R.string.age_block)
+        "warn" -> stringResource(R.string.age_warn)
+        else -> stringResource(R.string.age_allow)
+    }
+    val desc = when (mode) {
+        "block" -> stringResource(R.string.age_block_desc)
+        "warn" -> stringResource(R.string.age_warn_desc)
+        else -> stringResource(R.string.age_allow_desc)
+    }
+    Row(modifier = Modifier.fillMaxWidth().clickable { onPick(mode) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (sel == mode) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (sel == mode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

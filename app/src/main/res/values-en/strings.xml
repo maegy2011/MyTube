@@ -414,4 +414,15 @@
     <string name="keepalive_off">Persistent guard stopped</string>
     <string name="keepalive_setting">Persistent anti-kill notification</string>
     <string name="keepalive_setting_desc">Keeps the app alive on Oppo/Vivo/Xiaomi/Samsung — a permanent icon for survival</string>
+    <string name="err_age_blocked">Adult content (18+) — blocked by your settings</string>
+    <string name="age_title">Age-restricted content (18+)</string>
+    <string name="age_block">Block</string>
+    <string name="age_block_desc">Restricted content never plays (default)</string>
+    <string name="age_warn">Warn</string>
+    <string name="age_warn_desc">Ask with explicit consent before each play</string>
+    <string name="age_allow">Allow</string>
+    <string name="age_allow_desc">Play everything without restriction</string>
+    <string name="age_warn_title">Adult content (18+)</string>
+    <string name="age_warn_text">This video is rated for adults only. Play it?</string>
+    <string name="age_warn_play">Play</string>
 </resources>

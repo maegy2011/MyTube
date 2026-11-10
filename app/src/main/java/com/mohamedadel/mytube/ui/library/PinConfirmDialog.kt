@@ -146,3 +146,25 @@ fun PinConfirmDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
+
+// Age-gate consent: shown once per video in "warn" mode, never remembered.
+@Composable
+fun AgeWarnDialog(
+    title: String?,
+    onPlay: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.age_warn_title), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                Text(stringResource(R.string.age_warn_text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        },
+        confirmButton = { TextButton(onClick = onPlay) { Text(stringResource(R.string.age_warn_play)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+    )
+}
