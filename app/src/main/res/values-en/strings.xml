@@ -365,4 +365,13 @@
     <string name="sb_desc">Auto-skips sponsors and intros — sends video IDs to an external server</string>
     <string name="voice_search">Voice search</string>
     <string name="voice_unavailable">Voice search not available on this device</string>
+    <string name="dl_location">Download location</string>
+    <string name="dl_internal">Internal storage</string>
+    <string name="dl_external">External storage</string>
+    <string name="dl_format">Format</string>
+    <string name="dl_video">Video</string>
+    <string name="dl_quality">Quality</string>
+    <string name="dl_audio">Audio</string>
+    <string name="dl_captions">Captions</string>
+    <string name="dl_none">None</string>
 </resources>

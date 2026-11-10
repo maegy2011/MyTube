@@ -11,6 +11,23 @@ import java.security.MessageDigest
 object PinFiles {
     const val DIR = "travel"
 
+    // Download location pref ("internal" | "external"). External = app-specific dir
+    // (no storage permission needed). New pins go to the current loc; old pins keep
+    // working via existingDir()/isPinned() fallback to the legacy internal dir.
+    fun loc(context: Context): String {
+        return try { context.getSharedPreferences("mytube_prefs", Context.MODE_PRIVATE).getString("pref_pin_location", "internal") ?: "internal" } catch (_: Exception) { "internal" }
+    }
+
+    fun baseDir(context: Context, location: String = loc(context)): File {
+        if (location == "external") {
+            try {
+                val ext = context.getExternalFilesDir(null)
+                if (ext != null) return File(ext, DIR)
+            } catch (_: Exception) { }
+        }
+        return File(context.filesDir, DIR)
+    }
+
     fun sha(key: String): String {
         return try {
             val md = MessageDigest.getInstance("SHA-256")
@@ -19,7 +36,19 @@ object PinFiles {
     }
 
     fun pinDir(context: Context, videoKey: String): File =
-        File(File(context.filesDir, DIR), sha(videoKey))
+        File(baseDir(context), sha(videoKey))
+
+    // Whichever dir actually holds this pin (current loc first, legacy internal fallback).
+    fun existingDir(context: Context, videoKey: String): File? {
+        return try {
+            val cur = pinDir(context, videoKey)
+            if (File(cur, "meta.json").exists()) cur
+            else {
+                val legacy = File(File(context.filesDir, DIR), sha(videoKey))
+                if (File(legacy, "meta.json").exists()) legacy else null
+            }
+        } catch (_: Exception) { null }
+    }
 
     fun videoFile(context: Context, videoKey: String): File = File(pinDir(context, videoKey), "video.mp4")
     fun audioFile(context: Context, videoKey: String): File = File(pinDir(context, videoKey), "audio.m4a")
@@ -28,14 +57,19 @@ object PinFiles {
 
     // A pin is valid only when its descriptor exists (downloads are staged elsewhere, then moved in).
     fun isPinned(context: Context, videoKey: String): Boolean =
-        try { metaFile(context, videoKey).exists() } catch (_: Exception) { false }
+        try { existingDir(context, videoKey) != null } catch (_: Exception) { false }
 
     fun delete(context: Context, videoKey: String) {
         try { pinDir(context, videoKey).deleteRecursively() } catch (_: Exception) { }
+        try { File(File(context.filesDir, DIR), sha(videoKey)).deleteRecursively() } catch (_: Exception) { }
     }
 
     fun clearAll(context: Context) {
         try { File(context.filesDir, DIR).deleteRecursively() } catch (_: Exception) { }
+        try {
+            val ext = context.getExternalFilesDir(null)
+            if (ext != null) File(ext, DIR).deleteRecursively()
+        } catch (_: Exception) { }
     }
 
     fun dirBytes(context: Context, videoKey: String): Long {

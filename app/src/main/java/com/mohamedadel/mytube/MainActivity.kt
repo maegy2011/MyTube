@@ -42,8 +42,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import android.widget.Toast
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.History
@@ -161,6 +163,8 @@ import com.mohamedadel.mytube.data.youtube.SponsorBlock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.verticalScroll
 import org.schabi.newpipe.extractor.Page
 
 // Appearance live holders (file-level so both the Activity and the top-level
@@ -328,6 +332,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefTheme by remember { mutableStateOf("dark") }
     var prefAccent by remember { mutableStateOf("red") }
     var prefPip by remember { mutableStateOf(true) }
+    // Download manager: the sd behind the current pinConfirm + live quick-pick selection.
+    var pinSd by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.StreamData?>(null) }
+    var pinSelQuality by remember { mutableStateOf("audio-only (default)") }
+    var pinSelAudio by remember { mutableStateOf(0) }
+    var pinSelSub by remember { mutableStateOf(-1) } // -1 = none
+    var pinSelLoc by remember { mutableStateOf("internal") }
+    var pinEst by remember { mutableStateOf(-1L) }
     // SponsorBlock: community skip segments (default OFF — video IDs go to a third party).
     var prefSb by remember { mutableStateOf(false) }
     var sbSegments by remember { mutableStateOf(emptyList<SbSeg>()) }
@@ -1090,7 +1101,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (pinned) {
                 // Phase 4: zero-network playback from the faithful snapshot
                 try {
-                    val dir = com.mohamedadel.mytube.data.local.PinFiles.pinDir(app, key)
+                    val dir = com.mohamedadel.mytube.data.local.PinFiles.existingDir(app, key)
+                        ?: throw IllegalStateException("pin missing")
                     val vFile = File(dir, "video.mp4")
                     val aFile = File(dir, "audio.m4a")
                     val sFile = File(dir, "sub.vtt")
@@ -1586,6 +1598,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps)
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 val est = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
+                pinSd = s
+                pinSelQuality = qq
+                pinSelAudio = ai
+                pinSelSub = si
+                try { pinSelLoc = ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE).getString("pref_pin_location", "internal") ?: "internal" } catch (_: Exception) { }
+                pinEst = est
                 pinConfirm = com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est)
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
             finally { pinningKeys = pinningKeys - key }
@@ -1593,12 +1611,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     fun confirmPin() {
         val pc = pinConfirm ?: return
-        pinConfirm = null
+        val sd = pinSd
         val key = pc.v.favKey()
+        pinConfirm = null
+        pinSd = null
         pinningKeys = pinningKeys + key
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(ctx.applicationContext, dao, pc.v, pc.plan)
+                val plan = if (sd != null) {
+                    com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSub, ctx.estimatedDownstreamKbps())
+                } else pc.plan
+                if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                val size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(ctx.applicationContext, dao, pc.v, plan)
                 if (size >= 0) toast(ctx.getString(R.string.toast_pin_done))
                 else toast(ctx.getString(R.string.toast_pin_fail))
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
@@ -2672,12 +2696,85 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onDismissRequest = { pinConfirm = null },
                     title = { Text(stringResource(R.string.pin_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     text = {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                             Text(pc.v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(8.dp))
-                            val sizeTxt = if (pc.est >= 0) ctx.getString(R.string.pin_size_fmt, pc.est / 1048576.0) else stringResource(R.string.pin_size_unknown)
+                            val sd = pinSd
+                            if (sd != null) {
+                                Text(stringResource(R.string.dl_location), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                listOf("internal", "external").forEach { loc ->
+                                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                                        pinSelLoc = loc
+                                        try { prefs.edit().putString("pref_pin_location", loc).apply() } catch (_: Exception) { }
+                                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(if (pinSelLoc == loc) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelLoc == loc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(if (loc == "internal") R.string.dl_internal else R.string.dl_external), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                    }
+                                }
+                                Text(stringResource(R.string.dl_format), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                listOf("video", "audio").forEach { kind ->
+                                    val sel = (kind == "audio") == (pinSelQuality == "audio-only (default)")
+                                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                                        pinSelQuality = if (kind == "audio") "audio-only (default)" else (sd.videoUrlByQuality.keys.firstOrNull() ?: pinSelQuality)
+                                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(if (sel) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(if (kind == "audio") R.string.quality_audio else R.string.dl_video), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                    }
+                                }
+                                if (pinSelQuality != "audio-only (default)") {
+                                    Text(stringResource(R.string.dl_quality), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                    sd.videoUrlByQuality.keys.forEach { q ->
+                                        Row(modifier = Modifier.fillMaxWidth().clickable { pinSelQuality = q }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(if (pinSelQuality == q) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelQuality == q) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(q, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                        }
+                                    }
+                                }
+                                if (sd.audioTracks.isNotEmpty()) {
+                                    Text(stringResource(R.string.dl_audio), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                    sd.audioTracks.forEachIndexed { i, t ->
+                                        Row(modifier = Modifier.fillMaxWidth().clickable { pinSelAudio = i }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(if (pinSelAudio == i) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelAudio == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(t.name ?: t.localeTag ?: ("#" + (i + 1)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                        }
+                                    }
+                                }
+                                if (sd.subtitles.isNotEmpty()) {
+                                    Text(stringResource(R.string.dl_captions), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                    Row(modifier = Modifier.fillMaxWidth().clickable { pinSelSub = -1 }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(if (pinSelSub == -1) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelSub == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(R.string.dl_none), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                    }
+                                    sd.subtitles.forEachIndexed { i, st ->
+                                        Row(modifier = Modifier.fillMaxWidth().clickable { pinSelSub = i }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(if (pinSelSub == i) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelSub == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(st.label ?: st.langTag ?: ("#" + (i + 1)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                        }
+                                    }
+                                }
+                                // Live size estimate for the current selection (IO, debounced by composition).
+                                androidx.compose.runtime.LaunchedEffect(pinSelQuality, pinSelAudio, pinSelSub) {
+                                    pinEst = -1L
+                                    try {
+                                        val p = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSub, 0)
+                                        }
+                                        pinEst = if (p == null) -1L else withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(p.videoUrl, p.audioUrl, p.subUrl))
+                                        }
+                                    } catch (_: Exception) { pinEst = -1L }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            val sizeTxt = if (pinEst >= 0) ctx.getString(R.string.pin_size_fmt, pinEst / 1048576.0) else stringResource(R.string.pin_size_unknown)
                             Text(
-                                stringResource(R.string.pin_confirm_fmt, pc.plan.quality, sizeTxt),
+                                stringResource(R.string.pin_confirm_fmt, pinSelQuality, sizeTxt),
                                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface
                             )
                         }

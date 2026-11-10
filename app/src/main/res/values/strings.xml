@@ -365,4 +365,13 @@
     <string name="sb_desc">يتخطى الرعاية والمقدمات تلقائيًا — يرسل معرّفات الفيديو لخادم خارجي</string>
     <string name="voice_search">بحث صوتي</string>
     <string name="voice_unavailable">البحث الصوتي غير متاح على هذا الجهاز</string>
+    <string name="dl_location">موقع التنزيل</string>
+    <string name="dl_internal">تخزين داخلي</string>
+    <string name="dl_external">تخزين خارجي (بطاقة)</string>
+    <string name="dl_format">الصيغة</string>
+    <string name="dl_video">فيديو</string>
+    <string name="dl_quality">الجودة</string>
+    <string name="dl_audio">الصوت</string>
+    <string name="dl_captions">الترجمة</string>
+    <string name="dl_none">بدون</string>
 </resources>
