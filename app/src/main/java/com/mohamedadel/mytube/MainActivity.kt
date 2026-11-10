@@ -1815,6 +1815,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // SoundCloud search (separate tab, own state; failures surface with retry).
     var scJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // Music-tab search (SoundCloud / YouTube Music): main track search runs FIRST with one
+    // retry; playlist cards resolve independently so a failing playlist endpoint can never
+    // blank the track list. Errors carry the real extractor message (truncated) — the old
+    // generic toast hid whether this was network, ReCaptcha, or a dead client_id.
     fun doScSearch(q: String, src: Int = scSource, kind: String = scKind) {
         if (q.isBlank()) return
         scQuery = q
@@ -1823,31 +1827,44 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scJob?.cancel()
         scJob = scope.launch {
             try {
-                remotePlaylists = if (src == 1 && kind == "albums")
-                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(
-                        q, if (prefCountry == "global") null else prefCountry, albums = true)
-                else if (src == 1 && kind == "playlists")
-                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(
-                        q, if (prefCountry == "global") null else prefCountry, music = true)
-                else if (src == 1)
-                    emptyList()
-                else
-                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, sc = true)
-                val page = if (src == 1 && kind == "albums")
-                    com.mohamedadel.mytube.data.youtube.SearchPage(emptyList(), null, false, null)
-                else if (src == 1)
-                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(
-                        q, null, if (prefCountry == "global") null else prefCountry, "music_songs")
-                else
-                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
+                val region = if (prefCountry == "global") null else prefCountry
+                suspend fun mainPage(): com.mohamedadel.mytube.data.youtube.SearchPage {
+                    if (src == 1 && kind == "albums")
+                        return com.mohamedadel.mytube.data.youtube.SearchPage(emptyList(), null, false, null)
+                    var last: com.mohamedadel.mytube.data.youtube.SearchPage? = null
+                    repeat(2) {
+                        last = if (src == 1)
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, region, "music_songs")
+                        else
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
+                        if (last!!.error == null && last!!.items.isNotEmpty()) return last!!
+                    }
+                    return last!!
+                }
+                val page = try { mainPage() } catch (e: Exception) {
+                    com.mohamedadel.mytube.data.youtube.SearchPage(error = e.javaClass.simpleName + (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it.take(120) } ?: ""))
+                }
                 if (page.error != null && page.items.isEmpty()) {
-                    scError = ctx.getString(R.string.err_search)
+                    scError = try { ctx.getString(R.string.err_search_detail_fmt, page.error) } catch (_: Exception) { page.error }
                     scResults = emptyList()
+                    remotePlaylists = emptyList()
                 } else {
                     scResults = page.items
+                    // playlist cards: best-effort, never fatal
+                    remotePlaylists = try {
+                        if (src == 1 && kind == "albums")
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, region, albums = true)
+                        else if (src == 1 && kind == "playlists")
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, region, music = true)
+                        else if (src == 1)
+                            emptyList()
+                        else
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, sc = true)
+                    } catch (_: Exception) { emptyList() }
                 }
-            } catch (_: Exception) {
-                scError = ctx.getString(R.string.err_search)
+            } catch (e: Exception) {
+                val detail = e.javaClass.simpleName + (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it.take(120) } ?: "")
+                scError = try { ctx.getString(R.string.err_search_detail_fmt, detail) } catch (_: Exception) { detail }
                 scResults = emptyList()
             } finally {
                 scLoading = false
