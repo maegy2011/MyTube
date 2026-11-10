@@ -58,11 +58,14 @@ fun FeedScreen(
     filterChannelUrl: String? = null,
     filterChannelName: String? = null,
     onClearFilter: () -> Unit = {},
+    filterUrls: Set<String> = emptySet(),
+    filterLabel: String? = null,
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet()
 ) {
-    val shown = remember(items, filterChannelUrl) {
-        if (filterChannelUrl == null) items else items.filter { it.channelUrl == filterChannelUrl }
+    val shown = remember(items, filterChannelUrl, filterUrls) {
+        if (filterUrls.isNotEmpty()) items.filter { it.channelUrl in filterUrls }
+        else if (filterChannelUrl == null) items else items.filter { it.channelUrl == filterChannelUrl }
     }
     // R4: nested-scroll pull gesture — only when the list rests at the very top.
     var pullPx by remember { mutableStateOf(0f) }
@@ -94,13 +97,13 @@ fun FeedScreen(
                 androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             }
         }
-        if (filterChannelUrl != null) {
+        if (filterChannelUrl != null || filterUrls.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth().clickable { onClearFilter() }.padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    stringResource(R.string.feed_filter_fmt, filterChannelName ?: filterChannelUrl),
+                    stringResource(R.string.feed_filter_fmt, filterLabel ?: filterChannelName ?: filterChannelUrl ?: ""),
                     style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
                 )

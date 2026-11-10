@@ -42,6 +42,8 @@ import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.ChannelDetail
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.data.youtube.RemotePlaylist
+import com.mohamedadel.mytube.ui.results.PlaylistCard
 import com.mohamedadel.mytube.ui.results.SearchRow
 import com.mohamedadel.mytube.ui.results.VideoListSkeleton
 
@@ -62,7 +64,16 @@ fun ChannelScreen(
     onFav: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
-    subsLabel: (Long?) -> String = { "" }
+    subsLabel: (Long?) -> String = { "" },
+    // Extra tabs (lazy-loaded by the caller via onTabSelect): Shorts / Live / Playlists.
+    shorts: List<VideoItem> = emptyList(),
+    shortsLoading: Boolean = false,
+    live: List<VideoItem> = emptyList(),
+    liveLoading: Boolean = false,
+    channelPlaylists: List<RemotePlaylist> = emptyList(),
+    channelPlaylistsLoading: Boolean = false,
+    onTabSelect: (Int) -> Unit = {},
+    onOpenPlaylist: (RemotePlaylist) -> Unit = {}
 ) {
     var tab by remember { mutableStateOf(0) }
     var descOpen by remember { mutableStateOf(false) }
@@ -103,9 +114,17 @@ fun ChannelScreen(
                 Button(onClick = onSubscribe) { Text(stringResource(R.string.subscribe)) }
             }
         }
+        val tabTitles = listOf(
+            stringResource(R.string.channel_tab_videos),
+            stringResource(R.string.channel_tab_shorts),
+            stringResource(R.string.channel_tab_live),
+            stringResource(R.string.channel_tab_playlists),
+            stringResource(R.string.channel_tab_about)
+        )
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 16.dp) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.channel_tab_videos)) })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.channel_tab_about)) })
+            tabTitles.forEachIndexed { i, t ->
+                Tab(selected = tab == i, onClick = { tab = i; onTabSelect(i) }, text = { Text(t) })
+            }
         }
         if (tab == 0) {
             if (videosLoading) {
@@ -131,6 +150,25 @@ fun ChannelScreen(
                     }
                 }
             }
+        } else if (tab == 1) {
+            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = shorts, loading = shortsLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys)
+        } else if (tab == 2) {
+            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = live, loading = liveLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys)
+        } else if (tab == 3) {
+            if (channelPlaylistsLoading) {
+                VideoListSkeleton(count = 4)
+            } else if (channelPlaylists.isEmpty()) {
+                Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spacer(Modifier.height(32.dp))
+                    Text(stringResource(R.string.feed_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    items(channelPlaylists, key = { it.url ?: it.title ?: it.hashCode().toString() }) { pl ->
+                        PlaylistCard(p = pl, onClick = { onOpenPlaylist(pl) })
+                    }
+                }
+            }
         } else {
             LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
@@ -152,6 +190,46 @@ fun ChannelScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelVideoList(
+    modifier: Modifier = Modifier,
+    videos: List<VideoItem>,
+    loading: Boolean,
+    onPlay: (VideoItem) -> Unit,
+    onLongClick: (VideoItem) -> Unit,
+    onAdd: ((VideoItem) -> Unit)?,
+    isFav: (VideoItem) -> Boolean,
+    onFav: (VideoItem) -> Unit,
+    pinBadges: Map<String, String>,
+    pinningKeys: Set<String>
+) {
+    Column(modifier = modifier) {
+        if (loading) {
+            VideoListSkeleton(count = 4)
+        } else if (videos.isEmpty()) {
+            Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(32.dp))
+                Text(stringResource(R.string.feed_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                items(videos, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
+                    SearchRow(
+                        v = v, isCurrent = false, isPlaying = false,
+                        onClick = { onPlay(v) },
+                        onLongClick = { onLongClick(v) },
+                        onAdd = onAdd,
+                        isFav = isFav(v),
+                        onFav = onFav,
+                        pinBadge = pinBadges[v.favKey()],
+                        pinning = pinningKeys.contains(v.favKey())
+                    )
                 }
             }
         }

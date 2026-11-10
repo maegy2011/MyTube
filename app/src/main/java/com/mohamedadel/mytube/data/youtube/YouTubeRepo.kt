@@ -421,6 +421,63 @@ object YouTubeRepo {
         } catch (_: Exception) { emptyList() }
     }
 
+    // Channel tabs beyond Videos: kinds match tab contentFilters ("short" | "live"/"stream" | "playlist").
+    // Shorts/Live return VideoItems; Playlists need PlaylistInfoItem — use channelPlaylists() for those.
+    suspend fun channelTab(channelUrl: String?, kinds: List<String>, limit: Int = 20): List<VideoItem> = withContext(Dispatchers.IO) {
+        if (channelUrl.isNullOrBlank()) return@withContext emptyList()
+        try {
+            val h = service().channelLHFactory.fromUrl(channelUrl)
+            val ext = service().getChannelExtractor(h)
+            ext.fetchPage()
+            val tabs = try { ext.tabs } catch (_: Exception) { emptyList() }
+            if (tabs.isEmpty()) return@withContext emptyList()
+            val want = tabs.firstOrNull { t ->
+                try { t.contentFilters.any { f -> kinds.any { k -> f.contains(k, ignoreCase = true) } } } catch (_: Exception) { false }
+            } ?: return@withContext emptyList()
+            val tabExt = service().getChannelTabExtractor(want)
+            tabExt.fetchPage()
+            val page = try { tabExt.initialPage } catch (_: Exception) { null } ?: return@withContext emptyList()
+            page.items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>().take(limit).mapNotNull { info ->
+                try {
+                    val u: String? = try { info.url } catch (_: Exception) { null }
+                    val nm: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
+                    var th: String? = null
+                    try { th = bestThumb(info.thumbnails) } catch (_: Exception) {}
+                    var d: Long? = null
+                    try { d = info.duration } catch (_: Exception) {}
+                    var vw: Long? = null
+                    try { vw = info.viewCount } catch (_: Exception) {}
+                    var upDate: String? = null
+                    try { upDate = info.textualUploadDate } catch (_: Exception) {}
+                    val id: String? = u?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                    var chUrl: String? = null
+                    try { chUrl = info.uploaderUrl } catch (_: Exception) {}
+                    if (u != null) VideoItem(id, nm, null, th, d, vw, u, null, false, upDate, false, chUrl ?: channelUrl) else null
+                } catch (_: Exception) { null }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    // A channel's Playlists tab as openable remote-playlist cards (source youtube).
+    suspend fun channelPlaylists(channelUrl: String?): List<RemotePlaylist> = withContext(Dispatchers.IO) {
+        if (channelUrl.isNullOrBlank()) return@withContext emptyList()
+        try {
+            val h = service().channelLHFactory.fromUrl(channelUrl)
+            val ext = service().getChannelExtractor(h)
+            ext.fetchPage()
+            val tabs = try { ext.tabs } catch (_: Exception) { emptyList() }
+            if (tabs.isEmpty()) return@withContext emptyList()
+            val want = tabs.firstOrNull { t ->
+                try { t.contentFilters.any { f -> f.contains("playlist", ignoreCase = true) } } catch (_: Exception) { false }
+            } ?: return@withContext emptyList()
+            val tabExt = service().getChannelTabExtractor(want)
+            tabExt.fetchPage()
+            val page = try { tabExt.initialPage } catch (_: Exception) { null } ?: return@withContext emptyList()
+            page.items.filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>()
+                .mapNotNull { p -> playlistInfoToRemote(p, "youtube") }
+        } catch (_: Exception) { emptyList() }
+    }
+
     suspend fun channelDetail(channelUrl: String?): ChannelDetail = withContext(Dispatchers.IO) {
         if (channelUrl.isNullOrBlank()) return@withContext ChannelDetail()
         try {
@@ -583,7 +640,7 @@ object YouTubeRepo {
 
     // Remote playlists: search + open, per the browsed service (YouTube / YouTube Music / SoundCloud).
     // SearchPage.video list skips PlaylistInfoItem; this surfaces them as openable cards.
-    suspend fun searchPlaylists(query: String, region: String? = null, music: Boolean = false, sc: Boolean = false): List<RemotePlaylist> = withContext(Dispatchers.IO) {
+    suspend fun searchPlaylists(query: String, region: String? = null, music: Boolean = false, sc: Boolean = false, albums: Boolean = false): List<RemotePlaylist> = withContext(Dispatchers.IO) {
         try {
             if (sc) {
                 val ext = scService().getSearchExtractor(query)
@@ -593,7 +650,7 @@ object YouTubeRepo {
                     .mapNotNull { p -> playlistInfoToRemote(p, "soundcloud") }
             }
             applyRegion(region)
-            val filter = if (music) "music_playlists" else "playlists"
+            val filter = if (albums) "music_albums" else if (music) "music_playlists" else "playlists"
             val ext = try {
                 val qh = service().searchQHFactory.fromQuery(query, listOf(filter), "")
                 service().getSearchExtractor(qh)
@@ -622,8 +679,10 @@ object YouTubeRepo {
     // Open a remote playlist URL (youtube.com / music.youtube.com / soundcloud.com) into playable items.
     suspend fun fetchPlaylist(url: String): List<VideoItem> = withContext(Dispatchers.IO) {
         try {
-            val sc = url.contains("soundcloud.com")
-            val ext = if (sc) scService().getPlaylistExtractor(url) else service().getPlaylistExtractor(url)
+            // YTM album links (music.youtube.com) resolve through the www host
+            val norm = url.replace("music.youtube.com", "www.youtube.com")
+            val sc = norm.contains("soundcloud.com")
+            val ext = if (sc) scService().getPlaylistExtractor(norm) else service().getPlaylistExtractor(norm)
             ext.fetchPage()
             ext.initialPage.items.mapNotNull { info ->
                 try {

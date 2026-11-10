@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.UploadFile
@@ -43,6 +44,8 @@ fun LibraryScreen(
     onPlaylists: () -> Unit,
     onDownloads: () -> Unit = {},
     pinCount: Int = 0,
+    onGroups: () -> Unit = {},
+    groupCount: Int = 0,
     subscriptions: List<com.mohamedadel.mytube.data.local.SubscriptionEntity> = emptyList(),
     onOpenFeed: () -> Unit = {},
     onUnsubscribe: (String) -> Unit = {},
@@ -62,6 +65,13 @@ fun LibraryScreen(
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+        item {
+            LibraryRow(
+                icon = { Icon(Icons.Rounded.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp)) },
+                label = stringResource(R.string.groups_title) + if (groupCount > 0) " ($groupCount)" else "",
+                onClick = onGroups
             )
         }
         item {

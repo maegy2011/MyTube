@@ -91,6 +91,33 @@ data class SubscriptionEntity(
     val addedAt: Long = System.currentTimeMillis()
 )
 
+// Channel groups: user-named buckets of subscribed channels for browsing/management.
+// Members reference subscriptions by channelUrl (stable key); deleting a subscription
+// orphans the member row harmlessly (feed join simply finds no channel).
+@Entity(tableName = "channel_groups")
+data class ChannelGroupEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "channel_group_members",
+    indices = [Index(value = ["groupId"]), Index(value = ["channelUrl"])],
+    foreignKeys = [androidx.room.ForeignKey(
+        entity = ChannelGroupEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["groupId"],
+        onDelete = androidx.room.ForeignKey.CASCADE
+    )]
+)
+data class ChannelGroupMemberEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val groupId: Long,
+    val channelUrl: String,
+    val addedAt: Long = System.currentTimeMillis()
+)
+
 // Offline pins ("download for offline mode"): faithful snapshot descriptor.
 // Bytes live in filesDir/travel/<sha256(videoKey)>/ (video.mp4/audio.m4a/sub.vtt/meta.json).
 // This row is the index: size + labels for the storage UI, badges and filter tabs.
@@ -236,6 +263,37 @@ interface PlaylistDao {
     @Query("DELETE FROM subscriptions WHERE channelUrl = :url")
     suspend fun deleteSubscription(url: String)
 
+    // ---- Channel groups ----
+    @Query("SELECT * FROM channel_groups ORDER BY createdAt ASC")
+    fun observeGroups(): Flow<List<ChannelGroupEntity>>
+
+    @Insert
+    suspend fun insertGroup(g: ChannelGroupEntity): Long
+
+    @Query("UPDATE channel_groups SET name = :name WHERE id = :id")
+    suspend fun renameGroup(id: Long, name: String)
+
+    @Query("DELETE FROM channel_groups WHERE id = :id")
+    suspend fun deleteGroup(id: Long)
+
+    @Query("SELECT * FROM channel_group_members WHERE groupId = :gid ORDER BY addedAt ASC")
+    fun observeGroupMembers(gid: Long): Flow<List<ChannelGroupMemberEntity>>
+
+    @Query("SELECT * FROM channel_group_members WHERE channelUrl = :url")
+    suspend fun memberRows(url: String): List<ChannelGroupMemberEntity>
+
+    @Query("SELECT COUNT(*) FROM channel_group_members WHERE groupId = :gid")
+    suspend fun memberCount(gid: Long): Int
+
+    @Query("SELECT channelUrl FROM channel_group_members WHERE groupId = :gid")
+    suspend fun memberUrls(gid: Long): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun addMember(m: ChannelGroupMemberEntity): Long
+
+    @Query("DELETE FROM channel_group_members WHERE groupId = :gid AND channelUrl = :url")
+    suspend fun removeMember(gid: Long, url: String)
+
     // ---- Offline pins ----
     @Query("SELECT * FROM pins ORDER BY pinnedAt DESC")
     fun observePins(): Flow<List<PinEntity>>
@@ -269,7 +327,7 @@ interface PlaylistDao {
     suspend fun clearFeedCache()
 }
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class], version = 7, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class], version = 8, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -441,5 +499,15 @@ object FeedJson {
                     channelUrl = s("channelUrl"))
             }
         } catch (_: Exception) { emptyList() }
+    }
+}
+
+// v7 -> v8: channel groups (non-destructive; members CASCADE on group delete).
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS channel_groups (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, createdAt INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS channel_group_members (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, groupId INTEGER NOT NULL, channelUrl TEXT NOT NULL, addedAt INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(groupId) REFERENCES channel_groups(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_channel_group_members_groupId ON channel_group_members (groupId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_channel_group_members_channelUrl ON channel_group_members (channelUrl)")
     }
 }

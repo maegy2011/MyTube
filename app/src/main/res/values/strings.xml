@@ -438,4 +438,24 @@
     <string name="err_pin_live">البث المباشر لا يُثبَّت — شاهد مباشرة</string>
     <string name="vis_4k">جودة 4K (2160p)</string>
     <string name="vis_4k_desc">إظهار دقة 2160p عند توفرها — أطفئها لتوفير البيانات</string>
+    <string name="groups_title">مجموعات القنوات</string>
+    <string name="groups_empty">لا توجد مجموعات بعد — أنشئ مجموعة ثم أضف قنواتك المشترِك بها إليها</string>
+    <string name="groups_count_fmt">%d قناة</string>
+    <string name="group_create">مجموعة جديدة</string>
+    <string name="group_add">إضافة قنوات</string>
+    <string name="group_all_added">كل اشتراكاتك مضافة بالفعل</string>
+    <string name="group_no_members">المجموعة فارغة — أضف قنوات بزر +</string>
+    <string name="group_open_feed">فيد المجموعة</string>
+    <string name="group_unsubscribed">غير مشترِك بها حاليًا</string>
+    <string name="group_delete_title">حذف المجموعة؟</string>
+    <string name="group_delete_text">سيُحذف «%1$s» (القنوات والاشتراكات لا تُمس).</string>
+    <string name="filter_songs">أغانٍ</string>
+    <string name="filter_albums">ألبومات</string>
+    <string name="channel_tab_shorts">شورتس</string>
+    <string name="channel_tab_live">مباشر</string>
+    <string name="channel_tab_playlists">قوائم</string>
+    <string name="rename">إعادة تسمية</string>
+    <string name="remove">إزالة</string>
+    <string name="done">تم</string>
+    <string name="ok">حسنًا</string>
 </resources>

@@ -149,6 +149,7 @@ import com.mohamedadel.mytube.data.local.MIGRATION_3_4
 import com.mohamedadel.mytube.data.local.MIGRATION_4_5
 import com.mohamedadel.mytube.data.local.MIGRATION_5_6
 import com.mohamedadel.mytube.data.local.MIGRATION_6_7
+import com.mohamedadel.mytube.data.local.MIGRATION_7_8
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
@@ -307,7 +308,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }
@@ -322,6 +323,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Favorites (one-tap heart): keys observed live so every heart reflects instantly.
     val favoriteKeys by remember { dao.observeFavoriteKeys() }.collectAsState(initial = emptyList())
     val subscriptions by remember { dao.observeSubscriptions() }.collectAsState(initial = emptyList())
+    // Channel groups (Room v8): named buckets; feed-by-group filters the subscription feed.
+    val groups by remember { dao.observeGroups() }.collectAsState(initial = emptyList())
+    var showGroups by remember { mutableStateOf(false) }
+    var openGroup by remember { mutableStateOf<com.mohamedadel.mytube.data.local.ChannelGroupEntity?>(null) }
+    val groupMembers by remember(openGroup) {
+        if (openGroup == null) kotlinx.coroutines.flow.flowOf(emptyList<com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity>())
+        else dao.observeGroupMembers(openGroup!!.id)
+    }.collectAsState(initial = emptyList())
+    // group member counts refresh alongside pins/history labels
+    var groupCounts by remember { mutableStateOf(mapOf<Long, Int>()) }
+    var feedGroupUrls by remember { mutableStateOf<Set<String>?>(null) }
+    var feedGroupName by remember { mutableStateOf<String?>(null) }
+    // Channel extra tabs (lazy per tab)
+    var channelShorts by remember { mutableStateOf(emptyList<VideoItem>()) }
+    var channelShortsLoading by remember { mutableStateOf(false) }
+    var channelLive by remember { mutableStateOf(emptyList<VideoItem>()) }
+    var channelLiveLoading by remember { mutableStateOf(false) }
+    var channelPls by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.RemotePlaylist>()) }
+    var channelPlsLoading by remember { mutableStateOf(false) }
+    var channelTabsLoaded by remember { mutableStateOf(setOf<Int>()) }
     val favoriteSet = remember(favoriteKeys) { favoriteKeys.toSet() }
     val favorites by remember { dao.observeFavorites() }.collectAsState(initial = emptyList())
     // (toggleFavorite lives after `scope` below — Kotlin locals must precede use.)
@@ -806,6 +827,62 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var channelScreenUrl by remember { mutableStateOf<String?>(null) }
     var channelScreenVideos by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
     var channelScreenLoading by remember { mutableStateOf(false) }
+    // member counts per group (groups are few; one small query each on change)
+    fun refreshGroupCounts(gs: List<com.mohamedadel.mytube.data.local.ChannelGroupEntity>) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val m = gs.associate { g ->
+                    g.id to try { dao.memberCount(g.id) } catch (_: Exception) { 0 }
+                }
+                groupCounts = m
+            } catch (_: Exception) { }
+        }
+    }
+    fun createGroup(name: String) {
+        val n = name.trim()
+        if (n.isEmpty()) return
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { dao.insertGroup(com.mohamedadel.mytube.data.local.ChannelGroupEntity(name = n)) } catch (_: Exception) { }
+        }
+    }
+    fun renameGroup(g: com.mohamedadel.mytube.data.local.ChannelGroupEntity, name: String) {
+        val n = name.trim()
+        if (n.isEmpty()) return
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { dao.renameGroup(g.id, n) } catch (_: Exception) { }
+        }
+    }
+    fun deleteGroup(g: com.mohamedadel.mytube.data.local.ChannelGroupEntity) {
+        if (openGroup?.id == g.id) openGroup = null
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { dao.deleteGroup(g.id) } catch (_: Exception) { }
+        }
+    }
+    fun addToGroup(gid: Long, url: String) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { dao.addMember(com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity(groupId = gid, channelUrl = url)) } catch (_: Exception) { }
+        }
+    }
+    fun removeFromGroup(gid: Long, url: String) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { dao.removeMember(gid, url) } catch (_: Exception) { }
+        }
+    }
+    fun loadChannelTab(i: Int, url: String) {
+        if (channelTabsLoaded.contains(i)) return
+        channelTabsLoaded = channelTabsLoaded + i
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                when (i) {
+                    1 -> { channelShortsLoading = true; channelShorts = YouTubeRepo.channelTab(url, listOf("short")) }
+                    2 -> { channelLiveLoading = true; channelLive = YouTubeRepo.channelTab(url, listOf("live", "stream")) }
+                    3 -> { channelPlsLoading = true; channelPls = YouTubeRepo.channelPlaylists(url) }
+                }
+            } catch (_: Exception) { } finally {
+                channelShortsLoading = false; channelLiveLoading = false; channelPlsLoading = false
+            }
+        }
+    }
     fun openChannel(url: String?) {
         if (url.isNullOrBlank()) return
         try { playerExpanded = false } catch (_: Exception) { }
@@ -813,6 +890,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         channelDetail = null
         channelScreenVideos = emptyList()
         channelScreenLoading = true
+        channelShorts = emptyList(); channelLive = emptyList(); channelPls = emptyList()
+        channelTabsLoaded = emptySet()
         scope.launch {
             // Gate-3: silent failure left an empty channel screen with no message — now surfaced.
             try { channelDetail = YouTubeRepo.channelDetail(url) } catch (_: Exception) { }
@@ -827,6 +906,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     LaunchedEffect(Unit) {
         try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext) } } catch (_: Exception) { }
     }
+    androidx.compose.runtime.LaunchedEffect(groups) { refreshGroupCounts(groups) }
     // One-tap favorite toggle (needs scope, so it lives here).
     // Short user feedback for every silent success/failure in favorites/queue/playlists.
     fun toast(msg: String) {
@@ -1643,10 +1723,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try {
                 if (prefContentFilter == "playlists") {
                     remotePlaylists = YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry)
+                } else if (prefContentFilter == "albums") {
+                    remotePlaylists = YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry, albums = true)
                 } else {
                     remotePlaylists = emptyList()
                 }
-                val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry, prefContentFilter)
+                // songs = YTM audio search; albums surface as cards only (no video rows)
+                val filter = if (prefContentFilter == "songs") "music_songs" else prefContentFilter
+                val page = if (prefContentFilter == "albums") com.mohamedadel.mytube.data.youtube.SearchPage(emptyList(), null, false, null)
+                else YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry, filter)
                 if (page.error != null && page.items.isEmpty()) {
                     searchError = ctx.getString(R.string.err_search)
                     results = emptyList()
@@ -1826,6 +1911,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             feedLoading = false
         }
     }
+    fun openGroupFeed(g: com.mohamedadel.mytube.data.local.ChannelGroupEntity, urls: Set<String>) {
+        fromLibrary = true
+        showGroups = false
+        openGroup = null
+        feedGroupUrls = urls
+        feedGroupName = g.name
+        feedFilter = null
+        showFeed = true
+        if (feedItems.isEmpty()) refreshFeed()
+    }
     // requestPin: player context passes resolved sd+selection (no re-resolve); list context resolves first.
     fun requestPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?, q: String?, aIdx: Int?, sIdx: Int?) {
         if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
@@ -1945,6 +2040,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     fun smartBack(): Boolean {
+        if (openGroup != null) {
+            openGroup = null
+            showGroups = true
+            return true
+        }
+        if (showGroups) {
+            showGroups = false
+            if (fromLibrary) { fromLibrary = false; showLibrary = true }
+            return true
+        }
+        if (feedGroupUrls != null && showFeed) {
+            feedGroupUrls = null; feedGroupName = null
+            if (fromLibrary) { fromLibrary = false; showLibrary = true } else showFeed = false
+            return true
+        }
         if (showDownloads) {
             showDownloads = false
             if (fromLibrary) { fromLibrary = false; showLibrary = true }
@@ -2024,7 +2134,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showDownloads || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showDownloads || showGroups || openGroup != null || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -2701,7 +2811,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onFav = { toggleFavorite(it) },
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
-                        subsLabel = { n -> if (n != null && n > 0) ctx.getString(R.string.subs_count_fmt, n) else "" }
+                        subsLabel = { n -> if (n != null && n > 0) ctx.getString(R.string.subs_count_fmt, n) else "" },
+                        shorts = channelShorts,
+                        shortsLoading = channelShortsLoading,
+                        live = channelLive,
+                        liveLoading = channelLiveLoading,
+                        channelPlaylists = channelPls,
+                        channelPlaylistsLoading = channelPlsLoading,
+                        onTabSelect = { i -> channelScreenUrl?.let { loadChannelTab(i, it) } },
+                        onOpenPlaylist = { openRemotePlaylist(it) }
                     )
                 }
                 // queue button opens this panel INSTEAD of the suggestions/results below the video
@@ -2741,6 +2859,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     LibraryScreen(
                         onHistory = { showLibrary = false; fromLibrary = true; showHistory = true },
                         onDownloads = { showLibrary = false; fromLibrary = true; showDownloads = true },
+                        onGroups = { showLibrary = false; fromLibrary = true; showGroups = true },
+                        groupCount = groups.size,
                         pinCount = pins.size,
                         onFavorites = { showLibrary = false; fromLibrary = true; showFavorites = true },
                         onPlaylists = { showLibrary = false; fromLibrary = true; showPlaylists = true },
@@ -2764,14 +2884,45 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onClearAll = { clearAllPins() }
                     )
                 }
+                showGroups -> {
+                    com.mohamedadel.mytube.ui.library.GroupsScreen(
+                        groups = groups,
+                        counts = groupCounts,
+                        onOpen = { openGroup = it; showGroups = false },
+                        onCreate = { createGroup(it) },
+                        onRename = { g, n -> renameGroup(g, n) },
+                        onDelete = { deleteGroup(it) },
+                        onBack = { smartBack() }
+                    )
+                }
+                openGroup != null -> {
+                    val g = openGroup!!
+                    com.mohamedadel.mytube.ui.library.GroupDetailScreen(
+                        group = g,
+                        members = groupMembers,
+                        subscriptions = subscriptions,
+                        onRemove = { removeFromGroup(g.id, it) },
+                        onAdd = { addToGroup(g.id, it) },
+                        onOpenChannel = { openChannel(it) },
+                        onOpenFeed = {
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val urls = try { dao.memberUrls(g.id) } catch (_: Exception) { emptyList() }
+                                openGroupFeed(g, urls.toSet())
+                            }
+                        },
+                        onBack = { smartBack() }
+                    )
+                }
                 showFeed -> {
                     FeedScreen(
                         items = feedItems,
                         loading = feedLoading,
                         onRefresh = { refreshFeed() },
                         filterChannelUrl = feedFilter,
-                        filterChannelName = feedFilter?.let { u -> subscriptions.firstOrNull { it.channelUrl == u }?.name },
-                        onClearFilter = { feedFilter = null },
+                        filterChannelName = feedGroupName ?: feedFilter?.let { u -> subscriptions.firstOrNull { it.channelUrl == u }?.name },
+                        onClearFilter = { feedFilter = null; feedGroupUrls = null; feedGroupName = null },
+                        filterUrls = feedGroupUrls ?: emptySet(),
+                        filterLabel = feedGroupName,
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
                         onLongClick = { optionsFor = it },
@@ -3044,7 +3195,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         // content filter chips (all/videos/channels/playlists) + count
                         item {
                             Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("all", "videos", "channels", "playlists").forEach { f ->
+                                listOf("all", "videos", "songs", "channels", "playlists", "albums").forEach { f ->
                                     androidx.compose.material3.FilterChip(
                                         selected = prefContentFilter == f,
                                         onClick = {
@@ -3052,7 +3203,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                             try { prefs.edit().putString("pref_content_filter", f).apply() } catch (_: Exception) { }
                                             if (currentQuery.isNotBlank()) doSearch(currentQuery)
                                         },
-                                        label = { Text(stringResource(when (f) { "videos" -> R.string.filter_videos; "channels" -> R.string.filter_channels; "playlists" -> R.string.filter_playlists; else -> R.string.filter_all })) }
+                                        label = { Text(stringResource(when (f) { "videos" -> R.string.filter_videos; "songs" -> R.string.filter_songs; "channels" -> R.string.filter_channels; "playlists" -> R.string.filter_playlists; "albums" -> R.string.filter_albums; else -> R.string.filter_all })) }
                                     )
                                 }
                             }

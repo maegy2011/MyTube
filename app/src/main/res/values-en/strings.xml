@@ -438,4 +438,24 @@
     <string name="err_pin_live">Live streams cannot be pinned — watch live</string>
     <string name="vis_4k">4K quality (2160p)</string>
     <string name="vis_4k_desc">List 2160p when available — off saves data</string>
+    <string name="groups_title">Channel groups</string>
+    <string name="groups_empty">No groups yet — create one, then add your subscriptions to it</string>
+    <string name="groups_count_fmt">%d channels</string>
+    <string name="group_create">New group</string>
+    <string name="group_add">Add channels</string>
+    <string name="group_all_added">All your subscriptions are already in</string>
+    <string name="group_no_members">Group is empty — add channels with +</string>
+    <string name="group_open_feed">Group feed</string>
+    <string name="group_unsubscribed">Currently unsubscribed</string>
+    <string name="group_delete_title">Delete group?</string>
+    <string name="group_delete_text">«%1$s» will go (channels and subscriptions stay).</string>
+    <string name="filter_songs">Songs</string>
+    <string name="filter_albums">Albums</string>
+    <string name="channel_tab_shorts">Shorts</string>
+    <string name="channel_tab_live">Live</string>
+    <string name="channel_tab_playlists">Playlists</string>
+    <string name="rename">Rename</string>
+    <string name="remove">Remove</string>
+    <string name="done">Done</string>
+    <string name="ok">OK</string>
 </resources>
