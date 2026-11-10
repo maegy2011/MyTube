@@ -68,5 +68,12 @@
 - `@StringRes` ونحوها: غير مستخدمة في المشروع أصلًا (الـIDs تُمرَّر لـ`stringResource` مباشرة — النمط سليم، لا تُفرض).
 - أسماء الدوال/الحالات واضحة (`doUnpin`/`requestPin`/`escapeLike`) — لا إعادة تسمية شكلية.
 
+## حالة التنفيذ (نفس اليوم — commit واحد، تجميع أخضر)
+- ✅ استخراج `resolvePlaybackUrl` (عثرة: `toast()` تُستدعى قبل إعلانها في النطاق — حُلّت بـToast مباشر في `openChannel`).
+- ✅ `StrictMode` debug-only في `MyTubeApp.onCreate` (log فقط).
+- ✅ جرد الـcatch: إصلاح حقيقي واحد (فشل فتح القناة → `err_channel_load` ar/en) + سياسة الفئات الثلاث في `ARCHITECTURE.md`.
+- ✅ ثنائية أخبار/news حسب `prefUiLang`.
+- ✅ ملحق `FEATURES.md` (قسم 8) + `FIELD-TEST-v0.2.6.md` (على محمد ميدانيًا).
+
 ## بوابة الإغلاق
 `applyQuality` مُستخرج + `StrictMode` + جرد الـcatch الفارغة + `FEATURES.md` ملحق + `"أخبار"` ثنائي اللغة + `FIELD-TEST-v0.2.6.md` (يملؤه محمد ميدانيًا) — ثم تجميع أخضر واحد وcommit واحد.

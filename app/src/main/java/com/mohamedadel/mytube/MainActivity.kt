@@ -671,8 +671,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         channelScreenVideos = emptyList()
         channelScreenLoading = true
         scope.launch {
+            // Gate-3: silent failure left an empty channel screen with no message — now surfaced.
             try { channelDetail = YouTubeRepo.channelDetail(url) } catch (_: Exception) { }
             try { channelScreenVideos = YouTubeRepo.channelVideos(url) } catch (_: Exception) { }
+            if (channelDetail == null && channelScreenVideos.isEmpty()) {
+                try { android.widget.Toast.makeText(ctx, ctx.getString(R.string.err_channel_load), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+            }
             channelScreenLoading = false
         }
     }
@@ -845,7 +849,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val region = if (prefCountry == "global") null else prefCountry
                 trendingItems = if (isSearchTab) {
                     // "news" has no YouTube kiosk: honest region-scoped search instead of a fake list
-                    YouTubeRepo.search("أخبار", null, region).items
+                    // Gate-4: news query follows UI language (was hardcoded Arabic for everyone).
+                    YouTubeRepo.search(if (prefUiLang == "ar") "أخبار" else "news", null, region).items
                 } else {
                     YouTubeRepo.trending(region, kiosk)
                 }
@@ -859,22 +864,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val listState = rememberLazyListState()
 
     // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
-    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false, local: Boolean = false) {
-        if (p == null) return
-        val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
-        // user-selected dubbed/original audio track, falling back to lowest
+    // Gate-1: URL resolution extracted from applyQuality — null = unavailable (caller surfaces the error).
+    // Returns (playback url, is it a muxed file, user-picked audio url or null).
+    fun resolvePlaybackUrl(q: String, s: StreamData): Triple<String, Boolean, String?>? {
         val selAudio = s.audioTracks.getOrNull(audioTrackIdx)?.url ?: s.audioLowestUrl
         val url = when {
             q == "audio-only (default)" -> selAudio
             q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
             else -> s.videoUrlByQuality[q]
-        } ?: run {
+        } ?: return null
+        val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
+        return Triple(url, url in muxedUrls, selAudio)
+    }
+
+    fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false, local: Boolean = false) {
+        if (p == null) return
+        val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
+        // user-selected dubbed/original audio track, falling back to lowest
+        val (url, isMuxed, selAudio) = resolvePlaybackUrl(q, s) ?: run {
             playerError = ctx.getString(R.string.err_quality_unavailable)
             playerLoading = false
             return
         }
-        val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
-        val isMuxed = url in muxedUrls
         val meta = MediaMetadata.Builder()
             .setTitle(playing?.title ?: s.title)
             .setArtist(playing?.channel)

@@ -339,4 +339,5 @@
     <string name="diag_desc">Settings button: copies current error codes and app version to clipboard — send it to us only if you report an issue, nothing uploads automatically.</string>
     <string name="import_invalid">Invalid subscriptions file — pick an OPML file exported from YouTube.</string>
     <string name="diag_copied">Diagnostics copied</string>
+    <string name="err_channel_load">Couldn\'t load the channel — check your connection and retry</string>
 </resources>

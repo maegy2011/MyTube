@@ -339,4 +339,5 @@
     <string name="diag_desc">زر الإعدادات: ينسخ رموز الخطأ الحالية وإصدار التطبيق للحافظة — تُرسلها لنا طوعًا عند الإبلاغ عن مشكلة، ولا يُرفع شيء تلقائيًا.</string>
     <string name="import_invalid">ملف الاشتراكات غير صالح — اختر ملف OPML مصدّر من يوتيوب.</string>
     <string name="diag_copied">تم نسخ تقرير العطل</string>
+    <string name="err_channel_load">تعذّر تحميل القناة — تحقق من الاتصال وحاول مجددًا</string>
 </resources>

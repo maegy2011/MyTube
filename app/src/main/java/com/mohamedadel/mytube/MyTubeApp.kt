@@ -11,6 +11,21 @@ import coil.memory.MemoryCache
 // not from the network. Transient and user-clearable via the media-cache button
 // (shares cacheDir; media bytes live in cacheDir/media, images in cacheDir/images).
 class MyTubeApp : Application(), ImageLoaderFactory {
+    override fun onCreate() {
+        super.onCreate()
+        // Gate-2: debug-only StrictMode — logs main-thread IO leaks for future work, never crashes.
+        if (com.mohamedadel.mytube.BuildConfig.DEBUG) {
+            try {
+                android.os.StrictMode.setThreadPolicy(
+                    android.os.StrictMode.ThreadPolicy.Builder().detectDiskReads().detectDiskWrites().detectNetwork().penaltyLog().build()
+                )
+                android.os.StrictMode.setVmPolicy(
+                    android.os.StrictMode.VmPolicy.Builder().detectLeakedClosableObjects().penaltyLog().build()
+                )
+            } catch (_: Exception) { }
+        }
+    }
+
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
             .memoryCache {
