@@ -12,8 +12,8 @@ android {
         applicationId = "com.mohamedadel.mytube"
         minSdk = 26
         targetSdk = 34
-        versionCode = 25
-        versionName = "0.2.5"
+        versionCode = 26
+        versionName = "0.2.6"
     }
     buildTypes {
         release {
