@@ -59,13 +59,13 @@ object YouTubeRepo {
                     val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
                     val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
                     var thumb: String? = null
-                    try { thumb = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
                     var dur: Long? = null
                     try { dur = info.duration } catch (_: Exception) {}
                     var views: Long? = null
                     try { views = info.viewCount } catch (_: Exception) {}
                     var avatar: String? = null
-                    try { avatar = info.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+                    try { avatar = bestThumb(info.uploaderAvatars) } catch (_: Exception) {}
                     var verified = false
                     try { verified = info.isUploaderVerified } catch (_: Exception) {}
                     var upDate: String? = null
@@ -80,6 +80,18 @@ object YouTubeRepo {
             }
             out
         } catch (_: Exception) { emptyList() }
+    }
+
+    // Thumbnails: NewPipe lists smallest-first — firstOrNull() gave blurry cards.
+    // Pick max known area; unknown sizes (-1) fall back to the last entry (usually largest).
+    fun bestThumb(list: List<org.schabi.newpipe.extractor.Image>): String? {
+        return try {
+            if (list.isEmpty()) return null
+            val best = list.maxByOrNull { it.height.coerceAtLeast(0).toLong() * it.width.coerceAtLeast(0).toLong() }
+            val url = best?.url
+            val area = (best?.height ?: -1).coerceAtLeast(0).toLong() * (best?.width ?: -1).coerceAtLeast(0).toLong()
+            (if (area > 0) url else null) ?: list.lastOrNull()?.url
+        } catch (_: Exception) { try { list.lastOrNull()?.url } catch (_: Exception) { null } }
     }
 
     suspend fun suggestions(query: String): List<String> = withContext(Dispatchers.IO) {
@@ -138,13 +150,13 @@ object YouTubeRepo {
                     val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
                     val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
                     var thumb: String? = null
-                    try { thumb = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
                     var dur: Long? = null
                     try { dur = info.duration } catch (_: Exception) {}
                     var views: Long? = null
                     try { views = info.viewCount } catch (_: Exception) {}
                     var avatar: String? = null
-                    try { avatar = info.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+                    try { avatar = bestThumb(info.uploaderAvatars) } catch (_: Exception) {}
                     var verified = false
                     try { verified = info.isUploaderVerified } catch (_: Exception) {}
                     var upDate: String? = null
@@ -243,7 +255,7 @@ object YouTubeRepo {
             var subCount: Long? = null
             try { subCount = ext.uploaderSubscriberCount.takeIf { it >= 0 } } catch (_: Exception) {}
             var uAvatar: String? = null
-            try { uAvatar = ext.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+            try { uAvatar = bestThumb(ext.uploaderAvatars) } catch (_: Exception) {}
             var lang: String? = null
             try { lang = ext.languageInfo?.toLanguageTag() } catch (_: Exception) {}
             var chUrl: String? = null
@@ -261,7 +273,7 @@ object YouTubeRepo {
                     val nm: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
                     val ch: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { null }
                     var th: String? = null
-                    try { th = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    try { th = bestThumb(info.thumbnails) } catch (_: Exception) {}
                     var d: Long? = null
                     try { d = info.duration } catch (_: Exception) {}
                     var vw: Long? = null
@@ -306,7 +318,7 @@ object YouTubeRepo {
                     val nm: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
                     val ch: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { null }
                     var th: String? = null
-                    try { th = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    try { th = bestThumb(info.thumbnails) } catch (_: Exception) {}
                     var d: Long? = null
                     try { d = info.duration } catch (_: Exception) {}
                     var vw: Long? = null
@@ -355,7 +367,7 @@ object YouTubeRepo {
                     val url: String? = try { info.url } catch (_: Exception) { null }
                     val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
                     var thumb: String? = null
-                    try { thumb = info.thumbnails.firstOrNull()?.url } catch (_: Exception) {}
+                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
                     var dur: Long? = null
                     try { dur = info.duration } catch (_: Exception) {}
                     var views: Long? = null
@@ -383,9 +395,9 @@ object YouTubeRepo {
             val ext = service().getChannelExtractor(h)
             ext.fetchPage()
             var av: String? = null
-            try { av = ext.avatars.firstOrNull()?.url } catch (_: Exception) {}
+            try { av = bestThumb(ext.avatars) } catch (_: Exception) {}
             var bn: String? = null
-            try { bn = ext.banners.firstOrNull()?.url } catch (_: Exception) {}
+            try { bn = bestThumb(ext.banners) } catch (_: Exception) {}
             var sc: Long? = null
             try { sc = ext.subscriberCount.takeIf { it >= 0 } } catch (_: Exception) {}
             var ds: String? = null
@@ -411,7 +423,7 @@ object YouTubeRepo {
                 try {
                     val tx = try { c.commentText?.content?.take(500) } catch (_: Exception) { null }
                     var av: String? = null
-                    try { av = c.uploaderAvatars.firstOrNull()?.url } catch (_: Exception) {}
+                    try { av = bestThumb(c.uploaderAvatars) } catch (_: Exception) {}
                     CommentItem(
                         try { c.uploaderName } catch (_: Exception) { null },
                         tx,
