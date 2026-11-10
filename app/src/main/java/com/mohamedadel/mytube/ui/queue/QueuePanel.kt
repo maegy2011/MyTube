@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -127,6 +128,7 @@ fun VideoOptionsDialog(
     onPin: (() -> Unit)? = null,
     isPinned: Boolean = false,
     isPinning: Boolean = false,
+    onQuickPin: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
@@ -169,6 +171,24 @@ fun VideoOptionsDialog(
                         Icon(Icons.Rounded.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
                         Text(stringResource(R.string.share), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                if (onQuickPin != null && !isPinned && !isPinning) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !isPinning, onClick = onQuickPin).padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.Bolt,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            stringResource(R.string.pin_quick),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
                 if (onPin != null) {

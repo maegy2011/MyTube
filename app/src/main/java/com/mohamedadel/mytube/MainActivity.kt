@@ -376,7 +376,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pinSd by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.StreamData?>(null) }
     var pinSelQuality by remember { mutableStateOf("audio-only (default)") }
     var pinSelAudio by remember { mutableStateOf(0) }
-    var pinSelSub by remember { mutableStateOf(-1) } // -1 = none
+    var pinSelSubs by remember { mutableStateOf(emptySet<Int>()) } // empty = none
     var pinSelLoc by remember { mutableStateOf("internal") }
     var pinEst by remember { mutableStateOf(-1L) }
     // SponsorBlock: community skip segments (default OFF — video IDs go to a third party).
@@ -713,6 +713,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         return -1
     }
     fun matchSubIdx(): Int = matchSubIdxFor(streamData)
+    // Multi-subtitle default: the primary match PLUS the secondary-language match (Arabic + English
+    // out of the box when both exist) — the user can still toggle any track in the dialog.
+    fun matchSubIdxsFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Set<Int> {
+        if (prefSubLang == "off") return emptySet()
+        val subs = sd?.subtitles ?: return emptySet()
+        if (subs.isEmpty()) return emptySet()
+        val device = try { java.util.Locale.getDefault().language } catch (_: Exception) { null }
+        val ordered = (listOf(resolveLang(prefSubLang), resolveLang(prefSubLang2)) + listOf(device, "en")).filterNotNull().distinct()
+        val pool = if (prefSubHideAuto) subs.filter { !it.auto } else subs
+        val out = linkedSetOf<Int>()
+        for (want in ordered) {
+            if (want == "original") break // "original": keep the player's own default
+            var i = pool.indexOfFirst { !it.auto && it.langTag.startsWith(want, ignoreCase = true) }
+            if (i < 0) i = pool.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
+            if (i >= 0) out.add(subs.indexOf(pool[i]))
+            if (out.size >= 2) break
+        }
+        return out
+    }
     LaunchedEffect(streamData, prefAudioLang, prefAudioLang2) {
         // auto-pick the audio track along the fallback chain (primary -> secondary -> device -> en/original)
         audioTrackIdx = pickAudioIdx()
@@ -1313,15 +1332,34 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     val hasAudio = aFile.exists()
                     val hasSub = sFile.exists()
                     val vUri = android.net.Uri.fromFile(vFile).toString()
-                    val subs = if (hasSub) listOf(
-                        com.mohamedadel.mytube.data.youtube.SubtitleItem(
-                            url = android.net.Uri.fromFile(sFile).toString(),
-                            langTag = meta.optString("subLang", "und").takeIf { it.isNotBlank() } ?: "und",
-                            label = meta.optString("subTag", "").takeIf { it.isNotBlank() } ?: label,
-                            auto = false,
-                            mime = meta.optString("subMime", "text/vtt").takeIf { it.isNotBlank() } ?: "text/vtt"
-                        )
-                    ) else emptyList()
+                    // multi-sub meta ("subs" array); legacy pins fall back to the single sub.vtt keys
+                    val subs = try {
+                        val arr = meta.optJSONArray("subs")
+                        if (arr != null && arr.length() > 0) {
+                            (0 until arr.length()).mapNotNull { i ->
+                                val o = try { arr.getJSONObject(i) } catch (_: Exception) { null } ?: return@mapNotNull null
+                                val fn = o.optString("file", "")
+                                val f = if (fn.isBlank()) null else File(dir, fn)
+                                if (f == null || !f.exists()) return@mapNotNull null
+                                com.mohamedadel.mytube.data.youtube.SubtitleItem(
+                                    url = android.net.Uri.fromFile(f).toString(),
+                                    langTag = o.optString("lang", "und").takeIf { it.isNotBlank() } ?: "und",
+                                    label = o.optString("label", "").takeIf { it.isNotBlank() } ?: label,
+                                    auto = false,
+                                    mime = o.optString("mime", "text/vtt").takeIf { it.isNotBlank() } ?: "text/vtt"
+                                )
+                            }
+                        } else null
+                    } catch (_: Exception) { null }
+                        ?: if (hasSub) listOf(
+                            com.mohamedadel.mytube.data.youtube.SubtitleItem(
+                                url = android.net.Uri.fromFile(sFile).toString(),
+                                langTag = meta.optString("subLang", "und").takeIf { it.isNotBlank() } ?: "und",
+                                label = meta.optString("subTag", "").takeIf { it.isNotBlank() } ?: label,
+                                auto = false,
+                                mime = meta.optString("subMime", "text/vtt").takeIf { it.isNotBlank() } ?: "text/vtt"
+                            )
+                        ) else emptyList()
                     val s = com.mohamedadel.mytube.data.youtube.StreamData(
                         audioLowestUrl = if (hasAudio) android.net.Uri.fromFile(aFile).toString() else if (!hasAudio) vUri else null,
                         videoUrlByQuality = mapOf(label to vUri),
@@ -1922,7 +1960,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (feedItems.isEmpty()) refreshFeed()
     }
     // requestPin: player context passes resolved sd+selection (no re-resolve); list context resolves first.
-    fun requestPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?, q: String?, aIdx: Int?, sIdx: Int?) {
+    fun requestPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?, q: String?, aIdx: Int?, sIdxs: Set<Int>?) {
         if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
             toast(ctx.getString(R.string.err_pin_live)); return
         }
@@ -1939,14 +1977,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 // Audio-only sources (e.g. SoundCloud) have no video map: pin the audio directly.
                 val qq = q ?: if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
                 val ai = aIdx ?: pickAudioIdxFor(s)
-                val si = sIdx ?: matchSubIdxFor(s)
+                val si = sIdxs ?: matchSubIdxsFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps)
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 val est = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
                 pinSd = s
                 pinSelQuality = qq
                 pinSelAudio = ai
-                pinSelSub = si
+                pinSelSubs = si
                 try { pinSelLoc = ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE).getString("pref_pin_location", "internal") ?: "internal" } catch (_: Exception) { }
                 pinEst = est
                 pinConfirm = com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est)
@@ -1954,19 +1992,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             finally { pinningKeys = pinningKeys - key }
         }
     }
-    fun confirmPin() {
-        val pc = pinConfirm ?: return
-        val sd = pinSd
-        val key = pc.v.favKey()
-        pinConfirm = null
-        pinSd = null
+    fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String) {
+        if (pinningKeys.contains(key)) { toast(ctx.getString(R.string.pinning)); return }
+        val title = v.title
         pinningKeys = pinningKeys + key
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val plan = if (sd != null) {
-                    com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSub, ctx.estimatedDownstreamKbps())
-                } else pc.plan
-                if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 // Storage-permission fix: app-specific dirs need NO runtime permission, but the
                 // external root can be unmounted/missing — fall back to internal LOUDLY, not silently.
                 try {
@@ -1976,7 +2007,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         toast(ctx.getString(R.string.pin_ext_fallback))
                     }
                     // Free-space guard: refuse early with a clear message instead of a mid-write fail.
-                    val need = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
+                    val need = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl) + plan.subs.drop(1).map { it.url })
                     val free = pf.freeBytes(ctx.applicationContext)
                     if (need > 0 && free >= 0 && need > free) {
                         toast(ctx.getString(R.string.pin_no_space)); return@launch
@@ -1997,7 +2028,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     try {
                         val b = androidx.core.app.NotificationCompat.Builder(app, dlChannel)
                             .setSmallIcon(android.R.drawable.stat_sys_download)
-                            .setContentTitle(pc.v.title ?: ctx.getString(R.string.dl_title))
+                            .setContentTitle(title ?: ctx.getString(R.string.dl_title))
                             .setOngoing(true).setOnlyAlertOnce(true)
                         if (frac >= 0) b.setProgress(100, (frac * 100).toInt(), false)
                             .setContentText(ctx.getString(R.string.dl_progress_fmt, (frac * 100).toInt()))
@@ -2005,13 +2036,61 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         nm?.notify(notifId, b.build())
                     } catch (_: Exception) { }
                 }
-                val size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, pc.v, plan, progCb)
+                val size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, v, plan, progCb)
                 try { pinProgress = pinProgress - key } catch (_: Exception) { }
                 try { nm?.cancel(notifId) } catch (_: Exception) { }
                 if (size >= 0) toast(ctx.getString(R.string.toast_pin_done))
                 else toast(ctx.getString(R.string.toast_pin_fail))
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
             finally { pinningKeys = pinningKeys - key }
+        }
+    }
+    fun confirmPin() {
+        val pc = pinConfirm ?: return
+        val sd = pinSd
+        val key = pc.v.favKey()
+        pinConfirm = null
+        pinSd = null
+        // remember last choices: quick-pin replays them with one tap
+        try {
+            prefs.edit()
+                .putString("pref_pin_last_q", pinSelQuality)
+                .putString("pref_pin_last_subs", pinSelSubs.sorted().joinToString(","))
+                .apply()
+        } catch (_: Exception) { }
+        val plan = if (sd != null) {
+            com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSubs, ctx.estimatedDownstreamKbps())
+        } else pc.plan
+        if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return }
+        runPinDownload(pc.v, plan, key)
+    }
+    // Shared download execution (dialog confirm + quick pin): progress card + notification + guards.
+    // Quick pin: one tap, no dialog. Replays the last confirmed choices (quality + subtitle set
+    // + location pref); falls back to the same smart defaults as the dialog.
+    fun quickPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?) {
+        if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
+            toast(ctx.getString(R.string.err_pin_live)); return
+        }
+        val key = v.favKey()
+        if (pinKeys.contains(key) || pinningKeys.contains(key)) return
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val s = sd ?: YouTubeRepo.streamRouted(v.url ?: return@launch) ?: return@launch
+                if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
+                    toast(ctx.getString(R.string.toast_pin_fail)); return@launch
+                }
+                val kbps = ctx.estimatedDownstreamKbps()
+                val lastQ = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
+                val qq = if (s.videoUrlByQuality.isEmpty()) "audio-only (default)"
+                    else if (!lastQ.isNullOrBlank() && (lastQ == "audio-only (default)" || s.videoUrlByQuality.containsKey(lastQ) || lastQ.startsWith("auto"))) lastQ
+                    else pickStartQuality(s, kbps)
+                val ai = pickAudioIdxFor(s)
+                val lastSubs = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.filter { s.subtitles.getOrNull(it) != null }.toSet() } catch (_: Exception) { emptySet() }
+                val si = if (lastSubs.isNotEmpty()) lastSubs else matchSubIdxsFor(s)
+                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps)
+                if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                runPinDownload(v, plan, key)
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
         }
     }
     fun clearAllPins() {
@@ -2450,7 +2529,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     isPinning = pinningKeys.contains(cur.favKey()),
                     onPin = {
                         if (pinKeys.contains(cur.favKey())) doUnpin(cur.favKey())
-                        else requestPin(cur, streamData, quality, audioTrackIdx, subTrackIdx)
+                        else requestPin(cur, streamData, quality, audioTrackIdx, if (subTrackIdx >= 0) setOf(subTrackIdx) else emptySet())
                     },
                     onSubscribe = { toggleSubscription(streamData?.channelUrl, cur.channel, channelDetail?.avatar) },
                     onChannelClick = { openChannel(streamData?.channelUrl) },
@@ -3352,7 +3431,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     selLoc = pinSelLoc,
                     selQuality = pinSelQuality,
                     selAudio = pinSelAudio,
-                    selSub = pinSelSub,
+                    selSubs = pinSelSubs,
                     estBytes = pinEst,
                     sizeUnknown = stringResource(R.string.pin_size_unknown),
                     sizeFmt = { mb -> ctx.getString(R.string.pin_size_fmt, mb) },
@@ -3363,7 +3442,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     },
                     onQuality = { pinSelQuality = it },
                     onAudio = { pinSelAudio = it },
-                    onSub = { pinSelSub = it },
+                    onSubs = { pinSelSubs = it },
                     onEst = { pinEst = it },
                     onConfirm = { confirmPin() },
                     onDismiss = { pinConfirm = null }
@@ -3380,6 +3459,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onPin = {
                         if (pinKeys.contains(v.favKey())) { doUnpin(v.favKey()); optionsFor = null }
                         else { optionsFor = null; requestPin(v, null, null, null, null) }
+                    },
+                    onQuickPin = {
+                        if (!pinKeys.contains(v.favKey())) { optionsFor = null; quickPin(v, null) }
                     },
                     isPinned = pinKeys.contains(v.favKey()),
                     isPinning = pinningKeys.contains(v.favKey()),

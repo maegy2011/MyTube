@@ -19,6 +19,8 @@ object PinManager {
 
     data class PinRequest(val v: VideoItem, val plan: PinPlan, val est: Long)
 
+    data class PinSub(val url: String, val mime: String?, val lang: String?, val label: String?)
+
     data class PinPlan(
         val videoUrl: String?,
         val audioUrl: String?,
@@ -30,13 +32,20 @@ object PinManager {
         val audioTag: String?,
         val subTag: String?
 ,
-        val ageLimit: Int = 0
+        val ageLimit: Int = 0,
+        // Multi-subtitle: every selected track downloads (sub.vtt = first for legacy readers).
+        val subs: List<PinSub> = emptyList()
     )
 
     // Same URL math as MainActivity.applyQuality (muxed vs merged, auto mapping).
     // kbps must be the live estimate (not 0): "auto" resolves differently per bandwidth,
     // and pinning must capture exactly what the player would play.
-    fun buildPlan(sd: StreamData, quality: String, audioIdx: Int, subIdx: Int, kbps: Int = 0): PinPlan? {
+    fun buildPlan(sd: StreamData, quality: String, audioIdx: Int, subIdxs: Set<Int>, kbps: Int = 0): PinPlan? {
+        // Legacy single-index callers pass one element; empty = no subtitles.
+        return buildPlanMulti(sd, quality, audioIdx, subIdxs, kbps)
+    }
+
+    fun buildPlanMulti(sd: StreamData, quality: String, audioIdx: Int, subIdxs: Set<Int>, kbps: Int = 0): PinPlan? {
         val selAudio = sd.audioTracks.getOrNull(audioIdx)?.url ?: sd.audioLowestUrl
         val audioTag = sd.audioTracks.getOrNull(audioIdx)?.let { it.localeTag ?: it.name }
         val url = when {
@@ -44,19 +53,21 @@ object PinManager {
             quality.startsWith("auto") -> autoUrl(sd, kbps)
             else -> sd.videoUrlByQuality[quality]
         } ?: return null
+        val picked = subIdxs.sorted().mapNotNull { i ->
+            sd.subtitles.getOrNull(i)?.let { t -> PinSub(t.url ?: return@mapNotNull null, t.mime, t.langTag, t.label ?: t.langTag) }
+        }
+        val first = picked.firstOrNull()
         if (quality == "audio-only (default)") {
-            val sub = sd.subtitles.getOrNull(subIdx)
-            return PinPlan(null, selAudio, sub?.url, sub?.mime, sub?.langTag, "audio", quality, audioTag, sub?.label ?: sub?.langTag, ageLimit = sd.ageLimit)
+            return PinPlan(null, selAudio, first?.url, first?.mime, first?.lang, "audio", quality, audioTag, first?.label, ageLimit = sd.ageLimit, subs = picked)
         }
         val muxedUrls = sd.videoUrlByQuality.filter { sd.muxedQualities.contains(it.key) }.values.toSet()
         val isMuxed = url in muxedUrls
-        val sub = sd.subtitles.getOrNull(subIdx)
         return PinPlan(
             videoUrl = url,
             audioUrl = if (isMuxed) null else selAudio,
-            subUrl = sub?.url, subMime = sub?.mime, subLang = sub?.langTag,
-            kind = "video", quality = quality, audioTag = audioTag, subTag = sub?.label ?: sub?.langTag,
-            ageLimit = sd.ageLimit
+            subUrl = first?.url, subMime = first?.mime, subLang = first?.lang,
+            kind = "video", quality = quality, audioTag = audioTag, subTag = first?.label,
+            ageLimit = sd.ageLimit, subs = picked
         )
     }
 
@@ -157,6 +168,13 @@ object PinManager {
             if (!plan.subUrl.isNullOrBlank()) {
                 try { getTo(plan.subUrl, sFile) } catch (_: Exception) { try { sFile.delete() } catch (_: Exception) { } }
             }
+            // extra subtitle tracks: sub2.vtt, sub3.vtt… (sub.vtt stays the first for legacy readers)
+            val extraSubs = if (plan.subs.size > 1) plan.subs.drop(1) else emptyList()
+            val extraNames = mutableListOf<String>()
+            extraSubs.forEachIndexed { i, ps ->
+                val f = File(staging, "sub${i + 2}.vtt")
+                try { if (getTo(ps.url, f)) extraNames.add(f.name) else try { f.delete() } catch (_: Exception) { } } catch (_: Exception) { }
+            }
             val meta = JSONObject()
                 .put("kind", plan.kind)
                 .put("quality", plan.quality)
@@ -164,6 +182,15 @@ object PinManager {
                 .put("subTag", plan.subTag ?: "")
                 .put("subMime", plan.subMime ?: "")
                 .put("subLang", plan.subLang ?: "")
+                .put("subs", org.json.JSONArray().apply {
+                    plan.subs.forEachIndexed { i, ps ->
+                        put(org.json.JSONObject()
+                            .put("file", if (i == 0) "sub.vtt" else "sub${i + 1}.vtt")
+                            .put("lang", ps.lang ?: "")
+                            .put("label", ps.label ?: "")
+                            .put("mime", ps.mime ?: "text/vtt"))
+                    }
+                })
                 .put("age", plan.ageLimit)
                 .put("videoId", v.id ?: "")
                 .put("title", v.title ?: "")

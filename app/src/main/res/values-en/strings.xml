@@ -458,4 +458,6 @@
     <string name="remove">Remove</string>
     <string name="done">Done</string>
     <string name="ok">OK</string>
+    <string name="pin_quick">Quick pin (last settings)</string>
+    <string name="dl_captions_multi">Captions (%d langs — pick several)</string>
 </resources>

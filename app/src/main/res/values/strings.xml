@@ -458,4 +458,6 @@
     <string name="remove">إزالة</string>
     <string name="done">تم</string>
     <string name="ok">حسنًا</string>
+    <string name="pin_quick">تثبيت سريع (آخر إعدادات)</string>
+    <string name="dl_captions_multi">الترجمة (%d لغات — اختر عدة)</string>
 </resources>

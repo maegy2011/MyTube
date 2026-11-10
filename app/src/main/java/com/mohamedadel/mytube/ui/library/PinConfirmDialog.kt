@@ -43,7 +43,7 @@ fun PinConfirmDialog(
     selLoc: String,
     selQuality: String,
     selAudio: Int,
-    selSub: Int,
+    selSubs: Set<Int>,
     estBytes: Long,
     sizeUnknown: String,
     sizeFmt: (Double) -> String,
@@ -51,7 +51,7 @@ fun PinConfirmDialog(
     onLoc: (String) -> Unit,
     onQuality: (String) -> Unit,
     onAudio: (Int) -> Unit,
-    onSub: (Int) -> Unit,
+    onSubs: (Set<Int>) -> Unit,
     onEst: (Long) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -107,29 +107,35 @@ fun PinConfirmDialog(
                         }
                     }
                     if (sd.subtitles.isNotEmpty()) {
-                        Text(stringResource(R.string.dl_captions), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                        Row(modifier = Modifier.fillMaxWidth().clickable { onSub(-1) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(if (selSub == -1) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (selSub == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        Text(
+                            stringResource(R.string.dl_captions_multi, selSubs.size),
+                            style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(modifier = Modifier.fillMaxWidth().clickable { onSubs(emptySet()) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (selSubs.isEmpty()) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (selSubs.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.dl_none), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                         }
                         sd.subtitles.forEachIndexed { i, st ->
-                            Row(modifier = Modifier.fillMaxWidth().clickable { onSub(i) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(if (selSub == i) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (selSub == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                            val on = selSubs.contains(i)
+                            Row(modifier = Modifier.fillMaxWidth().clickable {
+                                onSubs(if (on) selSubs - i else selSubs + i)
+                            }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(if (on) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(st.label ?: st.langTag ?: ("#" + (i + 1)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
                     // Live size estimate for the current selection (IO, debounced by composition).
-                    LaunchedEffect(selQuality, selAudio, selSub) {
+                    LaunchedEffect(selQuality, selAudio, selSubs) {
                         onEst(-1L)
                         try {
                             val p = withContext(Dispatchers.IO) {
-                                PinManager.buildPlan(sd, selQuality, selAudio, selSub, 0)
+                                PinManager.buildPlan(sd, selQuality, selAudio, selSubs, 0)
                             }
                             onEst(if (p == null) -1L else withContext(Dispatchers.IO) {
-                                PinManager.estimateBytes(listOf(p.videoUrl, p.audioUrl, p.subUrl))
+                                PinManager.estimateBytes(listOf(p.videoUrl, p.audioUrl, p.subUrl) + p.subs.drop(1).map { it.url })
                             })
                         } catch (_: Exception) { onEst(-1L) }
                     }
