@@ -379,4 +379,14 @@
     <string name="af_calls">Pause for phone calls only</string>
     <string name="af_calls_desc">Ignores other app sounds — asks for phone-state permission</string>
     <string name="af_perm_denied">Phone permission denied — kept general mode</string>
+    <string name="country_bh">🇧🇭 Bahrain</string>
+    <string name="country_om">🇴🇲 Oman</string>
+    <string name="country_ye">🇾🇪 Yemen</string>
+    <string name="country_lb">🇱🇧 Lebanon</string>
+    <string name="country_sy">🇸🇾 Syria</string>
+    <string name="country_ps">🇵🇸 Palestine</string>
+    <string name="country_tr">🇹🇷 Turkey</string>
+    <string name="country_ir">🇮🇷 Iran</string>
+    <string name="country_fr">🇫🇷 France</string>
+    <string name="country_de">🇩🇪 Germany</string>
 </resources>

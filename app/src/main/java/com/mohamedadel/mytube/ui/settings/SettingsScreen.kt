@@ -48,9 +48,13 @@ val LANG_OPTIONS = listOf("ar" to R.string.lang_ar, "en" to R.string.lang_en, "f
 
 val COUNTRY_OPTIONS = listOf(
     "EG" to R.string.country_eg, "SA" to R.string.country_sa, "AE" to R.string.country_ae,
-    "KW" to R.string.country_kw, "QA" to R.string.country_qa, "MA" to R.string.country_ma,
-    "DZ" to R.string.country_dz, "JO" to R.string.country_jo, "IQ" to R.string.country_iq,
-    "US" to R.string.country_us, "GB" to R.string.country_gb, "global" to R.string.country_global
+    "KW" to R.string.country_kw, "QA" to R.string.country_qa, "BH" to R.string.country_bh,
+    "OM" to R.string.country_om, "YE" to R.string.country_ye, "IQ" to R.string.country_iq,
+    "JO" to R.string.country_jo, "LB" to R.string.country_lb, "SY" to R.string.country_sy,
+    "PS" to R.string.country_ps, "TR" to R.string.country_tr, "IR" to R.string.country_ir,
+    "MA" to R.string.country_ma, "DZ" to R.string.country_dz,
+    "US" to R.string.country_us, "GB" to R.string.country_gb, "FR" to R.string.country_fr,
+    "DE" to R.string.country_de, "global" to R.string.country_global
 )
 
 @Composable

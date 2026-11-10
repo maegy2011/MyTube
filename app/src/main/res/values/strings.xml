@@ -379,4 +379,14 @@
     <string name="af_calls">إيقاف للمكالمات فقط</string>
     <string name="af_calls_desc">يتجاهل أصوات التطبيقات الأخرى — يطلب إذن حالة الهاتف</string>
     <string name="af_perm_denied">رُفض إذن الهاتف — بقي الوضع العام</string>
+    <string name="country_bh">🇧🇭 البحرين</string>
+    <string name="country_om">🇴🇲 عُمان</string>
+    <string name="country_ye">🇾🇪 اليمن</string>
+    <string name="country_lb">🇱🇧 لبنان</string>
+    <string name="country_sy">🇸🇾 سوريا</string>
+    <string name="country_ps">🇵🇸 فلسطين</string>
+    <string name="country_tr">🇹🇷 تركيا</string>
+    <string name="country_ir">🇮🇷 إيران</string>
+    <string name="country_fr">🇫🇷 فرنسا</string>
+    <string name="country_de">🇩🇪 ألمانيا</string>
 </resources>
