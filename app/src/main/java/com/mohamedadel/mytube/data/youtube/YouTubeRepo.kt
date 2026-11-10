@@ -213,7 +213,9 @@ object YouTubeRepo {
                             muxedQualities = setOf("live"),
                             title = try { ext.name } catch (_: Exception) { null },
                             channelUrl = try { ext.uploaderUrl } catch (_: Exception) { null },
-                            isLive = true
+                            isLive = true,
+                            // age gate must cover live too (was reset to 0 — an actual protection hole)
+                            ageLimit = try { ext.ageLimit } catch (_: Exception) { 0 }
                         )
                     }
                 }

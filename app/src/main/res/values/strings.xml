@@ -460,4 +460,6 @@
     <string name="ok">حسنًا</string>
     <string name="pin_quick">تثبيت سريع (آخر إعدادات)</string>
     <string name="dl_captions_multi">الترجمة (%d لغات — اختر عدة)</string>
+    <string name="pin_orphans_fmt">ملفات يتيمة على الخارجي: %d (%s) — اضغط للتنظيف</string>
+    <string name="pin_orphans_cleaned_fmt">نُظف %d عنصرًا يتيمًا</string>
 </resources>

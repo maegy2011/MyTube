@@ -460,4 +460,6 @@
     <string name="ok">OK</string>
     <string name="pin_quick">Quick pin (last settings)</string>
     <string name="dl_captions_multi">Captions (%d langs — pick several)</string>
+    <string name="pin_orphans_fmt">Orphaned files on external: %d (%s) — tap to clean</string>
+    <string name="pin_orphans_cleaned_fmt">Cleaned %d orphaned items</string>
 </resources>

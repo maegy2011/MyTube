@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -150,6 +151,12 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
             }
             IconButton(onClick = { onLongClick(v) }, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            // major #7: onRemove was accepted but never rendered (history delete was dead).
+            if (onRemove != null) {
+                IconButton(onClick = { onRemove(v) }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }

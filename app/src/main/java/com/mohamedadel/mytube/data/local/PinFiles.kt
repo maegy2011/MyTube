@@ -78,6 +78,46 @@ object PinFiles {
     fun isPinned(context: Context, videoKey: String): Boolean =
         try { existingDir(context, videoKey) != null } catch (_: Exception) { false }
 
+    // Orphan scan: external dirs whose sha is NOT among the Room pin keys
+    // (left behind after switching location to internal — invisible to delete/clearAll UI paths
+    // that only enumerate the current base dir). Returns (count, bytes).
+    fun externalOrphans(context: Context, knownKeys: List<String>): Pair<Int, Long> {
+        return try {
+            val ext = context.getExternalFilesDir(null) ?: return 0 to 0L
+            val travel = java.io.File(ext, DIR)
+            if (!travel.exists()) return 0 to 0L
+            val known = knownKeys.map { sha(it) }.toSet()
+            var n = 0; var b = 0L
+            travel.listFiles()?.forEach { d ->
+                try {
+                    if (d.isDirectory && java.io.File(d, "meta.json").exists() && d.name !in known) {
+                        n++
+                        b += d.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                    }
+                } catch (_: Exception) { }
+            }
+            n to b
+        } catch (_: Exception) { 0 to 0L }
+    }
+
+    fun cleanExternalOrphans(context: Context, knownKeys: List<String>): Int {
+        return try {
+            val ext = context.getExternalFilesDir(null) ?: return 0
+            val travel = java.io.File(ext, DIR)
+            if (!travel.exists()) return 0
+            val known = knownKeys.map { sha(it) }.toSet()
+            var n = 0
+            travel.listFiles()?.forEach { d ->
+                try {
+                    if (d.isDirectory && java.io.File(d, "meta.json").exists() && d.name !in known) {
+                        d.deleteRecursively(); n++
+                    }
+                } catch (_: Exception) { }
+            }
+            n
+        } catch (_: Exception) { 0 }
+    }
+
     fun delete(context: Context, videoKey: String) {
         try { pinDir(context, videoKey).deleteRecursively() } catch (_: Exception) { }
         try { File(File(context.filesDir, DIR), sha(videoKey)).deleteRecursively() } catch (_: Exception) { }

@@ -735,12 +735,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         return out
     }
     LaunchedEffect(streamData, prefAudioLang, prefAudioLang2) {
-        // auto-pick the audio track along the fallback chain (primary -> secondary -> device -> en/original)
-        audioTrackIdx = pickAudioIdx()
+        // backup only: playVideo sets both indices synchronously after resolve (no race).
+        // Pinned playback keeps its packaged tracks — never auto-rematch those.
+        if (!playingPinned && audioTrackIdx == 0) audioTrackIdx = pickAudioIdx()
     }
     LaunchedEffect(streamData, prefSubLang, prefSubLang2) {
-        // auto-match the subtitle chip (off stays off)
-        subTrackIdx = matchSubIdx()
+        // backup only (same reason); off stays off; pinned keeps sub 0.
+        if (!playingPinned) subTrackIdx = matchSubIdx()
     }
     // (refreshTrending lives after `scope` below — Kotlin locals must precede use.)
     LaunchedEffect(player, prefSubLang, prefAudioLang, prefQuality, prefSubRole, prefHideForced, prefUndetermined, prefAudioRole) { applyLangPrefs() }
@@ -1412,6 +1413,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 playerError = ctx.getString(R.string.err_no_sources)
                 return@launch
             }
+            // Fresh video = fresh indices, set HERE (the LaunchedEffect on streamData races
+            // applyQuality and played the previous video's dub/subtitle — major #4/#5).
+            audioTrackIdx = pickAudioIdxFor(s)
+            subTrackIdx = matchSubIdxFor(s)
             if (s.ageLimit >= 18 && !ageOk) {
                 if (prefAgeMode == "block") {
                     playerLoading = false
@@ -2110,6 +2115,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
         }
     }
+    // external orphan pins (left after switching location to internal)
+    var orphanInfo by remember { mutableStateOf(0 to 0L) }
+    fun refreshOrphans() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                orphanInfo = com.mohamedadel.mytube.data.local.PinFiles.externalOrphans(ctx.applicationContext, pinKeys.toList())
+            } catch (_: Exception) { }
+        }
+    }
+    fun cleanOrphans() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val n = com.mohamedadel.mytube.data.local.PinFiles.cleanExternalOrphans(ctx.applicationContext, pinKeys.toList())
+                refreshOrphans()
+                toast(ctx.getString(R.string.pin_orphans_cleaned_fmt, n))
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(showDownloads, pinKeys) { if (showDownloads) refreshOrphans() }
     fun clearAllPins() {
         try {
             val cur = playing?.favKey()
@@ -2548,7 +2572,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     isPinning = pinningKeys.contains(cur.favKey()),
                     onPin = {
                         if (pinKeys.contains(cur.favKey())) doUnpin(cur.favKey())
-                        else requestPin(cur, streamData, quality, audioTrackIdx, if (subTrackIdx >= 0) setOf(subTrackIdx) else emptySet())
+                        else requestPin(cur, streamData, quality, audioTrackIdx, ((if (subTrackIdx >= 0) setOf(subTrackIdx) else emptySet()) + matchSubIdxsFor(streamData)))
                     },
                     onSubscribe = { toggleSubscription(streamData?.channelUrl, cur.channel, channelDetail?.avatar) },
                     onChannelClick = { openChannel(streamData?.channelUrl) },
@@ -2824,12 +2848,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         prefSkipSilence = v
                         try { prefs.edit().putBoolean("pref_skip_silence", v).apply() } catch (_: Exception) { }
                         toast(ctx.getString(R.string.toast_skip_restart))
-                        try {
-                            // processor chain is fixed at player build: restart service so the new
-                            // RenderersFactory takes effect, then recreate to rebind the new player
-                            ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java))
-                        } catch (_: Exception) { }
-                        try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
+                        // processor chain is fixed at player build: stop the service, WAIT for
+                        // death, then recreate — the old fire-and-forget raced a stale player (major #6).
+                        try { ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java)) } catch (_: Exception) { }
+                        scope.launch {
+                            try { kotlinx.coroutines.delay(900) } catch (_: Exception) { }
+                            try { withContext(kotlinx.coroutines.Dispatchers.Main) { (ctx as? android.app.Activity)?.recreate() } } catch (_: Exception) { }
+                        }
                     },
                     speed = prefSpeed,
                     onSpeed = { v -> prefSpeed = v; try { prefs.edit().putFloat("pref_speed", v).apply() } catch (_: Exception) { } },
@@ -2978,7 +3003,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         thumbLookup = { k -> try { history.firstOrNull { it.videoKey == k }?.thumbnail } catch (_: Exception) { null } },
                         onPlay = { v -> showDownloads = false; playVideo(v) },
                         onDelete = { k -> doUnpin(k) },
-                        onClearAll = { clearAllPins() }
+                        onClearAll = { clearAllPins() },
+                        orphanCount = orphanInfo.first,
+                        orphanBytes = orphanInfo.second,
+                        onCleanOrphans = { cleanOrphans() }
                     )
                 }
                 showGroups -> {

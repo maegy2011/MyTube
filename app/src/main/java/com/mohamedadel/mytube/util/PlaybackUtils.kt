@@ -146,11 +146,41 @@ fun Context.shareVideoCtx(v: VideoItem) {
     } catch (_: Exception) { }
 }
 
+// Universal YouTube ID extractor: watch?v=, /shorts/, /live/, /embed/, youtu.be/,
+// music.youtube.com, /v/ — returns null only when no 11-char ID is present.
+fun youtubeIdFrom(link: String?): String? {
+    if (link.isNullOrBlank()) return null
+    val l = link.trim()
+    // triple-quoted: regex backslashes need no Kotlin escaping
+    val pats = listOf(
+        Regex("""[?&]v=([A-Za-z0-9_-]{11})"""),
+        Regex("""youtu\.be/([A-Za-z0-9_-]{11})"""),
+        Regex("""/shorts/([A-Za-z0-9_-]{11})"""),
+        Regex("""/live/([A-Za-z0-9_-]{11})"""),
+        Regex("""/embed/([A-Za-z0-9_-]{11})"""),
+        Regex("""/v/([A-Za-z0-9_-]{11})""")
+    )
+    for (p in pats) {
+        try { p.find(l)?.groupValues?.getOrNull(1)?.let { return it } } catch (_: Exception) { }
+    }
+    return null
+}
+
 fun Context.openInYoutubeCtx(v: VideoItem) {
-    val id = v.id ?: return
+    val id = v.id ?: youtubeIdFrom(v.url)
+    if (id == null) {
+        // no parseable ID: open the raw URL (or toast when there is none)
+        val raw = v.url
+        if (raw.isNullOrBlank()) {
+            try { android.widget.Toast.makeText(this, getString(com.mohamedadel.mytube.R.string.err_no_sources), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+            return
+        }
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(raw))) } catch (_: Exception) { }
+        return
+    }
     try {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$id")).apply { `package` = "com.google.android.youtube" })
     } catch (_: Exception) {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$id")))
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$id"))) } catch (_: Exception) { }
     }
 }

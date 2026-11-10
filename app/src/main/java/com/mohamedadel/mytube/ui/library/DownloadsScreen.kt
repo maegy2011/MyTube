@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.library
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,11 +9,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -47,7 +50,10 @@ fun DownloadsScreen(
     thumbOf: (PinEntity) -> String?,
     onPlay: (PinEntity) -> Unit,
     onDelete: (String) -> Unit,
-    onClearAll: () -> Unit
+    onClearAll: () -> Unit,
+    orphanCount: Int = 0,
+    orphanBytes: Long = 0L,
+    onCleanOrphans: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -56,6 +62,21 @@ fun DownloadsScreen(
         ) {
             Icon(Icons.Rounded.DownloadDone, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(8.dp))
+            if (orphanCount > 0) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable { onCleanOrphans() },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.CleaningServices, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.pin_orphans_fmt, orphanCount, String.format("%.1f MB", orphanBytes / 1048576.0)),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary, maxLines = 2
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+            }
             Text(
                 stringResource(R.string.dl_title),
                 style = MaterialTheme.typography.headlineSmall,
@@ -168,7 +189,10 @@ fun DownloadsRoute(
     thumbLookup: (String) -> String?,
     onPlay: (VideoItem) -> Unit,
     onDelete: (String) -> Unit,
-    onClearAll: () -> Unit
+    onClearAll: () -> Unit,
+    orphanCount: Int = 0,
+    orphanBytes: Long = 0L,
+    onCleanOrphans: () -> Unit = {}
 ) {
     DownloadsScreen(
         pins = pins,
@@ -178,6 +202,9 @@ fun DownloadsRoute(
         thumbOf = { pe -> try { thumbLookup(pe.videoKey) } catch (_: Exception) { null } },
         onPlay = { pe -> onPlay(pe.toVideoItem()) },
         onDelete = onDelete,
-        onClearAll = onClearAll
+        onClearAll = onClearAll,
+        orphanCount = orphanCount,
+        orphanBytes = orphanBytes,
+        onCleanOrphans = onCleanOrphans
     )
 }
