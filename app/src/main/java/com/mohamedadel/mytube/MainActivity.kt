@@ -127,7 +127,6 @@ import com.mohamedadel.mytube.ui.results.TREND_TABS
 import com.mohamedadel.mytube.ui.search.SearchScreen
 import com.mohamedadel.mytube.ui.queue.VideoOptionsDialog
 import com.mohamedadel.mytube.ui.settings.COUNTRY_OPTIONS
-import com.mohamedadel.mytube.ui.settings.LANG_OPTIONS
 import com.mohamedadel.mytube.ui.settings.SettingsScreen
 import com.mohamedadel.mytube.util.autoUrl
 import com.mohamedadel.mytube.util.batteryExemptionIntent
@@ -454,6 +453,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     // Music-tab source: 0 = SoundCloud, 1 = YouTube Music (native music_songs filter).
     var scSource by remember { mutableIntStateOf(0) }
+    // Music-tab YTM kind filter (SoundCloud source stays unfiltered — its extractor has one list).
+    var scKind by remember { mutableStateOf("songs") } // songs | albums | playlists
     var trendTab by remember { mutableStateOf(0) }
     var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
     var trendingLoading by remember { mutableStateOf(false) }
@@ -511,7 +512,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefShowInfo by remember { mutableStateOf(true) }
     var prefShowSubs by remember { mutableStateOf(true) }
     var prefAllow4k by remember { mutableStateOf(true) }
-    var agePending by remember { mutableStateOf<Pair<VideoItem, Boolean>?>(null) }
+    // warn-consent carries the resolved stream: confirming resumes playback with ZERO re-extraction.
+    var agePending by remember { mutableStateOf<Triple<VideoItem, Boolean, com.mohamedadel.mytube.data.youtube.StreamData?>?>(null) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
     val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
     val histFlowPinned = remember(pinKeys) {
@@ -879,7 +881,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     fun addToGroup(gid: Long, url: String) {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { dao.addMember(com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity(groupId = gid, channelUrl = url)) } catch (_: Exception) { }
+            try {
+                // no UNIQUE(groupId, channelUrl) (would need a v9 migration): check-then-add
+                // also kills the rapid-double-tap duplicate.
+                val exists = try { dao.memberUrls(gid).contains(url) } catch (_: Exception) { true }
+                if (!exists) dao.addMember(com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity(groupId = gid, channelUrl = url))
+            } catch (_: Exception) { }
         }
     }
     fun removeFromGroup(gid: Long, url: String) {
@@ -1110,10 +1117,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Returns (playback url, is it a muxed file, user-picked audio url or null).
     fun resolvePlaybackUrl(q: String, s: StreamData): Triple<String, Boolean, String?>? {
         val selAudio = s.audioTracks.getOrNull(audioTrackIdx)?.url ?: s.audioLowestUrl
+        val maxH = if (prefAllow4k) Int.MAX_VALUE else 1080
+        val capped = if (maxH == Int.MAX_VALUE) s else try { s.copy(videoUrlByQuality = s.videoUrlByQuality.filterKeys { (qualityHeight(it) ?: 0) <= maxH }) } catch (_: Exception) { s }
         val url = when {
             q == "audio-only (default)" -> selAudio
-            q.startsWith("auto") -> autoUrl(s, ctx.estimatedDownstreamKbps())
-            else -> s.videoUrlByQuality[q]
+            q.startsWith("auto") -> autoUrl(capped, ctx.estimatedDownstreamKbps())
+            else -> capped.videoUrlByQuality[q]
         } ?: return null
         val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
         return Triple(url, url in muxedUrls, selAudio)
@@ -1255,7 +1264,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Called on session start and whenever a new video starts while connected.
     fun castCurrent(autoplay: Boolean = true) {
         try {
-            val s = streamData ?: return
+            val s0 = streamData ?: return
+            val s = cap4k(s0)
             val triple = try { resolvePlaybackUrl(quality, s) } catch (_: Exception) { null } ?: return
             val url = triple.first
             val mime = castMimeFor(url, quality == "audio-only (default)")
@@ -1275,7 +1285,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try { toast(ctx.getString(R.string.toast_cast_ended)) } catch (_: Exception) { }
         }
     }
-    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true, ageOk: Boolean = false) {
+    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null) {
         playing = v
         recordHistory(v)
         if (expand) playerExpanded = true
@@ -1324,7 +1334,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             return@launch
                         } else if (prefAgeMode == "warn") {
                             playerLoading = false
-                            agePending = v to inQueue
+                            agePending = Triple(v, inQueue, null)
                             return@launch
                         }
                     }
@@ -1361,7 +1371,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             )
                         ) else emptyList()
                     val s = com.mohamedadel.mytube.data.youtube.StreamData(
-                        audioLowestUrl = if (hasAudio) android.net.Uri.fromFile(aFile).toString() else if (!hasAudio) vUri else null,
+                        audioLowestUrl = if (hasAudio) android.net.Uri.fromFile(aFile).toString() else vUri,
                         videoUrlByQuality = mapOf(label to vUri),
                         muxedQualities = if (hasAudio) emptySet() else setOf(label),
                         title = v.title,
@@ -1385,7 +1395,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 return@launch
             }
             // M1: consume a prefetched next-item stream when it matches (skips the 1-3s extraction spinner)
-            var s = try { prefetched.remove(key) } catch (_: Exception) { null }
+            var s = pre ?: try { prefetched.remove(key) } catch (_: Exception) { null }
             if (s != null && s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) s = null
             if (s == null) {
                 s = try { YouTubeRepo.streamRouted(v.url ?: return@launch) } catch (_: Exception) { null }
@@ -1410,7 +1420,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     return@launch
                 } else if (prefAgeMode == "warn") {
                     playerLoading = false
-                    agePending = v to inQueue
+                    agePending = Triple(v, inQueue, s)
                     return@launch
                 }
             }
@@ -1690,7 +1700,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     // SponsorBlock: silent seek past community segments (guarded, no toast spam).
                     try {
                         val segs = sbSegments
-                        if (prefSb && segs.isNotEmpty() && p.isPlaying) {
+                        if (prefSb && segs.isNotEmpty() && p.isPlaying && streamData?.isLive != true) {
                             val pos = playerPositionMs
                             for (sg in segs) {
                                 if (pos >= sg.startMs && pos < sg.endMs - 300) { p.seekTo(sg.endMs); break }
@@ -1800,7 +1810,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // SoundCloud search (separate tab, own state; failures surface with retry).
     var scJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    fun doScSearch(q: String, src: Int = scSource) {
+    fun doScSearch(q: String, src: Int = scSource, kind: String = scKind) {
         if (q.isBlank()) return
         scQuery = q
         scLoading = true
@@ -1808,12 +1818,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scJob?.cancel()
         scJob = scope.launch {
             try {
-                remotePlaylists = if (src == 1)
+                remotePlaylists = if (src == 1 && kind == "albums")
+                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(
+                        q, if (prefCountry == "global") null else prefCountry, albums = true)
+                else if (src == 1 && kind == "playlists")
                     com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(
                         q, if (prefCountry == "global") null else prefCountry, music = true)
+                else if (src == 1)
+                    emptyList()
                 else
                     com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, sc = true)
-                val page = if (src == 1)
+                val page = if (src == 1 && kind == "albums")
+                    com.mohamedadel.mytube.data.youtube.SearchPage(emptyList(), null, false, null)
+                else if (src == 1)
                     com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(
                         q, null, if (prefCountry == "global") null else prefCountry, "music_songs")
                 else
@@ -1978,7 +1995,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val qq = q ?: if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
                 val ai = aIdx ?: pickAudioIdxFor(s)
                 val si = sIdxs ?: matchSubIdxsFor(s)
-                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps)
+                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 val est = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
                 pinSd = s
@@ -2059,7 +2076,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 .apply()
         } catch (_: Exception) { }
         val plan = if (sd != null) {
-            com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSubs, ctx.estimatedDownstreamKbps())
+            com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSubs, ctx.estimatedDownstreamKbps(), maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
         } else pc.plan
         if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return }
         runPinDownload(pc.v, plan, key)
@@ -2087,7 +2104,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val ai = pickAudioIdxFor(s)
                 val lastSubs = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.filter { s.subtitles.getOrNull(it) != null }.toSet() } catch (_: Exception) { emptySet() }
                 val si = if (lastSubs.isNotEmpty()) lastSubs else matchSubIdxsFor(s)
-                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps)
+                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 runPinDownload(v, plan, key)
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
@@ -2477,7 +2494,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             } else {
                                 val t = streamData?.subtitles?.getOrNull(i)
                                 val tag = t?.langTag?.substringBefore("-")?.takeIf { it.isNotBlank() }
-                                val code = tag?.let { c -> if (LANG_OPTIONS.any { o -> o.first == c }) c else "auto" } ?: "auto"
+                                // keep the raw tag (matching is prefix-based): collapsing rare tags to
+                                // "auto" made the setting disagree with the chip the user just picked.
+                                val code = tag ?: "auto"
                                 prefSubLang = code
                                 prefs.edit().putString("pref_sub_lang", code).apply()
                                 subTrackIdx = i
@@ -2885,7 +2904,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onBack = { channelScreenUrl = null },
                         onPlay = { playVideo(it) },
                         onLongClick = { optionsFor = it },
-                        onAdd = { enqueueLast(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
                         pinBadges = pinBadges,
@@ -3008,7 +3026,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
-                        onAdd = { enqueueLast(it) }
                     )
                 }
                 showSC -> {
@@ -3038,6 +3055,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 label = { Text(stringResource(R.string.sc_source_ytm)) }
                             )
                         }
+                        if (scSource == 1) {
+                            androidx.compose.foundation.layout.Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf("songs", "albums", "playlists").forEach { k ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = scKind == k,
+                                        onClick = { if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
+                                        label = { Text(stringResource(when (k) { "songs" -> R.string.filter_songs; "albums" -> R.string.filter_albums; else -> R.string.filter_playlists })) }
+                                    )
+                                }
+                            }
+                        }
                         if (scError != null) {
                             Text(
                                 scError ?: "",
@@ -3066,7 +3097,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                     isFav = v.favKey() in favoriteSet,
                                     onClick = { playVideo(v) },
                                     onLongClick = { optionsFor = it },
-                                    onAdd = { enqueueLast(it) },
                                     onFav = { toggleFavorite(it) },
                                     pinBadge = pinBadges[v.favKey()],
                                     pinning = pinningKeys.contains(v.favKey())
@@ -3101,7 +3131,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         items = favorites,
                         onPlay = { playVideo(it) },
                         onToggleFav = { toggleFavorite(it) },
-                        onAdd = { enqueueLast(it) },
                         onClear = { clearFavorites() },
                         onBack = { smartBack() },
                         onLongClick = { optionsFor = it },
@@ -3211,7 +3240,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         onLongClick = { optionsFor = it },
                         onFav = { toggleFavorite(it) },
-                        onAdd = { enqueueLast(it) }
                     )
                 }
                 loading -> {
@@ -3235,7 +3263,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
-                        onAdd = { enqueueLast(it) },
                         onLongClick = { optionsFor = it },
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys
@@ -3327,7 +3354,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 isFav = v.favKey() in favoriteSet,
                                 onClick = { playVideo(v) },
                                 onLongClick = { optionsFor = it },
-                                onAdd = { enqueueLast(it) },
                                 onFav = { toggleFavorite(it) },
                                 pinBadge = pinBadges[v.favKey()],
                                 pinning = pinningKeys.contains(v.favKey())
@@ -3419,7 +3445,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             agePending?.let { ap ->
                 com.mohamedadel.mytube.ui.library.AgeWarnDialog(
                     title = ap.first.title,
-                    onPlay = { val x = ap; agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true) },
+                    onPlay = { val x = ap; agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true, pre = x.third) },
                     onDismiss = { agePending = null }
                 )
             }
@@ -3432,6 +3458,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     selQuality = pinSelQuality,
                     selAudio = pinSelAudio,
                     selSubs = pinSelSubs,
+                    maxH = if (prefAllow4k) Int.MAX_VALUE else 1080,
                     estBytes = pinEst,
                     sizeUnknown = stringResource(R.string.pin_size_unknown),
                     sizeFmt = { mb -> ctx.getString(R.string.pin_size_fmt, mb) },

@@ -22,7 +22,7 @@ object SponsorBlock {
             .callTimeout(30, TimeUnit.SECONDS)
             .build()
     }
-    private val cache = mutableMapOf<String, List<SbSeg>>()
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, List<SbSeg>>()
 
     suspend fun fetch(videoId: String): List<SbSeg> {
         cache[videoId]?.let { return it }
@@ -48,7 +48,11 @@ object SponsorBlock {
             }
         } catch (_: Exception) { }
         if (out.isEmpty()) cache.remove(videoId) else cache[videoId] = out
-        if (cache.size > 50) cache.clear()
+        if (cache.size > 50) {
+            // trim oldest ~10 instead of clearing (clear-all restamps every hot video)
+            val drop = cache.keys.take(10)
+            drop.forEach { cache.remove(it) }
+        }
         return out
     }
 

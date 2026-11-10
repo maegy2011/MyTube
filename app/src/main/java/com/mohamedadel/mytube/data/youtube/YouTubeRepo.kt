@@ -45,6 +45,7 @@ object YouTubeRepo {
         return try { Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString() } catch (_: Exception) { s }
     }
     private fun service() = NewPipe.getService("YouTube")
+    // SoundCloud by name; index 1 is the documented fallback (YouTube=0, SoundCloud=1, media.ccc.de=2, PeerTube=3, Bandcamp=4).
     private fun scService() = try { NewPipe.getService("SoundCloud") } catch (_: Exception) { NewPipe.getService(1) }
     init { runCatching { NewPipe.init(NewPipeDownloaderImpl()) } }
 
@@ -301,7 +302,7 @@ object YouTubeRepo {
             } ?: emptyList() } catch (_: Exception) {}
             var related: List<VideoItem> = emptyList()
             try { related = ext.relatedStreams?.getItems()?.mapNotNull { info ->
-                if (true) {
+                run {
                     val u: String? = try { info.url } catch (_: Exception) { null }
                     val nm: String? = try { decodeHtml(info.name) } catch (_: Exception) { null }
                     val ch: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { null }
@@ -315,7 +316,7 @@ object YouTubeRepo {
                     var rChUrl: String? = null
                     try { rChUrl = info.uploaderUrl } catch (_: Exception) {}
                     if (u != null) VideoItem(rid, nm, ch, th, d, vw, u, channelUrl = rChUrl) else null
-                } else null
+                }
             }?.take(20) ?: emptyList() } catch (_: Exception) {}
             var boards: List<Storyboard> = emptyList()
             try { boards = ext.frames?.mapNotNull { f ->
@@ -579,7 +580,11 @@ object YouTubeRepo {
             val out = sb.toString().takeIf { it.isNotBlank() } ?: return@withContext null
             val detected = arr.optString(2, "").lowercase()
             val final = if (detected == t || detected.startsWith("$t-")) title else out
-            if (titleCache.size > 200) titleCache.clear()
+            if (titleCache.size > 200) {
+                // evict ~a quarter (oldest insertion order) instead of nuking the whole cache
+                val drop = titleCache.keys.take(50)
+                drop.forEach { titleCache.remove(it) }
+            }
             titleCache[key] = final
             final
         } catch (_: Exception) { null }

@@ -22,7 +22,7 @@ import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Share
@@ -139,11 +139,12 @@ fun VideoOptionsDialog(
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(8.dp))
+                // (icon, label, action): icons bind by position, never by translated label
                 val items = listOf(
-                    stringResource(R.string.play_now) to onPlayNow,
-                    stringResource(R.string.play_next_opt) to onPlayNext,
-                    stringResource(R.string.cd_add_queue_end) to onQueueEnd,
-                    stringResource(R.string.video_options_add_playlist) to onAddToPlaylist
+                    Triple(Icons.Rounded.PlayArrow, stringResource(R.string.play_now), onPlayNow),
+                    Triple(Icons.Rounded.SkipNext, stringResource(R.string.play_next_opt), onPlayNext),
+                    Triple(Icons.Rounded.QueueMusic, stringResource(R.string.cd_add_queue_end), onQueueEnd),
+                    Triple(Icons.AutoMirrored.Rounded.PlaylistAdd, stringResource(R.string.video_options_add_playlist), onAddToPlaylist)
                 )
                 if (onSubscribe != null) {
                     Row(
@@ -213,17 +214,11 @@ fun VideoOptionsDialog(
                         )
                     }
                 }
-                items.forEach { (label, action) ->
+                items.forEach { (icon, label, action) ->
                     Row(
                         modifier = Modifier.fillMaxWidth().clickable(onClick = action).padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val icon = when (label) {
-                            stringResource(R.string.play_now) -> Icons.Rounded.PlayArrow
-                            stringResource(R.string.play_next_opt) -> Icons.Rounded.SkipNext
-                            stringResource(R.string.cd_add_queue_end) -> Icons.Rounded.QueueMusic
-                            else -> Icons.Rounded.PlaylistAdd
-                        }
                         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
                         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)

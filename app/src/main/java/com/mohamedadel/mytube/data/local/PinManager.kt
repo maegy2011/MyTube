@@ -2,9 +2,9 @@ package com.mohamedadel.mytube.data.local
 
 import android.content.Context
 import com.mohamedadel.mytube.data.youtube.StreamData
+import com.mohamedadel.mytube.util.qualityHeight
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.util.autoUrl
-import com.mohamedadel.mytube.util.qualityHeight
 import java.io.File
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -40,12 +40,13 @@ object PinManager {
     // Same URL math as MainActivity.applyQuality (muxed vs merged, auto mapping).
     // kbps must be the live estimate (not 0): "auto" resolves differently per bandwidth,
     // and pinning must capture exactly what the player would play.
-    fun buildPlan(sd: StreamData, quality: String, audioIdx: Int, subIdxs: Set<Int>, kbps: Int = 0): PinPlan? {
+    fun buildPlan(sd: StreamData, quality: String, audioIdx: Int, subIdxs: Set<Int>, kbps: Int = 0, maxH: Int = Int.MAX_VALUE): PinPlan? {
         // Legacy single-index callers pass one element; empty = no subtitles.
-        return buildPlanMulti(sd, quality, audioIdx, subIdxs, kbps)
+        return buildPlanMulti(sd, quality, audioIdx, subIdxs, kbps, maxH)
     }
 
-    fun buildPlanMulti(sd: StreamData, quality: String, audioIdx: Int, subIdxs: Set<Int>, kbps: Int = 0): PinPlan? {
+    fun buildPlanMulti(sd: StreamData, quality: String, audioIdx: Int, subIdxs: Set<Int>, kbps: Int = 0, maxH: Int = Int.MAX_VALUE): PinPlan? {
+        val sd = if (maxH == Int.MAX_VALUE) sd else try { sd.copy(videoUrlByQuality = sd.videoUrlByQuality.filterKeys { (qualityHeight(it) ?: 0) <= maxH }) } catch (_: Exception) { sd }
         val selAudio = sd.audioTracks.getOrNull(audioIdx)?.url ?: sd.audioLowestUrl
         val audioTag = sd.audioTracks.getOrNull(audioIdx)?.let { it.localeTag ?: it.name }
         val url = when {
@@ -54,7 +55,7 @@ object PinManager {
             else -> sd.videoUrlByQuality[quality]
         } ?: return null
         val picked = subIdxs.sorted().mapNotNull { i ->
-            sd.subtitles.getOrNull(i)?.let { t -> PinSub(t.url ?: return@mapNotNull null, t.mime, t.langTag, t.label ?: t.langTag) }
+            sd.subtitles.getOrNull(i)?.let { t -> PinSub(t.url, t.mime, t.langTag, t.label ?: t.langTag) }
         }
         val first = picked.firstOrNull()
         if (quality == "audio-only (default)") {
@@ -118,8 +119,9 @@ object PinManager {
                     val buf = ByteArray(256 * 1024)
                     var done = 0L
                     var lastReport = 0L
+                    val input = body.byteStream()
                     while (true) {
-                        val n = body.byteStream().read(buf)
+                        val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
                         done += n
@@ -151,11 +153,13 @@ object PinManager {
             val aFile = File(staging, "audio.m4a")
             val sFile = File(staging, "sub.vtt")
             val estTotal = estimateBytes(listOf(plan.videoUrl, plan.audioUrl)).takeIf { it > 0 } ?: 0L
+            // single-stream pins span the full estimate (the old /2 showed a stuck 50% bar)
+            val videoSpan = if (plan.audioUrl != null) estTotal / 2 else estTotal
             if (plan.videoUrl != null) {
-                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, estTotal / 2)) { staging.deleteRecursively(); return -1L }
+                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, videoSpan)) { staging.deleteRecursively(); return -1L }
             }
             if (plan.audioUrl != null) {
-                val base = if (plan.videoUrl != null) estTotal / 2 else 0L
+                val base = if (plan.videoUrl != null) videoSpan else 0L
                 if (!getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base)) { staging.deleteRecursively(); return -1L }
             } else if (plan.videoUrl == null && plan.audioUrl == null) {
                 staging.deleteRecursively(); return -1L
@@ -203,6 +207,7 @@ object PinManager {
                     staging.listFiles()?.forEach { f -> f.copyTo(File(dir, f.name), overwrite = true) }
                     staging.deleteRecursively()
                 } catch (_: Exception) { staging.deleteRecursively(); return -1L }
+                try { if (staging.exists()) staging.deleteRecursively() } catch (_: Exception) { }
             }
             val size = PinFiles.dirBytes(app, key)
             dao.upsertPin(

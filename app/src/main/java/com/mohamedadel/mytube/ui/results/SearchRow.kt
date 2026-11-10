@@ -54,7 +54,7 @@ import com.mohamedadel.mytube.util.formatViews
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onAdd: ((VideoItem) -> Unit)? = null, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null, pinBadge: String? = null, pinning: Boolean = false) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null, pinBadge: String? = null, pinning: Boolean = false) {
     val lctx = LocalContext.current
     val metaHasCheck = v.verified
     val meta = buildString {

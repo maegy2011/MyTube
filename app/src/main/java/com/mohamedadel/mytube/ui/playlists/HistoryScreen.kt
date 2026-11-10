@@ -212,6 +212,5 @@ fun HistoryScreen(
                 }
             }
         }
-        Spacer(Modifier.width(0.dp))
     }
 }

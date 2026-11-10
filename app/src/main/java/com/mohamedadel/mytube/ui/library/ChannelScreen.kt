@@ -23,6 +23,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -141,7 +143,6 @@ fun ChannelScreen(
                             v = v, isCurrent = false, isPlaying = false,
                             onClick = { onPlay(v) },
                             onLongClick = { onLongClick(v) },
-                            onAdd = onAdd,
                             isFav = isFav(v),
                             onFav = onFav,
                             pinBadge = pinBadges[v.favKey()],
@@ -153,7 +154,7 @@ fun ChannelScreen(
         } else if (tab == 1) {
             ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = shorts, loading = shortsLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys)
         } else if (tab == 2) {
-            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = live, loading = liveLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys)
+            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = live, badge = stringResource(R.string.live_badge), loading = liveLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys)
         } else if (tab == 3) {
             if (channelPlaylistsLoading) {
                 VideoListSkeleton(count = 4)
@@ -200,6 +201,7 @@ fun ChannelScreen(
 private fun ChannelVideoList(
     modifier: Modifier = Modifier,
     videos: List<VideoItem>,
+    badge: String? = null,
     loading: Boolean,
     onPlay: (VideoItem) -> Unit,
     onLongClick: (VideoItem) -> Unit,
@@ -210,6 +212,13 @@ private fun ChannelVideoList(
     pinningKeys: Set<String>
 ) {
     Column(modifier = modifier) {
+        if (badge != null && !loading && videos.isNotEmpty()) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFB71C1C)) {
+                    Text(text = badge, style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+            }
+        }
         if (loading) {
             VideoListSkeleton(count = 4)
         } else if (videos.isEmpty()) {
@@ -224,7 +233,6 @@ private fun ChannelVideoList(
                         v = v, isCurrent = false, isPlaying = false,
                         onClick = { onPlay(v) },
                         onLongClick = { onLongClick(v) },
-                        onAdd = onAdd,
                         isFav = isFav(v),
                         onFav = onFav,
                         pinBadge = pinBadges[v.favKey()],

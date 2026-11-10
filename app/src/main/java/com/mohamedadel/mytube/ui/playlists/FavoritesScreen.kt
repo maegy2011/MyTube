@@ -39,7 +39,6 @@ fun FavoritesScreen(
     onToggleFav: (VideoItem) -> Unit,
     onClear: () -> Unit,
     onBack: () -> Unit,
-    onAdd: ((VideoItem) -> Unit)? = null,
     onLongClick: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet()
@@ -81,7 +80,6 @@ fun FavoritesScreen(
                         isPlaying = false,
                         onClick = { onPlay(v) },
                         onLongClick = { onLongClick(it) },
-                        onAdd = onAdd,
                         isFav = true,
                         onFav = onToggleFav,
                         pinBadge = pinBadges[v.favKey()],
@@ -90,6 +88,5 @@ fun FavoritesScreen(
                 }
             }
         }
-        Spacer(Modifier.width(0.dp))
     }
 }

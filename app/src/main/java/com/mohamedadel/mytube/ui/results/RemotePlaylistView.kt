@@ -42,7 +42,6 @@ fun RemoteRoute(
     onPlay: (VideoItem) -> Unit,
     onLongClick: (VideoItem) -> Unit,
     onFav: (VideoItem) -> Unit,
-    onAdd: (VideoItem) -> Unit
 ) {
     RemotePlaylistView(
         rp = rp,
@@ -56,7 +55,6 @@ fun RemoteRoute(
         onPlay = onPlay,
         onLongClick = onLongClick,
         onFav = onFav,
-        onAdd = onAdd,
         pinBadgeOf = { v -> pinBadges[v.favKey()] },
         pinningOf = { v -> pinningKeys.contains(v.favKey()) }
     )
@@ -79,7 +77,6 @@ fun RemotePlaylistView(
     onPlay: (VideoItem) -> Unit,
     onLongClick: (VideoItem) -> Unit,
     onFav: (VideoItem) -> Unit,
-    onAdd: (VideoItem) -> Unit,
     pinBadgeOf: (VideoItem) -> String?,
     pinningOf: (VideoItem) -> Boolean
 ) {
@@ -117,7 +114,6 @@ fun RemotePlaylistView(
                         onLongClick = onLongClick,
                         isFav = isFav(v),
                         onFav = onFav,
-                        onAdd = onAdd,
                         pinBadge = pinBadgeOf(v),
                         pinning = pinningOf(v)
                     )

@@ -44,6 +44,7 @@ fun PinConfirmDialog(
     selQuality: String,
     selAudio: Int,
     selSubs: Set<Int>,
+    maxH: Int = Int.MAX_VALUE,
     estBytes: Long,
     sizeUnknown: String,
     sizeFmt: (Double) -> String,
@@ -132,7 +133,7 @@ fun PinConfirmDialog(
                         onEst(-1L)
                         try {
                             val p = withContext(Dispatchers.IO) {
-                                PinManager.buildPlan(sd, selQuality, selAudio, selSubs, 0)
+                                PinManager.buildPlan(sd, selQuality, selAudio, selSubs, 0, maxH)
                             }
                             onEst(if (p == null) -1L else withContext(Dispatchers.IO) {
                                 PinManager.estimateBytes(listOf(p.videoUrl, p.audioUrl, p.subUrl) + p.subs.drop(1).map { it.url })

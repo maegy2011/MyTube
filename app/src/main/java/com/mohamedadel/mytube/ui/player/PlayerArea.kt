@@ -285,7 +285,8 @@ fun PlayerArea(
                     else if (!nativeOnly) Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
                     else Modifier.fillMaxWidth().height(220.dp)).onGloballyPositioned { containerWPx = it.size.width }
             ) {
-                if (quality != "audio-only (default)" && player != null) {
+                val p0 = player
+                if (quality != "audio-only (default)" && p0 != null) {
                     AndroidView(
                         factory = { c ->
                             PlayerView(c).apply {
@@ -294,7 +295,7 @@ fun PlayerArea(
                                 // the fullscreen button appears because we set its click listener below.
                                 // Wrapped player: native prev/next/shuffle/repeat drive OUR queue/modes
                                 // (single-item timeline would leave them dead otherwise).
-                                val wrapped = object : ForwardingPlayer(player!!) {
+                                val wrapped = object : ForwardingPlayer(p0) {
                                     override fun seekToNext() { onNext() }
                                     override fun seekToPrevious() { onPrev() }
                                     override fun setRepeatMode(m: Int) {
@@ -352,14 +353,14 @@ fun PlayerArea(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
-                } else if (nativeOnly && player != null) {
+                } else if (nativeOnly && p0 != null) {
                     // audio-only WITH native controls: PlayerView shows the artwork (from MediaMetadata)
                     // + full controller (play/pause, seek bar, CC, speed) over it. No video surface needed.
                     AndroidView(
                         factory = { c ->
                             PlayerView(c).apply {
                                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                                val wrapped = object : ForwardingPlayer(player!!) {
+                                val wrapped = object : ForwardingPlayer(p0) {
                                     override fun seekToNext() { onNext() }
                                     override fun seekToPrevious() { onPrev() }
                                     override fun setRepeatMode(m: Int) {

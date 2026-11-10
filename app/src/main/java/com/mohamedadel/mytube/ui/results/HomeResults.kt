@@ -67,7 +67,6 @@ fun HomeEmptyState(
     onPlay: (VideoItem) -> Unit,
     isFav: (VideoItem) -> Boolean = { false },
     onFav: (VideoItem) -> Unit = {},
-    onAdd: ((VideoItem) -> Unit)? = null,
     onLongClick: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet()
@@ -143,7 +142,7 @@ fun HomeEmptyState(
                     }
                 }
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, onAdd = onAdd, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
+                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
                 }
             }
         }
