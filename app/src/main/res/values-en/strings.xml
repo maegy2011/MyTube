@@ -389,4 +389,5 @@
     <string name="country_ir">🇮🇷 Iran</string>
     <string name="country_fr">🇫🇷 France</string>
     <string name="country_de">🇩🇪 Germany</string>
+    <string name="sc_title">SoundCloud</string>
 </resources>

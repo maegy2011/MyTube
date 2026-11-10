@@ -414,6 +414,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefPitch by remember { mutableStateOf(1.0f) }
     // standalone search screen (YouTube-style) + trending tabs
     var showSearch by remember { mutableStateOf(false) }
+    // SoundCloud tab (separate): own query/results/loading, reuses SearchScreen + SearchRow.
+    var showSC by remember { mutableStateOf(false) }
+    var scQuery by remember { mutableStateOf("") }
+    var scResults by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
+    var scLoading by remember { mutableStateOf(false) }
+    var scError by remember { mutableStateOf<String?>(null) }
     var trendTab by remember { mutableStateOf(0) }
     var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
     var trendingLoading by remember { mutableStateOf(false) }
@@ -1164,7 +1170,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             var s = try { prefetched.remove(key) } catch (_: Exception) { null }
             if (s != null && s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) s = null
             if (s == null) {
-                s = try { YouTubeRepo.stream(v.url ?: return@launch) } catch (_: Exception) { null }
+                s = try { YouTubeRepo.streamRouted(v.url ?: return@launch) } catch (_: Exception) { null }
                 if (s == null) {
                     playerLoading = false
                     playerError = ctx.getString(R.string.err_no_sources)
@@ -1182,8 +1188,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // label the auto entry with the speed-based target so the user sees what auto will pick
             val kbps = ctx.estimatedDownstreamKbps()
             qualityList = qualityEntriesFor(s, kbps)
-            // default quality preference (applies to every new video)
-            val startQ = pickStartQuality(s, kbps)
+            // default quality preference (applies to every new video); audio-only sources skip video picking
+            val startQ = if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
             quality = startQ
             applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
             // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
@@ -1196,7 +1202,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         if (!com.mohamedadel.mytube.data.local.PinFiles.isPinned(app2, nk) && !prefetched.containsKey(nk) && nxt.url != null) {
                             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                 try {
-                                    val s2 = YouTubeRepo.stream(nxt.url ?: return@launch)
+                                    val s2 = YouTubeRepo.streamRouted(nxt.url ?: return@launch) ?: return@launch
                                     if (s2.audioLowestUrl != null || s2.videoUrlByQuality.isNotEmpty()) {
                                         if (prefetched.size < 2) prefetched[nk] = s2
                                     }
@@ -1542,13 +1548,41 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         }
     }
+    // SoundCloud search (separate tab, own state; failures surface with retry).
+    var scJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    fun doScSearch(q: String) {
+        if (q.isBlank()) return
+        scQuery = q
+        scLoading = true
+        scError = null
+        scJob?.cancel()
+        scJob = scope.launch {
+            try {
+                val page = com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
+                if (page.error != null && page.items.isEmpty()) {
+                    scError = ctx.getString(R.string.err_search)
+                    scResults = emptyList()
+                } else {
+                    scResults = page.items
+                }
+            } catch (_: Exception) {
+                scError = ctx.getString(R.string.err_search)
+                scResults = emptyList()
+            } finally {
+                scLoading = false
+            }
+        }
+    }
     // Voice search: permission -> system recognizer -> query + search. Best-effort throughout.
     val voiceResultLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { res ->
         try {
             val heard = res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
-            if (heard.isNotEmpty()) { query = heard; svm.onQueryChange(heard); showSearch = false; doSearch(heard) }
+            if (heard.isNotEmpty()) {
+                if (showSC) { scQuery = heard; doScSearch(heard) }
+                else { query = heard; svm.onQueryChange(heard); showSearch = false; doSearch(heard) }
+            }
         } catch (_: Exception) { }
     }
     fun launchVoiceRecognizer() {
@@ -1663,12 +1697,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         pinningKeys = pinningKeys + key
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val s = sd ?: YouTubeRepo.stream(v.url ?: return@launch)
+                val s = sd ?: YouTubeRepo.streamRouted(v.url ?: return@launch) ?: return@launch
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
                     toast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
                 val kbps = ctx.estimatedDownstreamKbps()
-                val qq = q ?: pickStartQuality(s, kbps)
+                // Audio-only sources (e.g. SoundCloud) have no video map: pin the audio directly.
+                val qq = q ?: if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
                 val ai = aIdx ?: pickAudioIdxFor(s)
                 val si = sIdx ?: matchSubIdxFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps)
@@ -1786,6 +1821,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             showLibrary = false
             return true
         }
+        if (showSC) {
+            showSC = false
+            return true
+        }
         if (results.isNotEmpty()) {
             try {
                 savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -1796,7 +1835,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showSC || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -1826,20 +1865,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // No top app bar: logo + nav live INSIDE the search row (saves a full 64dp bar).
     // YouTube tab routing (all destinations are existing screens — design only, no new features)
     fun goHome() {
+        showSC = false
         showLibrary = false; fromLibrary = false
         showFavorites = false; showHistory = false; showPlaylists = false
         openPlaylistId = null; showSettings = false; playerExpanded = false
     }
     fun goLibrary() {
+        showSC = false
         showFavorites = false; showHistory = false; showPlaylists = false
         openPlaylistId = null; showSettings = false; playerExpanded = false
         fromLibrary = false; showLibrary = true
     }
     fun goSettings() {
+        showSC = false
         showLibrary = false; fromLibrary = false
         showFavorites = false; showHistory = false; showPlaylists = false
         openPlaylistId = null; playerExpanded = false
         showSettings = true
+    }
+    fun goSC() {
+        showLibrary = false; fromLibrary = false
+        showFavorites = false; showHistory = false; showPlaylists = false
+        openPlaylistId = null; showSettings = false; playerExpanded = false
+        showSC = true
     }
     val tabLibrary = showLibrary || showFavorites || showHistory || showPlaylists
     Scaffold(
@@ -1874,13 +1922,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 )
             }
             // YouTube bottom nav: Home / Library / Settings. Hidden on watch screen, fullscreen, PiP, search.
-            if (!isInPip && !isFullscreen && !playerExpanded && !showSearch) {
+            if (!isInPip && !isFullscreen && !playerExpanded && !showSearch && !showSC) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                     NavigationBarItem(
-                        selected = !tabLibrary && !showSettings,
+                        selected = !tabLibrary && !showSettings && !showSC,
                         onClick = { goHome() },
                         icon = { Icon(Icons.Rounded.Home, contentDescription = stringResource(R.string.nav_home)) },
                         label = { Text(stringResource(R.string.nav_home)) }
+                    )
+                    NavigationBarItem(
+                        selected = showSC,
+                        onClick = { goSC() },
+                        icon = { Icon(Icons.Rounded.QueueMusic, contentDescription = stringResource(R.string.sc_title)) },
+                        label = { Text(stringResource(R.string.sc_title)) }
                     )
                     NavigationBarItem(
                         selected = tabLibrary,
@@ -2248,6 +2302,44 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onFav = { toggleFavorite(it) },
                         onAdd = { enqueueLast(it) }
                     )
+                }
+                showSC -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        SearchScreen(
+                            query = scQuery,
+                            loading = scLoading,
+                            onQueryChange = { scQuery = it },
+                            onSearch = { q -> doScSearch(q) },
+                            onClose = { goHome() },
+                            onClear = { scQuery = ""; scResults = emptyList(); scError = null },
+                            showDropdown = false,
+                            onVoice = { startVoiceSearch() }
+                        )
+                        if (scError != null) {
+                            Text(
+                                scError ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            itemsIndexed(items = scResults, key = { idx, v -> "$idx|${v.url ?: v.title ?: "n/a"}" }) { _, v ->
+                                SearchRow(
+                                    v = v,
+                                    isCurrent = playing?.url == v.url,
+                                    isPlaying = isPlaying && playing?.url == v.url,
+                                    isFav = v.favKey() in favoriteSet,
+                                    onClick = { playVideo(v) },
+                                    onLongClick = { optionsFor = it },
+                                    onAdd = { enqueueLast(it) },
+                                    onFav = { toggleFavorite(it) },
+                                    pinBadge = pinBadges[v.favKey()],
+                                    pinning = pinningKeys.contains(v.favKey())
+                                )
+                            }
+                        }
+                    }
                 }
                 showSettings -> {
                     SettingsScreen(

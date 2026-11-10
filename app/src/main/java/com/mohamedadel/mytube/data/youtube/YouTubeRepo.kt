@@ -36,6 +36,7 @@ object YouTubeRepo {
         return try { Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString() } catch (_: Exception) { s }
     }
     private fun service() = NewPipe.getService("YouTube")
+    private fun scService() = try { NewPipe.getService("SoundCloud") } catch (_: Exception) { NewPipe.getService(1) }
     init { runCatching { NewPipe.init(NewPipeDownloaderImpl()) } }
 
     // Real per-country kiosks (verified against NewPipeExtractor 0.26.5 YoutubeService):
@@ -497,4 +498,54 @@ object YouTubeRepo {
 
     suspend fun comments(videoUrl: String?): List<CommentItem> = CommentPager.first(videoUrl)
 
+    // SoundCloud (separate tab): search + audio-stream resolve. Best-effort; failures = empty/error.
+    // SC items carry soundcloud.com URLs with null ids (favKey falls back to url).
+    suspend fun scSearch(query: String): SearchPage = withContext(Dispatchers.IO) {
+        try {
+            val ext = scService().getSearchExtractor(query)
+            ext.fetchPage()
+            val out = mutableListOf<VideoItem>()
+            for (info in ext.initialPage.items) {
+                if (info is org.schabi.newpipe.extractor.stream.StreamInfoItem) {
+                    val url: String? = try { info.url } catch (_: Exception) { null }
+                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                    val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
+                    var thumb: String? = null
+                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
+                    var dur: Long? = null
+                    try { dur = info.duration } catch (_: Exception) {}
+                    out.add(VideoItem(null, name, up, thumb, dur, null, url, null, false, null, false, null))
+                }
+            }
+            SearchPage(out, null, false, null, null, false)
+        } catch (e: Exception) {
+            SearchPage(emptyList(), null, false, e.message, null, false)
+        }
+    }
+
+    // Audio-only StreamData for a SoundCloud track (highest-bitrate audio stream).
+    suspend fun scStream(url: String): StreamData? = withContext(Dispatchers.IO) {
+        try {
+            val ext = scService().getStreamExtractor(url)
+            ext.fetchPage()
+            val audios = try { ext.audioStreams } catch (_: Exception) { null } ?: emptyList()
+            val best = audios.sortedByDescending { a -> try { a.averageBitrate } catch (_: Exception) { 0 } }.firstOrNull()
+            val audioUrl: String? = try { best?.content } catch (_: Exception) { null }
+            if (audioUrl.isNullOrBlank()) return@withContext null
+            StreamData(
+                audioLowestUrl = audioUrl,
+                videoUrlByQuality = emptyMap(),
+                muxedQualities = emptySet(),
+                title = try { ext.name } catch (_: Exception) { null },
+                subtitles = emptyList()
+            )
+        } catch (_: Exception) { null }
+    }
+
+    // Router: SoundCloud URLs resolve via SC, everything else via YouTube. Call sites use this.
+    suspend fun streamRouted(url: String): StreamData? {
+        return try {
+            if (url.contains("soundcloud.com")) scStream(url) else stream(url)
+        } catch (_: Exception) { null }
+    }
 }
