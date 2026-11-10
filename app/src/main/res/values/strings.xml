@@ -361,4 +361,6 @@
     <string name="sub_size_title">الحجم</string>
     <string name="sub_bg_opacity">شفافية الخلفية</string>
     <string name="pip_auto">نافذة عائمة تلقائية عند الخروج</string>
+    <string name="sb_title">تخطي الإعلانات المجتمعية (SponsorBlock)</string>
+    <string name="sb_desc">يتخطى الرعاية والمقدمات تلقائيًا — يرسل معرّفات الفيديو لخادم خارجي</string>
 </resources>

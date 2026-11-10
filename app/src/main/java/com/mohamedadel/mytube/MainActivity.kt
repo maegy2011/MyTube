@@ -156,6 +156,8 @@ import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
 import com.mohamedadel.mytube.ui.player.volumeLive
 import com.mohamedadel.mytube.ui.player.mutedLive
+import com.mohamedadel.mytube.data.youtube.SbSeg
+import com.mohamedadel.mytube.data.youtube.SponsorBlock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -326,6 +328,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefTheme by remember { mutableStateOf("dark") }
     var prefAccent by remember { mutableStateOf("red") }
     var prefPip by remember { mutableStateOf(true) }
+    // SponsorBlock: community skip segments (default OFF — video IDs go to a third party).
+    var prefSb by remember { mutableStateOf(false) }
+    var sbSegments by remember { mutableStateOf(emptyList<SbSeg>()) }
     // UI language: ar (default, RTL) | en (LTR). Applies via recreate().
     var prefUiLang by remember { mutableStateOf("ar") }
     // default video quality for every new video: audio-only | auto | saver | high
@@ -485,6 +490,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefPip = try { prefs.getBoolean("pref_pip", true) } catch (_: Exception) { true }
+            prefSb = try { prefs.getBoolean("pref_sponsorblock", false) } catch (_: Exception) { false }
             prefAccent = prefs.getString("pref_accent", "red") ?: "red"
             eqEnabled = try { prefs.getBoolean("eq_enabled", false) } catch (_: Exception) { false }
             eqPreset = try { prefs.getInt("eq_preset", 0) } catch (_: Exception) { 0 }
@@ -1341,6 +1347,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try { player?.removeListener(eqSessionListener) } catch (_: Exception) { }
         }
     }
+    // SponsorBlock segments: fetch on video/toggle change (IO), clear when off.
+    androidx.compose.runtime.LaunchedEffect(playing?.id, prefSb) {
+        val vid = playing?.id
+        if (!prefSb || vid.isNullOrEmpty()) { sbSegments = emptyList(); return@LaunchedEffect }
+        try {
+            sbSegments = SponsorBlock.fetch(vid)
+        } catch (_: Exception) { sbSegments = emptyList() }
+    }
     // position / duration / buffer polling for the upgraded player UI
     // Position polling runs ONLY while something is loaded; idle = slow heartbeat, no battery burn.
     LaunchedEffect(player, playing) {
@@ -1349,6 +1363,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (p != null && playing != null) {
                 try {
                     playerPositionMs = p.currentPosition.coerceAtLeast(0L)
+                    // SponsorBlock: silent seek past community segments (guarded, no toast spam).
+                    try {
+                        val segs = sbSegments
+                        if (prefSb && segs.isNotEmpty() && p.isPlaying) {
+                            val pos = playerPositionMs
+                            for (sg in segs) {
+                                if (pos >= sg.startMs && pos < sg.endMs - 300) { p.seekTo(sg.endMs); break }
+                            }
+                        }
+                    } catch (_: Exception) { }
                     playerDurationMs = p.duration.takeIf { it > 0 } ?: 0L
                     playerBufferedPct = p.bufferedPercentage
                 } catch (_: Exception) { }
@@ -2141,6 +2165,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlayMode = { v ->
                             setMode(v)
                             toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
+                        },
+                        sbEnabled = prefSb,
+                        onSb = { v ->
+                            prefSb = v
+                            try { prefs.edit().putBoolean("pref_sponsorblock", v).apply() } catch (_: Exception) { }
                         },
                         pipAuto = prefPip,
                         onPip = { v ->

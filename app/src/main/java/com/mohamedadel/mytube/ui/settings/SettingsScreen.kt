@@ -133,6 +133,8 @@ fun SettingsScreen(
     playMode: String,
     pipAuto: Boolean = true,
     onPip: (Boolean) -> Unit = {},
+    sbEnabled: Boolean = false,
+    onSb: (Boolean) -> Unit = {},
     onPlayMode: (String) -> Unit,
     subHideAuto: Boolean = false,
     onSubHideAuto: (Boolean) -> Unit = {},
@@ -558,6 +560,17 @@ fun SettingsScreen(
         item {
             Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.playmode_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            // SponsorBlock (community skips; video IDs go to sponsor.ajay.app — default OFF).
+            Row(modifier = Modifier.fillMaxWidth().clickable { onSb(!sbEnabled) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (sbEnabled) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (sbEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.sb_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.sb_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         item {
             // Auto-PiP on leave (manual PiP button always stays available).

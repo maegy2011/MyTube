@@ -361,4 +361,6 @@
     <string name="sub_size_title">Size</string>
     <string name="sub_bg_opacity">Background opacity</string>
     <string name="pip_auto">Auto floating window on exit</string>
+    <string name="sb_title">Skip community segments (SponsorBlock)</string>
+    <string name="sb_desc">Auto-skips sponsors and intros — sends video IDs to an external server</string>
 </resources>
