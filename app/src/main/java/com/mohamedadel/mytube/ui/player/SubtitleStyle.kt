@@ -22,24 +22,25 @@ fun applySubStyle(view: PlayerView, st: SubStyle) {
         val sv = view.subtitleView ?: return
         val tf = if (st.bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         sv.setStyle(CaptionStyleCompat(st.fg, st.bg, AColor.TRANSPARENT, st.edge, AColor.BLACK, tf))
-        sv.setFractionalTextSize(st.sizeFrac * 0.0533f)
+        sv.setFractionalTextSize(st.sizeFrac.coerceIn(0.5f, 2.0f) * 0.0533f)
         sv.setApplyEmbeddedStyles(false)
         sv.setApplyEmbeddedFontSizes(false)
     } catch (_: Exception) { }
 }
 
-fun subStyleFromPrefs(fgName: String, bgName: String, edgeName: String, sizeName: String, bold: Boolean): SubStyle {
+// scale: 0.5..2.0 multiplier (1.0 = 1x); bgOpacity: 0..100 (ignored when bg is transparent).
+fun subStyleFromPrefs(fgName: String, bgName: String, edgeName: String, sizeScale: Float, bold: Boolean, bgOpacity: Int = 80): SubStyle {
     val fg = when (fgName) {
         "yellow" -> AColor.YELLOW
         "black" -> AColor.BLACK
         "cyan" -> AColor.CYAN
         else -> AColor.WHITE
     }
+    val alpha = (bgOpacity.coerceIn(0, 100) * 255 / 100)
     val bg = when (bgName) {
-        "black" -> AColor.parseColor("#CC000000")
-        "white" -> AColor.parseColor("#CCFFFFFF")
-        "transparent" -> AColor.TRANSPARENT
-        else -> AColor.TRANSPARENT
+        "black" -> AColor.argb(alpha, 0, 0, 0)
+        "white" -> AColor.argb(alpha, 255, 255, 255)
+        else -> AColor.TRANSPARENT // "transparent" + unknown: opacity slider does not apply
     }
     val edge = when (edgeName) {
         "none" -> CaptionStyleCompat.EDGE_TYPE_NONE
@@ -47,11 +48,5 @@ fun subStyleFromPrefs(fgName: String, bgName: String, edgeName: String, sizeName
         "raised" -> CaptionStyleCompat.EDGE_TYPE_RAISED
         else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
     }
-    val size = when (sizeName) {
-        "s" -> 0.8f
-        "l" -> 1.25f
-        "xl" -> 1.5f
-        else -> 1.0f
-    }
-    return SubStyle(fg, bg, edge, size, bold)
+    return SubStyle(fg, bg, edge, sizeScale.coerceIn(0.5f, 2.0f), bold)
 }

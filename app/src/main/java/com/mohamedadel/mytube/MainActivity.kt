@@ -332,7 +332,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefSubFg by remember { mutableStateOf("white") }
     var prefSubBg by remember { mutableStateOf("transparent") }
     var prefSubEdge by remember { mutableStateOf("outline") }
-    var prefSubSize by remember { mutableStateOf("m") }
+    var prefSubScale by remember { mutableStateOf(1.0f) }
+    var prefSubBgOpacity by remember { mutableStateOf(80) }
     var prefSubBold by remember { mutableStateOf(false) }
     // audio studio: prefer original + playback speed/pitch
     var prefPreferOriginal by remember { mutableStateOf(false) }
@@ -490,7 +491,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefSubFg = prefs.getString("pref_sub_fg", "white") ?: "white"
             prefSubBg = prefs.getString("pref_sub_bg", "transparent") ?: "transparent"
             prefSubEdge = prefs.getString("pref_sub_edge", "outline") ?: "outline"
-            prefSubSize = prefs.getString("pref_sub_size", "m") ?: "m"
+            // size migration: legacy s/m/l/xl codes -> scale float (one-time, then pref_sub_scale rules).
+            prefSubScale = try {
+                if (prefs.contains("pref_sub_scale")) prefs.getFloat("pref_sub_scale", 1.0f).coerceIn(0.5f, 2.0f)
+                else when (prefs.getString("pref_sub_size", "m")) { "s" -> 0.8f; "l" -> 1.25f; "xl" -> 1.5f; else -> 1.0f }
+            } catch (_: Exception) { 1.0f }
+            prefSubBgOpacity = try { prefs.getInt("pref_sub_bg_opacity", 80).coerceIn(0, 100) } catch (_: Exception) { 80 }
             prefSubBold = prefs.getBoolean("pref_sub_bold", false)
             prefPreferOriginal = prefs.getBoolean("pref_prefer_original", false)
             prefSubRole = prefs.getString("pref_sub_role", "subtitle") ?: "subtitle"
@@ -1939,7 +1945,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             commentsLoading = false
                         }
                     },
-                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubSize, prefSubBold),
+                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubScale, prefSubBold, prefSubBgOpacity),
                     category = streamData?.category,
                     tags = streamData?.tags ?: emptyList(),
                     titleOverride = translatedTitle,
@@ -2202,8 +2208,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onSubBg = { v -> prefSubBg = v; try { prefs.edit().putString("pref_sub_bg", v).apply() } catch (_: Exception) { } },
                         subEdge = prefSubEdge,
                         onSubEdge = { v -> prefSubEdge = v; try { prefs.edit().putString("pref_sub_edge", v).apply() } catch (_: Exception) { } },
-                        subSize = prefSubSize,
-                        onSubSize = { v -> prefSubSize = v; try { prefs.edit().putString("pref_sub_size", v).apply() } catch (_: Exception) { } },
+                        subScale = prefSubScale,
+                        onSubScale = { v -> prefSubScale = v; try { prefs.edit().putFloat("pref_sub_scale", v.coerceIn(0.5f, 2.0f)).apply() } catch (_: Exception) { } },
+                        subBgOpacity = prefSubBgOpacity,
+                        onSubBgOpacity = { v -> prefSubBgOpacity = v; try { prefs.edit().putInt("pref_sub_bg_opacity", v.coerceIn(0, 100)).apply() } catch (_: Exception) { } },
                         subBold = prefSubBold,
                         onSubBold = { v -> prefSubBold = v; try { prefs.edit().putBoolean("pref_sub_bold", v).apply() } catch (_: Exception) { } },
                         preferOriginal = prefPreferOriginal,

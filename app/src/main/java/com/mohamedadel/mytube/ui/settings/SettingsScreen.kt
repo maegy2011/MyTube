@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
 
 // Settings screen extracted from MainActivity (split step 2).
@@ -139,8 +140,10 @@ fun SettingsScreen(
     onSubBg: (String) -> Unit = {},
     subEdge: String = "outline",
     onSubEdge: (String) -> Unit = {},
-    subSize: String = "m",
-    onSubSize: (String) -> Unit = {},
+    subScale: Float = 1.0f,
+    onSubScale: (Float) -> Unit = {},
+    subBgOpacity: Int = 80,
+    onSubBgOpacity: (Int) -> Unit = {},
     subBold: Boolean = false,
     onSubBold: (Boolean) -> Unit = {},
     preferOriginal: Boolean = false,
@@ -367,11 +370,29 @@ fun SettingsScreen(
                 Text(stringResource(R.string.sub_hide_auto), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
-        items(listOf("s", "m", "l", "xl")) { code ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSubSize(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (subSize == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subSize == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(when (code) { "s" -> R.string.sub_size_s; "m" -> R.string.sub_size_m; "l" -> R.string.sub_size_l; else -> R.string.sub_size_xl }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        item {
+            // Live preview: same fg/bg/opacity/size/bold the player will use (edge renders in-player only).
+            val pvFg = when (subFg) { "yellow" -> Color.Yellow; "black" -> Color.Black; "cyan" -> Color.Cyan; else -> Color.White }
+            val pvBgBase = when (subBg) { "black" -> Color.Black; "white" -> Color.White; else -> Color.Transparent }
+            val pvBg = if (subBg == "transparent") Color.Transparent else pvBgBase.copy(alpha = subBgOpacity.coerceIn(0, 100) / 100f)
+            val pvBoxBg = if (subBg == "transparent" || subBg == "black") Color(0xFF3A3A44) else Color(0xFF1A1A1F)
+            Box(modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(pvBoxBg).padding(12.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    stringResource(R.string.sub_preview_text),
+                    color = pvFg,
+                    fontSize = (16f * subScale.coerceIn(0.5f, 2.0f)).sp,
+                    fontWeight = if (subBold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                    modifier = Modifier.background(pvBg).padding(horizontal = 4.dp)
+                )
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.sub_size_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(8.dp))
+                Slider(value = subScale.coerceIn(0.5f, 2.0f), onValueChange = onSubScale, valueRange = 0.5f..2.0f, steps = 14, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Text(String.format(java.util.Locale.US, "%.1fx", subScale.coerceIn(0.5f, 2.0f)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         items(listOf("white", "yellow", "black", "cyan")) { code ->
@@ -386,6 +407,15 @@ fun SettingsScreen(
                 Icon(if (subBg == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subBg == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(12.dp))
                 Text(stringResource(when (code) { "black" -> R.string.sub_bg_black; "white" -> R.string.sub_bg_white; else -> R.string.sub_bg_trans }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.sub_bg_opacity), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(8.dp))
+                Slider(value = subBgOpacity.toFloat(), onValueChange = { onSubBgOpacity(it.toInt()) }, valueRange = 0f..100f, steps = 19, modifier = Modifier.weight(1f), enabled = subBg != "transparent")
+                Spacer(Modifier.width(8.dp))
+                Text("$subBgOpacity%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
         items(listOf("outline", "none", "shadow", "raised")) { code ->

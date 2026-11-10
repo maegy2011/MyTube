@@ -357,4 +357,7 @@
     <string name="eq_off">Equalizer off</string>
     <string name="eq_custom">Custom</string>
     <string name="eq_unsupported">Equalizer not supported on this device</string>
+    <string name="sub_preview_text">Subtitle style preview</string>
+    <string name="sub_size_title">Size</string>
+    <string name="sub_bg_opacity">Background opacity</string>
 </resources>

@@ -357,4 +357,7 @@
     <string name="eq_off">المعادل متوقف</string>
     <string name="eq_custom">مخصص</string>
     <string name="eq_unsupported">المعادل غير مدعوم على هذا الجهاز</string>
+    <string name="sub_preview_text">مثال على شكل الترجمة</string>
+    <string name="sub_size_title">الحجم</string>
+    <string name="sub_bg_opacity">شفافية الخلفية</string>
 </resources>
