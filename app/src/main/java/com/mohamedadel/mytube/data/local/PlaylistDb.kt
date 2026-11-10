@@ -212,7 +212,8 @@ interface PlaylistDao {
     suspend fun historyPageUnpinned(keys: List<String>, limit: Int, offset: Int): List<HistoryEntity>
 
     // R2: local search (title/channel, newest first, capped — paging unnecessary for matches)
-    @Query("SELECT * FROM history WHERE title LIKE '%' || :q || '%' OR channel LIKE '%' || :q || '%' ORDER BY playedAt DESC LIMIT 200")
+    // M2: caller passes the pattern pre-escaped; ESCAPE keeps user %/_ literal.
+    @Query("SELECT * FROM history WHERE title LIKE :q ESCAPE '\\' OR channel LIKE :q ESCAPE '\\' ORDER BY playedAt DESC LIMIT 200")
     suspend fun historySearch(q: String): List<HistoryEntity>
 
     @Query("SELECT COUNT(*) FROM history")
@@ -344,6 +345,9 @@ fun PlaylistItemEntity.toVideoItem(): VideoItem = VideoItem(
 // instead of hashCode(): identical across rebuilds from the DB, so remove/toggle round-trips match.
 // NOTE: keys minted by the old hashCode fallback will not match; only affects videos
 // that had no id, no url and no title (degenerate rows).
+// M2: escape helper for LIKE patterns (call site wraps with %...%).
+fun escapeLike(s: String): String = s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 fun VideoItem.favKey(): String =
     id?.takeIf { it.isNotBlank() }
         ?: url?.takeIf { it.isNotBlank() }

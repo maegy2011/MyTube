@@ -333,4 +333,6 @@
     <string name="sugg_based">مقترحات لك بناءً على نشاطك (اقتراحات NewPipe)</string>
     <string name="share">مشاركة</string>
     <string name="err_player_unavailable">تعذّر بدء مشغّل الصوت — أعد فتح التطبيق</string>
+    <string name="title_translate">ترجمة عنوان الفيديو</string>
+    <string name="title_translate_desc">يعرض العنوان بلغة أول ترجمة — يُرسل العنوان إلى خدمة ترجمة جوجل المجانية. أطفئه للعناوين الأصلية دائمًا.</string>
 </resources>

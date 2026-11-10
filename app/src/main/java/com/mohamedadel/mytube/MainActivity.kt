@@ -242,7 +242,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var streamData by remember { mutableStateOf<StreamData?>(null) }
     // selected dubbed/original audio track (auto-matched to the audio pref once prefs load below)
     var audioTrackIdx by remember { mutableStateOf(0) }
-    var externalAudioHook by remember { mutableStateOf<Player.Listener?>(null) }
+    // Low: plain holder — no composable reads this; state caused pointless recompositions.
+    val externalAudioHook = remember { arrayOfNulls<Player.Listener>(1) }
     // selected subtitle track: -1 = off (real disable), else index into streamData.subtitles (auto-matched to sub prefs)
     var subTrackIdx by remember { mutableStateOf(-1) }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
@@ -264,7 +265,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showSuggestions by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var showSplash by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(1800); showSplash = false }
+    // Low: splash target time (the wait loop sits after feedItems is declared, below).
     // YouTube-style bottom-nav state: library groups history/favorites/playlists (existing screens)
     var showLibrary by remember { mutableStateOf(false) }
     var fromLibrary by remember { mutableStateOf(false) }
@@ -343,6 +344,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefPreloadNext by remember { mutableStateOf(true) }
     // R5: prefetch on WiFi only (default ON, as promised) — mobile data never prefetches.
     var prefPreloadWifiOnly by remember { mutableStateOf(true) }
+    // M3: title-translation toggle (default ON); OFF = original titles always, zero Google calls.
+    var prefTitleTranslate by remember { mutableStateOf(true) }
     fun isUnmeteredNet(): Boolean {
         return try {
             val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
@@ -380,6 +383,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var commentList by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.CommentItem>()) }
     var showFeed by remember { mutableStateOf(false) }
     var feedItems by remember { mutableStateOf(emptyList<VideoItem>()) }
+    // Low: splash waits for player readiness or first content (cap 3s), not a fixed timer.
+    LaunchedEffect(Unit) {
+        val t0 = android.os.SystemClock.uptimeMillis()
+        while ((player == null && results.isEmpty() && feedItems.isEmpty()) &&
+               android.os.SystemClock.uptimeMillis() - t0 < 3000) {
+            kotlinx.coroutines.delay(100)
+        }
+        showSplash = false
+    }
     var feedLoading by remember { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var commentsLoading by remember { mutableStateOf(false) }
@@ -441,6 +453,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefFeedCache = prefs.getBoolean("pref_feed_cache", true)
             prefPreloadNext = prefs.getBoolean("pref_preload_next", true)
             prefPreloadWifiOnly = prefs.getBoolean("pref_preload_wifi_only", true)
+            prefTitleTranslate = prefs.getBoolean("pref_title_translate", true)
             // cap only (no disk I/O); the cache itself warms on a background thread after scope exists
             try { com.mohamedadel.mytube.playback.MediaCache.setMax(prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
             prefSpeed = prefs.getFloat("pref_speed", 1.0f)
@@ -617,16 +630,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val scope = rememberCoroutineScope()
     // Title localization: displayed title follows the video's FIRST subtitle language.
     var translatedTitle by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(playing?.url, streamData?.subtitles) {
+    LaunchedEffect(playing?.url, streamData?.subtitles, prefTitleTranslate) {
         translatedTitle = null
-        try {
-            val sd = streamData
-            val target = sd?.subtitles?.firstOrNull()?.langTag
-            val t = playing?.title
-            if (!t.isNullOrBlank() && !target.isNullOrBlank()) {
-                translatedTitle = YouTubeRepo.localizedTitle(t, target)?.takeIf { it != t }
-            }
-        } catch (_: Exception) { }
+        // M3: OFF = original titles, no network. ON = translate to first-subtitle language.
+        if (prefTitleTranslate) {
+            try {
+                val sd = streamData
+                val target = sd?.subtitles?.firstOrNull()?.langTag
+                val t = playing?.title
+                if (!t.isNullOrBlank() && !target.isNullOrBlank()) {
+                    translatedTitle = YouTubeRepo.localizedTitle(t, target)?.takeIf { it != t }
+                }
+            } catch (_: Exception) { }
+        }
     }
     // comments pagination: first page + page-walk with single-flight guard
     var commentsHasMore by remember { mutableStateOf(false) }
@@ -728,7 +744,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         histSearchQuery = q
         if (q.isBlank()) { histSearchResults = emptyList(); return }
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { histSearchResults = dao.historySearch(q.trim()) } catch (_: Exception) { }
+            try { histSearchResults = dao.historySearch("%" + com.mohamedadel.mytube.data.local.escapeLike(q.trim()) + "%") } catch (_: Exception) { }
         }
     }
     fun refreshCacheLabel() {
@@ -891,8 +907,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val merged = MergingMediaSource(videoSource, audioSource)
             p.setMediaSource(merged)
             p.prepare()
-            try { externalAudioHook?.let { p.removeListener(it) } } catch (_: Exception) { }
-            externalAudioHook = null
+            try { externalAudioHook[0]?.let { p.removeListener(it) } } catch (_: Exception) { }
+            externalAudioHook[0] = null
             if (needExternalAudio) {
                 // MergingMediaSource concatenates groups in source order: [video, muxed-audio, picked-audio].
                 // Disabling the muxed-audio group leaves exactly the picked track playing.
@@ -909,7 +925,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             }
                         } catch (_: Exception) { }
                     }
-                }).also { externalAudioHook = it })
+                }).also { externalAudioHook[0] = it })
             }
         }
         p.playWhenReady = resume
@@ -1192,8 +1208,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
 
     // player listener for buffering state + errors
-    LaunchedEffect(player) {
-        player?.addListener(object : Player.Listener {
+    // M4: DisposableEffect removes the listener — a recreated player left the old one leaking,
+    // and STATE_ENDED fired twice = double queue advance.
+    val queueListener = remember {
+        object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 playerLoading = state == Player.STATE_BUFFERING
                 isPlaying = player?.isPlaying == true
@@ -1219,7 +1237,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 playerLoading = false
                 isPlaying = false
             }
-        })
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(player) {
+        player?.addListener(queueListener)
+        onDispose { try { player?.removeListener(queueListener) } catch (_: Exception) { } }
     }
     // position / duration / buffer polling for the upgraded player UI
     // Position polling runs ONLY while something is loaded; idle = slow heartbeat, no battery burn.
@@ -2052,6 +2074,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             if (!v) try { prefetched.clear() } catch (_: Exception) { }
                         },
                         preloadWifiOnly = prefPreloadWifiOnly,
+                        titleTranslate = prefTitleTranslate,
+                        onTitleTranslate = { v ->
+                            prefTitleTranslate = v
+                            try { prefs.edit().putBoolean("pref_title_translate", v).apply() } catch (_: Exception) { }
+                        },
                         onPreloadWifiOnly = { v ->
                             prefPreloadWifiOnly = v
                             try { prefs.edit().putBoolean("pref_preload_wifi_only", v).apply() } catch (_: Exception) { }

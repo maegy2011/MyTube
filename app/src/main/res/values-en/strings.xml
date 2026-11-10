@@ -333,4 +333,6 @@
     <string name="sugg_based">Suggested for you, based on your activity (NewPipe suggestions)</string>
     <string name="share">Share</string>
     <string name="err_player_unavailable">Couldn\'t start the audio player — please reopen the app</string>
+    <string name="title_translate">Translate video title</string>
+    <string name="title_translate_desc">Shows the title in the first subtitle language — sends the title to Google\'s free translation endpoint. Turn off for original titles always.</string>
 </resources>

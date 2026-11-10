@@ -400,6 +400,7 @@ object YouTubeRepo {
 
     // CommentPager: stateful page-walking over CommentsExtractor (first + getPage chain).
     // Keeps the extractor + next Page between calls; survives rotation? No — reset per open.
+    // Low (doc): single-flight by design — one comments sheet at a time. Not safe for concurrent first() calls.
     object CommentPager {
         private var ext: org.schabi.newpipe.extractor.comments.CommentsExtractor? = null
         private var next: org.schabi.newpipe.extractor.Page? = null
@@ -452,7 +453,12 @@ object YouTubeRepo {
     // Title localization: video title rendered in the video's FIRST subtitle language.
     // Uses the free Google Translate endpoint (no key); auto-detects source and returns
     // the original when it already matches the target. In-memory cache, silent on failure.
-    private val titleCache = java.util.Collections.synchronizedMap(mutableMapOf<String, String>())
+    // M3: synchronized LRU (cap 200) — check-then-act was racy and eviction wiped everything.
+    private val titleCache: MutableMap<String, String> = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, String>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 200
+        }
+    )
     suspend fun localizedTitle(title: String?, targetLang: String?): String? = withContext(Dispatchers.IO) {
         val t = targetLang?.substringBefore("-")?.substringBefore("_")?.lowercase()?.takeIf { it.length in 2..3 }
         if (title.isNullOrBlank() || t.isNullOrBlank()) return@withContext null

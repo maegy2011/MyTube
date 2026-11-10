@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M1: full backup keeps user data (DB + prefs) but never uploads pinned videos or transient caches. -->
+<full-backup-content>
+    <exclude domain="file" path="travel/"/>
+    <exclude domain="cache" path="."/>
+</full-backup-content>
