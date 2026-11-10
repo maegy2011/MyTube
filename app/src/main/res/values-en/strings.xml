@@ -374,4 +374,9 @@
     <string name="dl_audio">Audio</string>
     <string name="dl_captions">Captions</string>
     <string name="dl_none">None</string>
+    <string name="af_title">Audio focus</string>
+    <string name="af_all">Pause on any interruption</string>
+    <string name="af_calls">Pause for phone calls only</string>
+    <string name="af_calls_desc">Ignores other app sounds — asks for phone-state permission</string>
+    <string name="af_perm_denied">Phone permission denied — kept general mode</string>
 </resources>

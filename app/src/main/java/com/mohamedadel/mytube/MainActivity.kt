@@ -332,6 +332,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefTheme by remember { mutableStateOf("dark") }
     var prefAccent by remember { mutableStateOf("red") }
     var prefPip by remember { mutableStateOf(true) }
+    // Audio focus: "all" (pause on any interruption, ExoPlayer handles) vs "calls"
+    // (ignore other apps, pause only for phone calls via telephony callback).
+    var prefAf by remember { mutableStateOf("all") }
+    var callPaused by remember { mutableStateOf(false) }
+    fun applyAudioFocus() {
+        try {
+            val p = player ?: return
+            val attrs = androidx.media3.common.AudioAttributes.Builder()
+                .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build()
+            p.setAudioAttributes(attrs, prefAf != "calls")
+        } catch (_: Exception) { }
+    }
     // Download manager: the sd behind the current pinConfirm + live quick-pick selection.
     var pinSd by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.StreamData?>(null) }
     var pinSelQuality by remember { mutableStateOf("audio-only (default)") }
@@ -501,6 +515,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefPip = try { prefs.getBoolean("pref_pip", true) } catch (_: Exception) { true }
+            prefAf = try { prefs.getString("pref_audiofocus", "all") ?: "all" } catch (_: Exception) { "all" }
             prefSb = try { prefs.getBoolean("pref_sponsorblock", false) } catch (_: Exception) { false }
             prefAccent = prefs.getString("pref_accent", "red") ?: "red"
             eqEnabled = try { prefs.getBoolean("eq_enabled", false) } catch (_: Exception) { false }
@@ -1348,6 +1363,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     androidx.compose.runtime.DisposableEffect(player) {
+        try { applyAudioFocus() } catch (_: Exception) { }
         player?.addListener(queueListener)
         player?.addListener(eqSessionListener)
         try {
@@ -1366,6 +1382,56 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try {
             sbSegments = SponsorBlock.fetch(vid)
         } catch (_: Exception) { sbSegments = emptyList() }
+    }
+    // Calls-only focus mode: pause on ring/offhook, auto-resume on idle (only if we paused).
+    androidx.compose.runtime.DisposableEffect(prefAf) {
+        var tm: android.telephony.TelephonyManager? = null
+        var listener: android.telephony.PhoneStateListener? = null
+        var callback: android.telephony.TelephonyCallback? = null
+        try {
+            if (prefAf == "calls") {
+                tm = ctx.getSystemService(android.telephony.TelephonyManager::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    callback = object : android.telephony.TelephonyCallback(), android.telephony.TelephonyCallback.CallStateListener {
+                        override fun onCallStateChanged(state: Int) {
+                            try {
+                                val pl = player
+                                if (state == android.telephony.TelephonyManager.CALL_STATE_IDLE) {
+                                    if (callPaused) { callPaused = false; try { pl?.play() } catch (_: Exception) { } }
+                                } else {
+                                    if (pl?.isPlaying == true) { callPaused = true; try { pl?.pause() } catch (_: Exception) { } }
+                                }
+                            } catch (_: Exception) { }
+                        }
+                    }
+                    tm?.registerTelephonyCallback(ctx.mainExecutor, callback!!)
+                } else {
+                    @Suppress("DEPRECATION")
+                    listener = object : android.telephony.PhoneStateListener() {
+                        @Suppress("DEPRECATION")
+                        override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                            try {
+                                val pl = player
+                                if (state == android.telephony.TelephonyManager.CALL_STATE_IDLE) {
+                                    if (callPaused) { callPaused = false; try { pl?.play() } catch (_: Exception) { } }
+                                } else {
+                                    if (pl?.isPlaying == true) { callPaused = true; try { pl?.pause() } catch (_: Exception) { } }
+                                }
+                            } catch (_: Exception) { }
+                        }
+                    }
+                    @Suppress("DEPRECATION")
+                    tm?.listen(listener, android.telephony.PhoneStateListener.LISTEN_CALL_STATE)
+                }
+            }
+        } catch (_: Exception) { }
+        onDispose {
+            try {
+                if (callback != null && android.os.Build.VERSION.SDK_INT >= 31) tm?.unregisterTelephonyCallback(callback!!)
+                @Suppress("DEPRECATION")
+                if (listener != null) tm?.listen(listener, android.telephony.PhoneStateListener.LISTEN_NONE)
+            } catch (_: Exception) { }
+        }
     }
     // position / duration / buffer polling for the upgraded player UI
     // Position polling runs ONLY while something is loaded; idle = slow heartbeat, no battery burn.
@@ -1495,6 +1561,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             voiceResultLauncher.launch(intent)
         } catch (_: Exception) {
             toast(ctx.getString(R.string.voice_unavailable))
+        }
+    }
+    val afPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) {
+            try {
+                prefAf = "all"
+                prefs.edit().putString("pref_audiofocus", "all").apply()
+                applyAudioFocus()
+                toast(ctx.getString(R.string.af_perm_denied))
+            } catch (_: Exception) { }
         }
     }
     val voicePermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -2222,6 +2298,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlayMode = { v ->
                             setMode(v)
                             toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
+                        },
+                        afMode = prefAf,
+                        onAf = { v ->
+                            prefAf = v
+                            try { prefs.edit().putString("pref_audiofocus", v).apply() } catch (_: Exception) { }
+                            try {
+                                if (v == "calls") {
+                                    val granted = ctx.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+                                    if (!granted) afPermLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+                                }
+                                applyAudioFocus()
+                            } catch (_: Exception) { }
                         },
                         sbEnabled = prefSb,
                         onSb = { v ->

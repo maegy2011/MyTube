@@ -135,6 +135,8 @@ fun SettingsScreen(
     onPip: (Boolean) -> Unit = {},
     sbEnabled: Boolean = false,
     onSb: (Boolean) -> Unit = {},
+    afMode: String = "all",
+    onAf: (String) -> Unit = {},
     onPlayMode: (String) -> Unit,
     subHideAuto: Boolean = false,
     onSubHideAuto: (Boolean) -> Unit = {},
@@ -560,6 +562,19 @@ fun SettingsScreen(
         item {
             Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.playmode_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Text(stringResource(R.string.af_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(listOf("all", "calls")) { code ->
+            Row(modifier = Modifier.fillMaxWidth().clickable { onAf(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (afMode == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (afMode == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(if (code == "all") R.string.af_all else R.string.af_calls), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    if (code == "calls") Text(stringResource(R.string.af_calls_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         item {
             // SponsorBlock (community skips; video IDs go to sponsor.ajay.app — default OFF).

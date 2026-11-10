@@ -374,4 +374,9 @@
     <string name="dl_audio">الصوت</string>
     <string name="dl_captions">الترجمة</string>
     <string name="dl_none">بدون</string>
+    <string name="af_title">التركيز الصوتي</string>
+    <string name="af_all">إيقاف عند أي مقاطعة</string>
+    <string name="af_calls">إيقاف للمكالمات فقط</string>
+    <string name="af_calls_desc">يتجاهل أصوات التطبيقات الأخرى — يطلب إذن حالة الهاتف</string>
+    <string name="af_perm_denied">رُفض إذن الهاتف — بقي الوضع العام</string>
 </resources>
