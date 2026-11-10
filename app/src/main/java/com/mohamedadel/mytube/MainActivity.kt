@@ -438,6 +438,39 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 2, k) }.flow
     }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
+    // Simple equalizer state (framework effect; hidden on unsupported devices).
+    var eqEnabled by remember { mutableStateOf(false) }
+    var eqPreset by remember { mutableStateOf(0) } // index, or EqManager.CUSTOM
+    var eqSupported by remember { mutableStateOf(false) }
+    var eqBands by remember { mutableStateOf(0) }
+    var eqLabels by remember { mutableStateOf(emptyList<String>()) }
+    var eqPresetNames by remember { mutableStateOf(emptyList<String>()) }
+    val eqCustom = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
+    fun fmtFreq(hz: Int): String = if (hz <= 0) "?" else if (hz < 1000) "$hz Hz" else "${hz / 1000}.${(hz % 1000) / 100} kHz"
+    fun applyEqPrefs() {
+        try {
+            val E = com.mohamedadel.mytube.playback.EqManager
+            if (!E.supported) { eqSupported = false; return }
+            val n = E.bandCount()
+            if (n <= 0) { eqSupported = false; return }
+            eqSupported = true
+            if (eqBands != n) {
+                eqBands = n
+                eqLabels = (0 until n).map { fmtFreq(E.centerFreqHz(it)) }
+                eqPresetNames = E.presets()
+                if (eqCustom.size != n) {
+                    val saved = try { prefs.getString("eq_custom", "") ?: "" } catch (_: Exception) { "" }.split(",").mapNotNull { it.toFloatOrNull() }
+                    eqCustom.clear()
+                    for (b in 0 until n) eqCustom.add(saved.getOrNull(b)?.coerceIn(0f, 1f) ?: E.toSlider(E.bandLevel(b)))
+                }
+            }
+            if (eqPreset >= 0) E.usePreset(eqPreset) else for (b in 0 until n) E.setBand(b, E.toMillibels(eqCustom.getOrNull(b) ?: 0.5f))
+            E.setEnabled(eqEnabled)
+        } catch (_: Exception) { }
+    }
+
+
+
     // persisted settings + recents (survive app restarts)
     LaunchedEffect(Unit) {
         try {
@@ -448,6 +481,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefAccent = prefs.getString("pref_accent", "red") ?: "red"
+            eqEnabled = try { prefs.getBoolean("eq_enabled", false) } catch (_: Exception) { false }
+            eqPreset = try { prefs.getInt("eq_preset", 0) } catch (_: Exception) { 0 }
             prefUiLang = prefs.getString("pref_ui_lang", "ar") ?: "ar"
             prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
             prefContentFilter = prefs.getString("pref_content_filter", "all") ?: "all"
@@ -1242,6 +1277,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // player listener for buffering state + errors
     // M4: DisposableEffect removes the listener — a recreated player left the old one leaking,
     // and STATE_ENDED fired twice = double queue advance.
+    // Equalizer: (re)attach the framework effect whenever the audio session changes,
+    // then re-apply the saved preset/custom bands + enabled flag.
+    val eqSessionListener = remember {
+        object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                try {
+                    if (com.mohamedadel.mytube.playback.EqManager.attach(audioSessionId)) {
+                        applyEqPrefs()
+                    }
+                } catch (_: Exception) { }
+            }
+        }
+    }
     val queueListener = remember {
         object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -1273,7 +1321,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     androidx.compose.runtime.DisposableEffect(player) {
         player?.addListener(queueListener)
-        onDispose { try { player?.removeListener(queueListener) } catch (_: Exception) { } }
+        player?.addListener(eqSessionListener)
+        try {
+            val sid = player?.audioSessionId ?: 0
+            if (sid != 0 && com.mohamedadel.mytube.playback.EqManager.attach(sid)) applyEqPrefs()
+        } catch (_: Exception) { }
+        onDispose {
+            try { player?.removeListener(queueListener) } catch (_: Exception) { }
+            try { player?.removeListener(eqSessionListener) } catch (_: Exception) { }
+        }
     }
     // position / duration / buffer polling for the upgraded player UI
     // Position polling runs ONLY while something is loaded; idle = slow heartbeat, no battery burn.
@@ -2200,6 +2256,34 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onMuted = { m ->
                             try { mutedLive.value = m } catch (_: Exception) { }
                             try { prefs.edit().putBoolean("pref_muted", m).apply() } catch (_: Exception) { }
+                        },
+                        eqSupported = eqSupported,
+                        eqEnabled = eqEnabled,
+                        onEqEnabled = { on ->
+                            eqEnabled = on
+                            try { prefs.edit().putBoolean("eq_enabled", on).apply() } catch (_: Exception) { }
+                            try { applyEqPrefs() } catch (_: Exception) { }
+                        },
+                        eqPresetNames = eqPresetNames,
+                        eqPreset = eqPreset,
+                        onEqPreset = { i ->
+                            eqPreset = i
+                            try { prefs.edit().putInt("eq_preset", i).apply() } catch (_: Exception) { }
+                            try { applyEqPrefs() } catch (_: Exception) { }
+                        },
+                        eqLabels = eqLabels,
+                        eqBands = eqCustom.toList(),
+                        onEqBand = { b, v ->
+                            try {
+                                while (eqCustom.size <= b) eqCustom.add(0.5f)
+                                eqCustom[b] = v.coerceIn(0f, 1f)
+                                if (eqPreset != com.mohamedadel.mytube.playback.EqManager.CUSTOM) {
+                                    eqPreset = com.mohamedadel.mytube.playback.EqManager.CUSTOM
+                                    prefs.edit().putInt("eq_preset", eqPreset).apply()
+                                }
+                                prefs.edit().putString("eq_custom", eqCustom.joinToString(",")).apply()
+                                applyEqPrefs()
+                            } catch (_: Exception) { }
                         }
                     )
                 }

@@ -352,4 +352,9 @@
     <string name="accent_teal">فيروزي</string>
     <string name="toast_theme_applied">تم تطبيق المظهر</string>
     <string name="volume_title">مستوى الصوت</string>
+    <string name="eq_title">المعادل الصوتي</string>
+    <string name="eq_on">المعادل مفعّل</string>
+    <string name="eq_off">المعادل متوقف</string>
+    <string name="eq_custom">مخصص</string>
+    <string name="eq_unsupported">المعادل غير مدعوم على هذا الجهاز</string>
 </resources>

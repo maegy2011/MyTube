@@ -352,4 +352,9 @@
     <string name="accent_teal">Teal</string>
     <string name="toast_theme_applied">Theme applied</string>
     <string name="volume_title">Volume level</string>
+    <string name="eq_title">Equalizer</string>
+    <string name="eq_on">Equalizer on</string>
+    <string name="eq_off">Equalizer off</string>
+    <string name="eq_custom">Custom</string>
+    <string name="eq_unsupported">Equalizer not supported on this device</string>
 </resources>

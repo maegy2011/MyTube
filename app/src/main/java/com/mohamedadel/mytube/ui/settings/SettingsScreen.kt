@@ -118,6 +118,15 @@ fun SettingsScreen(
     muted: Boolean = false,
     onVolume: (Float) -> Unit = {},
     onMuted: (Boolean) -> Unit = {},
+    eqSupported: Boolean = false,
+    eqEnabled: Boolean = false,
+    onEqEnabled: (Boolean) -> Unit = {},
+    eqPresetNames: List<String> = emptyList(),
+    eqPreset: Int = 0,
+    onEqPreset: (Int) -> Unit = {},
+    eqLabels: List<String> = emptyList(),
+    eqBands: List<Float> = emptyList(),
+    onEqBand: (Int, Float) -> Unit = { _, _ -> },
     uiLang: String,
     onUiLang: (String) -> Unit,
     playMode: String,
@@ -473,6 +482,45 @@ fun SettingsScreen(
                 Icon(if (muted) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (muted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(12.dp))
                 Text(stringResource(if (muted) R.string.cd_unmute else R.string.cd_mute), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.eq_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        if (!eqSupported) {
+            item { Text(stringResource(R.string.eq_unsupported), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else {
+            item {
+                Row(modifier = Modifier.fillMaxWidth().clickable { onEqEnabled(!eqEnabled) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (eqEnabled) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (eqEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text(stringResource(if (eqEnabled) R.string.eq_on else R.string.eq_off), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+            if (eqEnabled) {
+                items(eqPresetNames.size) { i ->
+                    Row(modifier = Modifier.fillMaxWidth().clickable { onEqPreset(i) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (eqPreset == i) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (eqPreset == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(eqPresetNames[i], style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                item {
+                    Row(modifier = Modifier.fillMaxWidth().clickable { onEqPreset(-1) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (eqPreset == -1) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (eqPreset == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.eq_custom), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                if (eqPreset == -1) {
+                    items(eqLabels.size) { b ->
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(eqLabels[b], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp))
+                            Slider(value = eqBands.getOrNull(b) ?: 0.5f, onValueChange = { onEqBand(b, it) }, valueRange = 0f..1f, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
             }
         }
         item {
