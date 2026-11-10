@@ -194,6 +194,8 @@ fun SettingsScreen(
     onShowInfo: (Boolean) -> Unit = {},
     showSubs: Boolean = true,
     onShowSubs: (Boolean) -> Unit = {},
+    allow4k: Boolean = true,
+    onAllow4k: (Boolean) -> Unit = {},
     pinsCount: Int = 0,
     pinsSize: String = "—",
     pinsBytes: Long = 0L,
@@ -801,6 +803,9 @@ fun SettingsScreen(
         }
         item {
             VisRow(on = showSubs, label = stringResource(R.string.vis_subs), desc = stringResource(R.string.vis_subs_desc), onToggle = { onShowSubs(!showSubs) })
+        }
+        item {
+            VisRow(on = allow4k, label = stringResource(R.string.vis_4k), desc = stringResource(R.string.vis_4k_desc), onToggle = { onAllow4k(!allow4k) })
         }
         item {
             Row(modifier = Modifier.fillMaxWidth().clickable { onKeepAlive(!keepAlive) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {

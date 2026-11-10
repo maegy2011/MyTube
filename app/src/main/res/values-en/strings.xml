@@ -436,4 +436,6 @@
     <string name="vis_subs_desc">Show the subtitle language picker</string>
     <string name="live_badge">LIVE</string>
     <string name="err_pin_live">Live streams cannot be pinned — watch live</string>
+    <string name="vis_4k">4K quality (2160p)</string>
+    <string name="vis_4k_desc">List 2160p when available — off saves data</string>
 </resources>

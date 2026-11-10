@@ -489,6 +489,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefShowRelated by remember { mutableStateOf(true) }
     var prefShowInfo by remember { mutableStateOf(true) }
     var prefShowSubs by remember { mutableStateOf(true) }
+    var prefAllow4k by remember { mutableStateOf(true) }
     var agePending by remember { mutableStateOf<Pair<VideoItem, Boolean>?>(null) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
     val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
@@ -577,6 +578,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefShowRelated = prefs.getBoolean("pref_show_related", true)
             prefShowInfo = prefs.getBoolean("pref_show_info", true)
             prefShowSubs = prefs.getBoolean("pref_show_subtitles", true)
+            prefAllow4k = prefs.getBoolean("pref_allow_4k", true)
             try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
             prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
@@ -1088,16 +1090,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         applyLangPrefs() // re-assert caps/roles after every media set (quality switch)
     }
 
-    // Auto-switch to audio-only (lowest quality) when app goes to background / screen locked
+    // Background audio saver: dropping the video track stops video chunks with ZERO rebuffer gap
+    // (the old approach re-prepared an audio-only item and audibly hiccuped). PiP keeps video.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
+            val p = player ?: return@LifecycleEventObserver
             if (event == Lifecycle.Event.ON_STOP) {
                 val activity = ctx as? android.app.Activity
-                if (activity?.isInPictureInPictureMode != true && playing != null && quality != "audio-only (default)") {
-                    quality = "audio-only (default)"
-                    // preserve play state: autoplay=true resumes only if it was playing
-                    streamData?.let { applyQuality("audio-only (default)", it, player, autoplay = true) }
+                val hasVideo = try { p.videoFormat != null } catch (_: Exception) { false }
+                if (activity?.isInPictureInPictureMode != true && playing != null && hasVideo) {
+                    try { p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build() } catch (_: Exception) { }
                 }
+            } else if (event == Lifecycle.Event.ON_START) {
+                try { p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false).build() } catch (_: Exception) { }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -1107,20 +1112,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Open video WITHOUT auto-play: default quality audio-only, prepared paused. User taps play explicitly.
     // queue=true means this playback belongs to the user-started queue ("play all" / next / prev).
     // expand=false keeps the current collapsed/expanded state (queue advancing while browsing).
-    fun autoKeyFor(sd: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
+    // 4K gate: when off, ladders behave as if >1080p never existed (saves data on small screens).
+    fun cap4k(sd: com.mohamedadel.mytube.data.youtube.StreamData): com.mohamedadel.mytube.data.youtube.StreamData =
+        if (prefAllow4k) sd else try { sd.copy(videoUrlByQuality = sd.videoUrlByQuality.filterKeys { (qualityHeight(it) ?: 0) <= 1080 }) } catch (_: Exception) { sd }
+    fun autoKeyFor(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
+        val sd = cap4k(sd0)
         return autoUrl(sd, kbps)?.let { u ->
             val h = sd.videoUrlByQuality.entries.firstOrNull { it.value == u }?.key
                 ?.let { qualityHeight(it) }
             if (h != null && h != Int.MAX_VALUE) "auto \u2022 ${h}p" else "auto"
         } ?: "auto"
     }
-    fun qualityEntriesFor(sd: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): List<String> {
+    fun qualityEntriesFor(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): List<String> {
+        val sd = cap4k(sd0)
         val autoKey = autoKeyFor(sd, kbps)
         val sorted = sd.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
         return mutableListOf("audio-only (default)", autoKey).also { it.addAll(sorted) }
     }
     // default quality preference (applies to every new video AND to list-context pins)
-    fun pickStartQuality(sd: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
+    fun pickStartQuality(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
+        val sd = cap4k(sd0)
         val autoKey = autoKeyFor(sd, kbps)
         val sorted = sd.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
         return when (prefQuality) {
@@ -2535,6 +2546,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onShowSubs = { v ->
                         prefShowSubs = v
                         try { prefs.edit().putBoolean("pref_show_subtitles", v).apply() } catch (_: Exception) { }
+                    },
+                    allow4k = prefAllow4k,
+                    onAllow4k = { v ->
+                        prefAllow4k = v
+                        try { prefs.edit().putBoolean("pref_allow_4k", v).apply() } catch (_: Exception) { }
                     },
                     pinsCount = pinsCount,
                     pinsSize = pinsSizeLabel,

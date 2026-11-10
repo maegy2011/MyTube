@@ -436,4 +436,6 @@
     <string name="vis_subs_desc">إظهار زر اختيار لغة الترجمة</string>
     <string name="live_badge">مباشر</string>
     <string name="err_pin_live">البث المباشر لا يُثبَّت — شاهد مباشرة</string>
+    <string name="vis_4k">جودة 4K (2160p)</string>
+    <string name="vis_4k_desc">إظهار دقة 2160p عند توفرها — أطفئها لتوفير البيانات</string>
 </resources>
