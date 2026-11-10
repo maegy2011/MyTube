@@ -335,4 +335,8 @@
     <string name="err_player_unavailable">تعذّر بدء مشغّل الصوت — أعد فتح التطبيق</string>
     <string name="title_translate">ترجمة عنوان الفيديو</string>
     <string name="title_translate_desc">يعرض العنوان بلغة أول ترجمة — يُرسل العنوان إلى خدمة ترجمة جوجل المجانية. أطفئه للعناوين الأصلية دائمًا.</string>
+    <string name="diag_copy">نسخ تقرير عطل</string>
+    <string name="diag_desc">زر الإعدادات: ينسخ رموز الخطأ الحالية وإصدار التطبيق للحافظة — تُرسلها لنا طوعًا عند الإبلاغ عن مشكلة، ولا يُرفع شيء تلقائيًا.</string>
+    <string name="import_invalid">ملف الاشتراكات غير صالح — اختر ملف OPML مصدّر من يوتيوب.</string>
+    <string name="diag_copied">تم نسخ تقرير العطل</string>
 </resources>

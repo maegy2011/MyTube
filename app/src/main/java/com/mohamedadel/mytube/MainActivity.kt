@@ -694,6 +694,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val input = ctx.contentResolver.openInputStream(uri) ?: return@launch
                 val pairs = YouTubeRepo.importSubscriptions(input)
                 try { input.close() } catch (_: Exception) { }
+                if (pairs.isEmpty()) {
+                    toast(ctx.getString(R.string.import_invalid))
+                    return@launch
+                }
                 var n = 0
                 for ((u, name) in pairs) {
                     try {
@@ -1280,6 +1284,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // so late responses can never overwrite fresh results. Failures surface with retry.
     var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    // 2.2 diagnostics: user-triggered report copy (no auto-upload — local-only app, no accounts).
+    // Call site: settings button. Includes current visible errors + versions only.
+    fun diagnosticsReport(): String {
+        return try {
+            buildString {
+                appendLine("MyTube v" + com.mohamedadel.mytube.BuildConfig.VERSION_NAME + " (vc" + com.mohamedadel.mytube.BuildConfig.VERSION_CODE + ")")
+                appendLine("playerError=" + (playerError ?: "none"))
+                appendLine("searchError=" + (searchError ?: "none"))
+                appendLine("playing=" + (playing?.id ?: "none"))
+                appendLine("quality=" + quality)
+                appendLine("offline=" + prefOffline + " country=" + prefCountry)
+            }
+        } catch (_: Exception) { "MyTube diagnostics unavailable" }
+    }
+    fun copyDiagnostics() {
+        try {
+            val cm = ctx.getSystemService(android.content.ClipboardManager::class.java) ?: return
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("MyTube diagnostics", diagnosticsReport()))
+            toast(ctx.getString(R.string.diag_copied))
+        } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) }
+    }
+
     var searchSuggestion by remember { mutableStateOf<String?>(null) }
     var searchCorrected by remember { mutableStateOf(false) }
     fun doSearch(q: String) {
@@ -2028,6 +2054,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         dbSize = dbSizeLabel(),
                         onClearFavorites = { clearFavorites() },
                         onClearHistory = { clearHistory() },
+                        onCopyDiagnostics = { copyDiagnostics() },
                         cacheSize = cacheSizeLabel,
                         cacheMaxMb = prefCacheMaxMb,
                         onCacheMax = { mb ->

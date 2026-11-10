@@ -150,7 +150,8 @@ fun SettingsScreen(
     titleTranslate: Boolean = true,
     onTitleTranslate: (Boolean) -> Unit = {},
     onClearFavorites: () -> Unit,
-    onClearHistory: () -> Unit
+    onClearHistory: () -> Unit,
+    onCopyDiagnostics: () -> Unit = {}
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -592,7 +593,9 @@ fun SettingsScreen(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedButton(onClick = { confirmCache = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_cache)) }
+                androidx.compose.material3.OutlinedButton(onClick = onCopyDiagnostics, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.diag_copy)) }
             }
+            Text(stringResource(R.string.diag_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             Spacer(Modifier.height(4.dp))
