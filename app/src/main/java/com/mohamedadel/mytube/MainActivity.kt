@@ -234,7 +234,7 @@ class MainActivity : ComponentActivity() {
         }
         val params = PictureInPictureParams.Builder()
             .setAspectRatio(ratio)
-            .setAutoEnterEnabled(true)
+            .apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(true) }
             .build()
         try { setPictureInPictureParams(params) } catch (_: Exception) { }
         enterPictureInPictureMode(params)

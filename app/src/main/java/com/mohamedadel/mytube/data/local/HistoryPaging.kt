@@ -14,6 +14,10 @@ class HistoryPaging(
         return try {
             val page = params.key ?: 0
             val size = params.loadSize
+            // Empty pin set would emit IN () / NOT IN () — both invalid SQLite. Short-circuit.
+            if ((tab == 1 || tab == 2) && keys.isEmpty()) {
+                return LoadResult.Page(data = emptyList(), prevKey = null, nextKey = null)
+            }
             val rows = when (tab) {
                 1 -> dao.historyPagePinned(keys, size, page * size)
                 2 -> dao.historyPageUnpinned(keys, size, page * size)
