@@ -135,7 +135,7 @@
     <string name="err_live_ended">هذا بث مباشر انتهت نافذته — شاهده في يوتيوب.</string>
     <string name="playmode_title">وضع التشغيل (للقوائم — الفيديو المفرد لا يتبعه شيء تلقائيًا)</string>
     <string name="youtube">يوتيوب</string>
-    <string name="toast_theme_restart">يُطبق المظهر بعد إعادة فتح التطبيق</string>
+    <string name="toast_theme_restart">تم تطبيق المظهر</string>
     <string name="now_playing">▶ يعمل الآن</string>
     <string name="sub_off_check">✓ إيقاف</string>
     <string name="del_playlist_confirm_fmt">سيتم حذف “%1$s” نهائيًا مع كل بنودها.</string>
@@ -340,4 +340,15 @@
     <string name="import_invalid">ملف الاشتراكات غير صالح — اختر ملف OPML مصدّر من يوتيوب.</string>
     <string name="diag_copied">تم نسخ تقرير العطل</string>
     <string name="err_channel_load">تعذّر تحميل القناة — تحقق من الاتصال وحاول مجددًا</string>
+    <string name="appearance_title">المظهر</string>
+    <string name="theme_black">أسود (AMOLED)</string>
+    <string name="accent_title">لون التمييز</string>
+    <string name="accent_desc">يغيّر لون الأزرار والتمييز — الشعار يبقى أحمر دائمًا.</string>
+    <string name="accent_red">أحمر</string>
+    <string name="accent_blue">أزرق</string>
+    <string name="accent_green">أخضر</string>
+    <string name="accent_purple">بنفسجي</string>
+    <string name="accent_orange">برتقالي</string>
+    <string name="accent_teal">فيروزي</string>
+    <string name="toast_theme_applied">تم تطبيق المظهر</string>
 </resources>

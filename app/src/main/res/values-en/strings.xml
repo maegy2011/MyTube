@@ -340,4 +340,15 @@
     <string name="import_invalid">Invalid subscriptions file — pick an OPML file exported from YouTube.</string>
     <string name="diag_copied">Diagnostics copied</string>
     <string name="err_channel_load">Couldn\'t load the channel — check your connection and retry</string>
+    <string name="appearance_title">Appearance</string>
+    <string name="theme_black">Black (AMOLED)</string>
+    <string name="accent_title">Accent color</string>
+    <string name="accent_desc">Changes buttons and highlights — the logo stays red.</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_green">Green</string>
+    <string name="accent_purple">Purple</string>
+    <string name="accent_orange">Orange</string>
+    <string name="accent_teal">Teal</string>
+    <string name="toast_theme_applied">Theme applied</string>
 </resources>

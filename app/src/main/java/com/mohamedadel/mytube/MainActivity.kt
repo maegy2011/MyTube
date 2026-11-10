@@ -159,6 +159,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import org.schabi.newpipe.extractor.Page
 
+// Appearance live holders (file-level so both the Activity and the top-level
+// MyTubeApp composable see them): setContent observes these, so theme/accent
+// apply instantly with no recreate — the queue survives a theme switch.
+private val themeLive = androidx.compose.runtime.mutableStateOf("dark")
+private val accentLive = androidx.compose.runtime.mutableStateOf("red")
+
 class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     val pipMode = androidx.compose.runtime.mutableStateOf(false)
@@ -166,8 +172,11 @@ class MainActivity : ComponentActivity() {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         // theme + ui-language prefs are read here (before composition) so they survive restarts;
-        // changes apply via activity.recreate() from the settings screen.
+        // theme/accent changes apply live via themeLive/accentLive (no recreate — queue survives).
         val themePref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_theme", "dark") ?: "dark" } catch (_: Exception) { "dark" }
+        val accentPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_accent", "red") ?: "red" } catch (_: Exception) { "red" }
+        try { themeLive.value = themePref } catch (_: Exception) { }
+        try { accentLive.value = accentPref } catch (_: Exception) { }
         val uiLangPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { "ar" }
         setContent {
             MyTubeTheme(
@@ -176,6 +185,8 @@ class MainActivity : ComponentActivity() {
                     "system" -> androidx.compose.foundation.isSystemInDarkTheme()
                     else -> true
                 },
+                black = themeLive.value == "black",
+                accent = accentLive.value,
                 rtl = uiLangPref != "en"
             ) { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }, pipMode = pipMode) }
         }
@@ -307,6 +318,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefCountry by remember { mutableStateOf("EG") }
     // app theme: dark (default) | light (large-type friendly) | system
     var prefTheme by remember { mutableStateOf("dark") }
+    var prefAccent by remember { mutableStateOf("red") }
     // UI language: ar (default, RTL) | en (LTR). Applies via recreate().
     var prefUiLang by remember { mutableStateOf("ar") }
     // default video quality for every new video: audio-only | auto | saver | high
@@ -431,6 +443,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
+            prefAccent = prefs.getString("pref_accent", "red") ?: "red"
             prefUiLang = prefs.getString("pref_ui_lang", "ar") ?: "ar"
             prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
             prefContentFilter = prefs.getString("pref_content_filter", "all") ?: "all"
@@ -2163,8 +2176,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onTheme = { v ->
                             prefTheme = v
                             try { prefs.edit().putString("pref_theme", v).apply() } catch (_: Exception) { }
-                            toast(ctx.getString(R.string.toast_theme_restart))
-                            try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
+                            try { themeLive.value = v } catch (_: Exception) { }
+                            toast(ctx.getString(R.string.toast_theme_applied))
+                        },
+                        accent = prefAccent,
+                        onAccent = { v ->
+                            prefAccent = v
+                            try { prefs.edit().putString("pref_accent", v).apply() } catch (_: Exception) { }
+                            try { accentLive.value = v } catch (_: Exception) { }
+                            toast(ctx.getString(R.string.toast_theme_applied))
                         }
                     )
                 }

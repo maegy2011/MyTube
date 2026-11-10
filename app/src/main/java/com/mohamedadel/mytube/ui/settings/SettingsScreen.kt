@@ -1,8 +1,11 @@
 package com.mohamedadel.mytube.ui.settings
 
 import com.mohamedadel.mytube.R
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,7 +31,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
 
 // Settings screen extracted from MainActivity (split step 2).
 // Pure UI: all state comes in via params, all writes go out via callbacks.
@@ -64,7 +70,18 @@ val PLAYMODE_OPTIONS = listOf(
 val THEME_OPTIONS = listOf(
     "dark" to R.string.theme_dark,
     "light" to R.string.theme_light,
+    "black" to R.string.theme_black,
     "system" to R.string.theme_system
+)
+
+// Appearance accents: code to fill color + label. Fills mirror Color.kt AccentFills.
+val ACCENT_OPTIONS = listOf(
+    "red" to (Color(0xFFD32F2F) to R.string.accent_red),
+    "blue" to (Color(0xFF0B57D0) to R.string.accent_blue),
+    "green" to (Color(0xFF2E7D32) to R.string.accent_green),
+    "purple" to (Color(0xFF7B1FA2) to R.string.accent_purple),
+    "orange" to (Color(0xFFB45300) to R.string.accent_orange),
+    "teal" to (Color(0xFF00796B) to R.string.accent_teal)
 )
 
 val QUALITY_OPTIONS = listOf(
@@ -91,6 +108,8 @@ fun SettingsScreen(
     onQuality: (String) -> Unit,
     theme: String,
     onTheme: (String) -> Unit,
+    accent: String = "red",
+    onAccent: (String) -> Unit = {},
     uiLang: String,
     onUiLang: (String) -> Unit,
     playMode: String,
@@ -450,6 +469,9 @@ fun SettingsScreen(
             }
         }
         item {
+            Text(stringResource(R.string.appearance_title), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
             Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.theme_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }
@@ -467,6 +489,29 @@ fun SettingsScreen(
                 Spacer(Modifier.width(12.dp))
                 Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(R.string.accent_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                ACCENT_OPTIONS.forEach { (code, pair) ->
+                    val (fill, label) = pair
+                    val selected = accent == code
+                    Box(
+                        modifier = Modifier.size(40.dp)
+                            .clip(CircleShape)
+                            .background(fill)
+                            .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, CircleShape)
+                            .clickable(onClickLabel = stringResource(label)) { onAccent(code) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = stringResource(label), tint = Color.White, modifier = Modifier.size(22.dp))
+                    }
+                }
+            }
+            Text(stringResource(R.string.accent_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             Spacer(Modifier.height(4.dp))
