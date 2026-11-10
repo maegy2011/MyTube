@@ -394,4 +394,8 @@
     <string name="sc_source_ytm">يوتيوب ميوزك</string>
     <string name="toast_cast_started">يُبث الآن على Chromecast (توقف المحلي)</string>
     <string name="toast_cast_ended">انتهى البث — استأنف من المشغّل المحلي</string>
+    <string name="playlist_count_fmt">%1$d مقطع</string>
+    <string name="remote_playlists_title">قوائم التشغيل</string>
+    <string name="remote_play_all">تشغيل الكل</string>
+    <string name="remote_empty">القائمة فارغة أو تعذّر تحميلها</string>
 </resources>

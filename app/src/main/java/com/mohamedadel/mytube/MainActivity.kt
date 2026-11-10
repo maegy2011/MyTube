@@ -424,6 +424,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var scResults by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
     var scLoading by remember { mutableStateOf(false) }
     var scError by remember { mutableStateOf<String?>(null) }
+    // Remote playlists (service playlists, not local Room): cards + openable contents view.
+    var remotePlaylists by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.RemotePlaylist>()) }
+    var openRemote by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.RemotePlaylist?>(null) }
+    var openRemoteItems by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
+    var openRemoteLoading by remember { mutableStateOf(false) }
+
     // Music-tab source: 0 = SoundCloud, 1 = YouTube Music (native music_songs filter).
     var scSource by remember { mutableIntStateOf(0) }
     var trendTab by remember { mutableStateOf(0) }
@@ -734,6 +740,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // no remove needed for composition lifetime
     }
     val scope = rememberCoroutineScope()
+    fun openRemotePlaylist(p: com.mohamedadel.mytube.data.youtube.RemotePlaylist) {
+        openRemote = p
+        openRemoteItems = emptyList()
+        openRemoteLoading = true
+        scope.launch {
+            try {
+                openRemoteItems = com.mohamedadel.mytube.data.youtube.YouTubeRepo.fetchPlaylist(p.url ?: return@launch)
+            } catch (_: Exception) { openRemoteItems = emptyList() }
+            finally { openRemoteLoading = false }
+        }
+    }
     // Title localization: displayed title follows the video's FIRST subtitle language.
     var translatedTitle by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(playing?.url, streamData?.subtitles, prefTitleTranslate) {
@@ -1561,6 +1578,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         searchJob?.cancel()
         searchJob = scope.launch {
             try {
+                if (prefContentFilter == "playlists") {
+                    remotePlaylists = YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry)
+                } else {
+                    remotePlaylists = emptyList()
+                }
                 val page = YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry, prefContentFilter)
                 if (page.error != null && page.items.isEmpty()) {
                     searchError = ctx.getString(R.string.err_search)
@@ -1600,6 +1622,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scJob?.cancel()
         scJob = scope.launch {
             try {
+                remotePlaylists = if (src == 1)
+                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(
+                        q, if (prefCountry == "global") null else prefCountry, music = true)
+                else
+                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, sc = true)
                 val page = if (src == 1)
                     com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(
                         q, null, if (prefCountry == "global") null else prefCountry, "music_songs")
@@ -1863,6 +1890,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             showSettings = false
             return true
         }
+        if (openRemote != null) {
+            openRemote = null
+            openRemoteItems = emptyList()
+            return true
+        }
         if (showLibrary) {
             showLibrary = false
             return true
@@ -1881,7 +1913,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showSC || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -2386,6 +2418,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
                         }
+                        if (remotePlaylists.isNotEmpty()) {
+                            Text(
+                                stringResource(R.string.remote_playlists_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            )
+                            remotePlaylists.forEach { p ->
+                                com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
+                            }
+                        }
                         androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxSize()) {
                             itemsIndexed(items = scResults, key = { idx, v -> "$idx|${v.url ?: v.title ?: "n/a"}" }) { _, v ->
                                 SearchRow(
@@ -2746,6 +2789,31 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onLongClick = { optionsFor = it }
                     )
                 }
+                openRemote != null -> {
+                    val rp = openRemote!!
+                    com.mohamedadel.mytube.ui.results.RemotePlaylistView(
+                        rp = rp,
+                        loading = openRemoteLoading,
+                        items = openRemoteItems,
+                        playingUrl = playing?.url,
+                        isPlaying = isPlaying,
+                        isFav = { v -> v.favKey() in favoriteSet },
+                        onBack = { openRemote = null; openRemoteItems = emptyList() },
+                        onPlayAll = { list ->
+                            results = list
+                            queue = list
+                            currentQuery = ""
+                            openRemote = null
+                            playVideo(list[0], inQueue = true)
+                        },
+                        onPlay = { playVideo(it) },
+                        onLongClick = { optionsFor = it },
+                        onFav = { toggleFavorite(it) },
+                        onAdd = { enqueueLast(it) },
+                        pinBadgeOf = { v -> pinBadges[v.favKey()] },
+                        pinningOf = { v -> pinningKeys.contains(v.favKey()) }
+                    )
+                }
                 loading -> {
                     com.mohamedadel.mytube.ui.results.VideoListSkeleton(count = 5)
                 }
@@ -2817,6 +2885,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         label = { Text(stringResource(when (f) { "videos" -> R.string.filter_videos; "channels" -> R.string.filter_channels; "playlists" -> R.string.filter_playlists; else -> R.string.filter_all })) }
                                     )
                                 }
+                            }
+                        }
+                        // remote playlists (service playlists for the browsed service)
+                        if (remotePlaylists.isNotEmpty()) {
+                            item {
+                                Text(
+                                    stringResource(R.string.remote_playlists_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                            items(items = remotePlaylists, key = { p -> p.url ?: p.title ?: p.hashCode().toString() }) { p ->
+                                com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
                             }
                         }
                         // search correction (own item: never breaks the list)

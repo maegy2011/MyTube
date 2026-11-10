@@ -20,6 +20,15 @@ data class Storyboard(val urls: List<String>, val total: Int, val perX: Int, val
 data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
 data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
 data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList())
+data class RemotePlaylist(
+    val title: String? = null,
+    val uploader: String? = null,
+    val thumbnail: String? = null,
+    val count: Long = 0,
+    val url: String? = null,
+    val source: String = "youtube" // youtube | soundcloud
+)
+
 data class SearchPage(val items: List<VideoItem> = emptyList(), val nextPage: Page? = null, val hasNext: Boolean = false, val error: String? = null, val suggestion: String? = null, val corrected: Boolean = false)
 
 object YouTubeRepo {
@@ -146,6 +155,10 @@ object YouTubeRepo {
             val items = lp.items
             val out = mutableListOf<VideoItem>()
             for (info in items) {
+                if (info is org.schabi.newpipe.extractor.playlist.PlaylistInfoItem) {
+                    // playlists surface separately via searchPlaylists(); skipped in the video list
+                    continue
+                }
                 if (info is StreamInfoItem) {
                     val url: String? = try { info.url } catch (_: Exception) { null }
                     val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
@@ -547,5 +560,68 @@ object YouTubeRepo {
         return try {
             if (url.contains("soundcloud.com")) scStream(url) else stream(url)
         } catch (_: Exception) { null }
+    }
+
+    // Remote playlists: search + open, per the browsed service (YouTube / YouTube Music / SoundCloud).
+    // SearchPage.video list skips PlaylistInfoItem; this surfaces them as openable cards.
+    suspend fun searchPlaylists(query: String, region: String? = null, music: Boolean = false, sc: Boolean = false): List<RemotePlaylist> = withContext(Dispatchers.IO) {
+        try {
+            if (sc) {
+                val ext = scService().getSearchExtractor(query)
+                ext.fetchPage()
+                return@withContext ext.initialPage.items
+                    .filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>()
+                    .mapNotNull { p -> playlistInfoToRemote(p, "soundcloud") }
+            }
+            applyRegion(region)
+            val filter = if (music) "music_playlists" else "playlists"
+            val ext = try {
+                val qh = service().searchQHFactory.fromQuery(query, listOf(filter), "")
+                service().getSearchExtractor(qh)
+            } catch (_: Exception) { service().getSearchExtractor(query) }
+            ext.fetchPage()
+            ext.initialPage.items
+                .filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>()
+                .mapNotNull { p -> playlistInfoToRemote(p, "youtube") }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun playlistInfoToRemote(p: org.schabi.newpipe.extractor.playlist.PlaylistInfoItem, source: String): RemotePlaylist? {
+        return try {
+            val url: String? = try { p.url } catch (_: Exception) { null }
+            if (url.isNullOrBlank()) return null
+            val name: String? = try { decodeHtml(p.name) } catch (_: Exception) { p.name }
+            val up: String? = try { decodeHtml(p.uploaderName) } catch (_: Exception) { p.uploaderName }
+            var thumb: String? = null
+            try { thumb = bestThumb(p.thumbnails) } catch (_: Exception) { }
+            var cnt = 0L
+            try { cnt = p.streamCount } catch (_: Exception) { }
+            RemotePlaylist(name, up, thumb, cnt, url, source)
+        } catch (_: Exception) { null }
+    }
+
+    // Open a remote playlist URL (youtube.com / music.youtube.com / soundcloud.com) into playable items.
+    suspend fun fetchPlaylist(url: String): List<VideoItem> = withContext(Dispatchers.IO) {
+        try {
+            val sc = url.contains("soundcloud.com")
+            val ext = if (sc) scService().getPlaylistExtractor(url) else service().getPlaylistExtractor(url)
+            ext.fetchPage()
+            ext.initialPage.items.mapNotNull { info ->
+                try {
+                    val u: String? = try { info.url } catch (_: Exception) { null }
+                    if (u.isNullOrBlank()) return@mapNotNull null
+                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                    val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
+                    var thumb: String? = null
+                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) { }
+                    var dur: Long? = null
+                    try { dur = info.duration } catch (_: Exception) { }
+                    val id: String? = u.substringAfter("v=", "").substringBefore("&").takeIf { it.isNotEmpty() }
+                    var chUrl: String? = null
+                    try { chUrl = info.uploaderUrl } catch (_: Exception) { }
+                    VideoItem(id, name, up, thumb, dur, null, u, null, false, null, false, chUrl)
+                } catch (_: Exception) { null }
+            }
+        } catch (_: Exception) { emptyList() }
     }
 }
