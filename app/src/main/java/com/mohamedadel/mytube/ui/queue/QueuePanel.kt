@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -130,6 +131,7 @@ fun VideoOptionsDialog(
     isPinning: Boolean = false,
     onQuickPin: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    onStartRadio: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -162,6 +164,16 @@ fun VideoOptionsDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+                if (onStartRadio != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onStartRadio).padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Radio, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.start_radio), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 if (onShare != null) {

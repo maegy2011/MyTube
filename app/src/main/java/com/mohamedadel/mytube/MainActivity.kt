@@ -284,6 +284,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var playerError by remember { mutableStateOf<String?>(null) }
     // queue (suggestion #3): sequential playback of the result list, started only by explicit user action
     var autoAdvance by remember { mutableStateOf(false) }
+    // Radio (endless related queue): seeded from StreamData.related, refilled at every
+    // queue end from the just-played track's own related list. Local-only, no account.
+    var radioOn by remember { mutableStateOf(false) }
     var queueIndex by remember { mutableStateOf(-1) }
     // full player vs mini player: back collapses (keeps audio), X closes (stops audio)
     var playerExpanded by remember { mutableStateOf(false) }
@@ -946,6 +949,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext) } } catch (_: Exception) { }
     }
     androidx.compose.runtime.LaunchedEffect(groups) { refreshGroupCounts(groups) }
+    // playlist artwork covers (first 4 song thumbs per playlist, refreshed on change)
+    var plCovers by remember { mutableStateOf(mapOf<Long, List<String>>()) }
+    fun refreshPlCovers() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val m = mutableMapOf<Long, List<String>>()
+                for (pl in playlists) {
+                    try { m[pl.id] = dao.playlistThumbs(pl.id) } catch (_: Exception) { }
+                }
+                plCovers = m
+            } catch (_: Exception) { }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(playlists) { refreshPlCovers() }
     // One-tap favorite toggle (needs scope, so it lives here).
     // Short user feedback for every silent success/failure in favorites/queue/playlists.
     fun toast(msg: String) {
@@ -1306,6 +1323,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // single tap: this video alone is the queue (no implicit follow-up)
             queue = listOf(v)
             autoAdvance = false
+            radioOn = false
         } else {
             autoAdvance = true
         }
@@ -1483,11 +1501,44 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
 
     // Queue navigation (suggestion #3): next/previous within the result list.
+    fun startRadio(v: VideoItem) {
+        scope.launch {
+            try {
+                val seed: List<VideoItem> = if (playing?.favKey() == v.favKey() && !streamData?.related.isNullOrEmpty()) {
+                    streamData!!.related
+                } else {
+                    val url = v.url
+                    if (url.isNullOrBlank()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
+                    try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(url)?.related ?: emptyList() } catch (_: Exception) { emptyList() }
+                }
+                val fresh = seed.filter { it.url?.isNotBlank() == true }.take(15)
+                if (fresh.isEmpty()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
+                queue = listOf(v) + fresh.filter { it.favKey() != v.favKey() }
+                queueIndex = 0
+                radioOn = true
+                toast(ctx.getString(R.string.toast_radio_started))
+                playVideo(v, inQueue = true)
+            } catch (_: Exception) { toast(ctx.getString(R.string.toast_radio_fail)) }
+        }
+    }
     fun playNextInQueue() {
         val i = queueIndex
         val next = if (i >= 0) queue.getOrNull(i + 1) else null
         // expand=playerExpanded: advancing from notification/lock while browsing must not yank the full player open
-        if (next != null) playVideo(next, inQueue = true, expand = playerExpanded) else autoAdvance = false
+        if (next != null) { playVideo(next, inQueue = true, expand = playerExpanded); return }
+        // queue exhausted: radio refills from the just-played track's related list (endless)
+        if (radioOn) {
+            val fresh = (streamData?.related ?: emptyList())
+                .filter { r -> (r.url?.isNotBlank() == true) && queue.none { it.favKey() == r.favKey() } }
+                .take(10)
+            if (fresh.isNotEmpty()) {
+                queue = queue + fresh
+                playVideo(fresh[0], inQueue = true, expand = playerExpanded)
+                return
+            }
+            radioOn = false
+        }
+        autoAdvance = false
     }
     fun playPrevInQueue() {
         val prev = if (queueIndex > 0) queue.getOrNull(queueIndex - 1) else null
@@ -1618,8 +1669,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         playMode == "repeatOne" -> try { player?.seekTo(0L); player?.play() } catch (_: Exception) { }
                         shuffleOn -> playRandomInQueue()
                         playMode == "repeatAll" -> {
-                            val nxt = if (queueIndex >= 0) queue.getOrNull(queueIndex + 1) else null
-                            if (nxt != null) playVideo(nxt, inQueue = true) else playFirstInQueue()
+                            if (radioOn) playNextInQueue()
+                            else {
+                                val nxt = if (queueIndex >= 0) queue.getOrNull(queueIndex + 1) else null
+                                if (nxt != null) playVideo(nxt, inQueue = true) else playFirstInQueue()
+                            }
                         }
                         else -> playNextInQueue()
                     }
@@ -3344,7 +3398,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onBack = { smartBack() },
                         onLongClick = { optionsFor = it },
                         pinBadges = pinBadges,
-                        pinningKeys = pinningKeys
+                        pinningKeys = pinningKeys,
+                        onPlayAll = {
+                            val list = favorites.map { it.toVideoItem() }
+                            if (list.isNotEmpty()) {
+                                queue = list
+                                playVideo(list[0], inQueue = true)
+                            }
+                        },
+                        onRadio = {
+                            val first = favorites.firstOrNull()?.toVideoItem()
+                            if (first != null) startRadio(first)
+                        }
                     )
                 }
                 showPlaylists -> {
@@ -3424,7 +3489,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         },
                         onBack = { showPlaylists = false; openPlaylistId = null },
                         pinBadges = pinBadges,
-                        onLongClick = { optionsFor = it }
+                        onLongClick = { optionsFor = it },
+                        covers = plCovers
                     )
                 }
                 openRemote != null -> {
@@ -3703,6 +3769,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     isPinning = pinningKeys.contains(v.favKey()),
                     onSubscribe = if (v.channelUrl != null) ({ toggleSubscription(v.channelUrl, v.channel, v.channelAvatar); optionsFor = null }) else null,
                     onShare = { try { ctx.shareVideoCtx(v) } catch (_: Exception) { }; optionsFor = null },
+                    onStartRadio = { startRadio(v); optionsFor = null },
                     isSubscribed = v.channelUrl != null && subscriptions.any { it.channelUrl == v.channelUrl },
                     onDismiss = { optionsFor = null }
                 )

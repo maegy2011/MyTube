@@ -467,4 +467,7 @@
     <string name="load_more">Load more</string>
     <string name="quick_picks">Quick picks</string>
     <string name="taste_mix_fmt">Because you listen to %1$s</string>
+    <string name="start_radio">Radio</string>
+    <string name="toast_radio_started">Radio started — an endless queue of suggestions</string>
+    <string name="toast_radio_fail">Could not start radio for this item</string>
 </resources>

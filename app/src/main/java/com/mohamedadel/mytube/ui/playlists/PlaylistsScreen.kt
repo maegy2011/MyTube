@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -83,7 +84,8 @@ fun PlaylistsScreen(
     onMoveToPlaylist: (Long, Long, Long) -> Unit = { _, _, _ -> },
     onBack: () -> Unit,
     pinBadges: Map<String, String> = emptyMap(),
-    onLongClick: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {}
+    onLongClick: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
+    covers: Map<Long, List<String>> = emptyMap()
 ) {
     var nameDraft by remember { mutableStateOf("") }
     var showCreate by remember { mutableStateOf(false) }
@@ -157,7 +159,8 @@ fun PlaylistsScreen(
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.emoji.ifBlank { "🎵" }, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.width(44.dp))
+                        PlaylistCover(emoji = p.emoji.ifBlank { "🎵" }, thumbs = covers[p.id] ?: emptyList())
+                        Spacer(Modifier.width(8.dp))
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f).clickable { onOpen(p.id) }) {
                             Text(p.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -385,4 +388,28 @@ fun PlaylistPickerDialog(
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
+}
+
+// Playlist cover: 2x2 artwork collage when 4+ thumbs, single artwork when 1-3,
+// emoji fallback when empty. Derived live from songs — no stored cover, no migration.
+@Composable
+private fun PlaylistCover(emoji: String, thumbs: List<String>) {
+    if (thumbs.isEmpty()) {
+        Text(emoji, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.width(44.dp))
+        return
+    }
+    if (thumbs.size >= 4) {
+        Column(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))) {
+            Row(modifier = Modifier.weight(1f)) {
+                AsyncImage(model = thumbs[0], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                AsyncImage(model = thumbs[1], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+            }
+            Row(modifier = Modifier.weight(1f)) {
+                AsyncImage(model = thumbs[2], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                AsyncImage(model = thumbs[3], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+            }
+        }
+        return
+    }
+    AsyncImage(model = thumbs[0], contentDescription = null, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
 }

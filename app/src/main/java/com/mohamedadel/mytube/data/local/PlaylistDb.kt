@@ -160,6 +160,10 @@ interface PlaylistDao {
     @Query("SELECT COUNT(*) FROM playlist_items WHERE playlistId = :pid")
     suspend fun itemCount(pid: Long): Int
 
+    // Playlist cover from its songs' artwork (no stored cover, no migration): first 4 thumbs.
+    @Query("SELECT thumbnail FROM playlist_items WHERE playlistId = :pid AND thumbnail IS NOT NULL AND thumbnail != '' ORDER BY position ASC LIMIT 4")
+    suspend fun playlistThumbs(pid: Long): List<String>
+
     @Insert
     suspend fun insertPlaylist(p: PlaylistEntity): Long
 

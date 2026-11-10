@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +43,9 @@ fun FavoritesScreen(
     onBack: () -> Unit,
     onLongClick: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
-    pinningKeys: Set<String> = emptySet()
+    pinningKeys: Set<String> = emptySet(),
+    onPlayAll: (() -> Unit)? = null,
+    onRadio: (() -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -55,6 +59,16 @@ fun FavoritesScreen(
                 modifier = Modifier.weight(1f)
             )
             if (items.isNotEmpty()) {
+                if (onRadio != null) {
+                    IconButton(onClick = onRadio) {
+                        Icon(Icons.Rounded.Radio, contentDescription = stringResource(R.string.start_radio), tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                if (onPlayAll != null) {
+                    IconButton(onClick = onPlayAll) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play), tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
                 IconButton(onClick = onClear) {
                     Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.clear_favorites), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
