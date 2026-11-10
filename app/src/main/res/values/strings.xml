@@ -465,4 +465,6 @@
     <string name="err_search_detail_fmt">تعذّر البحث (%1$s) — انسخ الرسالة وأرسلها للتشخيص.</string>
     <string name="filter_artists">فنانون</string>
     <string name="load_more">تحميل المزيد</string>
+    <string name="quick_picks">مقترحات لك</string>
+    <string name="taste_mix_fmt">لأنك تستمع إلى %1$s</string>
 </resources>

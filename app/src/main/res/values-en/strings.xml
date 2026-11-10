@@ -465,4 +465,6 @@
     <string name="err_search_detail_fmt">Search failed (%1$s) — copy this message for diagnosis.</string>
     <string name="filter_artists">Artists</string>
     <string name="load_more">Load more</string>
+    <string name="quick_picks">Quick picks</string>
+    <string name="taste_mix_fmt">Because you listen to %1$s</string>
 </resources>

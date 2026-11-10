@@ -461,6 +461,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var scLoadingMore by remember { mutableStateOf(false) }
     val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var recentMusicSearches by remember { mutableStateOf(listOf<String>()) }
+    // Local-profile recommendations (no account): quick picks + one YTM mix shelf.
+    var tasteProfile by remember { mutableStateOf<com.mohamedadel.mytube.util.TasteProfile?>(null) }
+    var tasteMix by remember { mutableStateOf(emptyList<VideoItem>()) }
+    var tasteMixTerm by remember { mutableStateOf<String?>(null) }
+    var tasteMixLoading by remember { mutableStateOf(false) }
     var trendTab by remember { mutableStateOf(0) }
     var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
     var trendingLoading by remember { mutableStateOf(false) }
@@ -1890,6 +1895,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         }
     }
+    fun refreshTaste() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val top = try { dao.topPlayed(20) } catch (_: Exception) { emptyList() }
+                val prof = com.mohamedadel.mytube.util.buildTasteProfile(top, favorites, recentMusicSearches, recentSearches)
+                tasteProfile = prof
+                // one network enrichment: YTM songs for the top term (silent fail, tab-local)
+                val term = prof.terms.firstOrNull()
+                if (!term.isNullOrBlank() && term != tasteMixTerm && !tasteMixLoading) {
+                    tasteMixLoading = true
+                    try {
+                        val page = try {
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(
+                                term, null, if (prefCountry == "global") null else prefCountry, "music_songs")
+                        } catch (_: Exception) { null }
+                        val seen = prof.picks.mapNotNull { it.url ?: it.id }.toSet()
+                        tasteMix = (page?.items ?: emptyList()).filter { (it.url ?: it.id ?: "") !in seen }.take(6)
+                        tasteMixTerm = term
+                    } catch (_: Exception) { }
+                    tasteMixLoading = false
+                }
+            } catch (_: Exception) { }
+        }
+    }
     fun loadScMore() {
         val q = scQuery
         val pg = scNextPage
@@ -1927,6 +1956,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val total = scListState.layoutInfo.totalItemsCount
         total > 0 && last >= total - 3
     } catch (_: Exception) { false }
+    LaunchedEffect(showSC) { if (showSC) refreshTaste() }
     LaunchedEffect(scTail, scQuery) {
         if (scTail && scHasMore && !scLoadingMore && !scLoading && scQuery.isNotBlank()) loadScMore()
     }
@@ -3172,6 +3202,69 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         selected = scKind == k,
                                         onClick = { if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
                                         label = { Text(stringResource(when (k) { "songs" -> R.string.filter_songs; "albums" -> R.string.filter_albums; "artists" -> R.string.filter_artists; else -> R.string.filter_playlists })) }
+                                    )
+                                }
+                            }
+                        }
+                        // Local-profile recommendations (no account): taste chips + quick picks + YTM mix.
+                        // Visible only on the idle tab (no query, no results, no error).
+                        if (scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true)) {
+                            Text(
+                                stringResource(R.string.quick_picks),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            )
+                            if (tasteProfile?.terms?.isNotEmpty() == true) {
+                                androidx.compose.foundation.layout.Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+                                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                                ) {
+                                    tasteProfile!!.terms.forEach { t ->
+                                        androidx.compose.material3.FilterChip(
+                                            selected = false,
+                                            onClick = { scQuery = t; doScSearch(t) },
+                                            label = { Text(t) }
+                                        )
+                                    }
+                                }
+                            }
+                            (tasteProfile?.picks ?: emptyList()).take(5).forEach { v ->
+                                SearchRow(
+                                    v = v,
+                                    isCurrent = playing?.url == v.url,
+                                    isPlaying = isPlaying && playing?.url == v.url,
+                                    isFav = v.favKey() in favoriteSet,
+                                    onClick = { playVideo(v) },
+                                    onLongClick = { optionsFor = it },
+                                    onFav = { toggleFavorite(it) },
+                                    pinBadge = pinBadges[v.favKey()],
+                                    pinning = pinningKeys.contains(v.favKey())
+                                )
+                            }
+                            if (tasteMixLoading || tasteMix.isNotEmpty()) {
+                                Text(
+                                    try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                                if (tasteMixLoading && tasteMix.isEmpty()) {
+                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                    }
+                                }
+                                tasteMix.forEach { v ->
+                                    SearchRow(
+                                        v = v,
+                                        isCurrent = playing?.url == v.url,
+                                        isPlaying = isPlaying && playing?.url == v.url,
+                                        isFav = v.favKey() in favoriteSet,
+                                        onClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
+                                        onLongClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else { optionsFor = it } },
+                                        onFav = { toggleFavorite(it) },
+                                        pinBadge = pinBadges[v.favKey()],
+                                        pinning = pinningKeys.contains(v.favKey())
                                     )
                                 }
                             }

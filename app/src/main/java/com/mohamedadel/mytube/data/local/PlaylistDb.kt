@@ -246,11 +246,14 @@ interface PlaylistDao {
     @Query("SELECT COUNT(*) FROM history")
     suspend fun historyCount(): Int
 
+    @Query("SELECT videoKey, videoId, title, channel, thumbnail, url, COUNT(*) AS plays, MAX(playedAt) AS lastPlayed FROM history GROUP BY videoKey ORDER BY plays DESC, lastPlayed DESC LIMIT :limit")
+    suspend fun topPlayed(limit: Int): List<PlayedStat>
+
     // Cap 1000 rows (~200KB): Paging makes the full depth browsable, the cap only bounds disk.
     @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY playedAt DESC LIMIT 1000)")
     suspend fun trimHistory()
 
-    // ---- Subscriptions ----
+// ---- Subscriptions ----
     @Query("SELECT * FROM subscriptions ORDER BY addedAt DESC")
     fun observeSubscriptions(): Flow<List<SubscriptionEntity>>
 
@@ -326,6 +329,19 @@ interface PlaylistDao {
     @Query("DELETE FROM feed_cache")
     suspend fun clearFeedCache()
 }
+// Local taste profile (recommendations without an account): repeat-play ranking.
+// Query-only: no schema change, no migration.
+data class PlayedStat(
+    val videoKey: String,
+    val videoId: String?,
+    val title: String?,
+    val channel: String?,
+    val thumbnail: String?,
+    val url: String?,
+    val plays: Long,
+    val lastPlayed: Long
+)
+
 
 @Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class], version = 8, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
