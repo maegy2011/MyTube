@@ -285,6 +285,8 @@
     <string name="pin_size_fmt">%.1f م.ب</string>
     <string name="pin_size_unknown">حجم غير معروف</string>
     <string name="toast_pin_done">تم التثبيت للوضع بدون اتصال</string>
+    <string name="pin_ext_fallback">التخزين الخارجي غير متاح — سيُحفظ التثبيت داخليًا (بلا حاجة لأي إذن)</string>
+    <string name="pin_no_space">لا توجد مساحة كافية لهذا التثبيت</string>
     <string name="toast_pin_fail">فشل التثبيت — تحقق من الاتصال</string>
     <string name="toast_unpinned">تمت إزالة التثبيت</string>
     <string name="offline_title">وضع بدون اتصال</string>
@@ -398,4 +400,18 @@
     <string name="remote_playlists_title">قوائم التشغيل</string>
     <string name="remote_play_all">تشغيل الكل</string>
     <string name="remote_empty">القائمة فارغة أو تعذّر تحميلها</string>
+    <string name="dl_title">التنزيلات</string>
+    <string name="dl_empty">لا توجد مقاطع مثبتة بعد — ثبّت أي مقطع بالضغط المطوّل ثم التثبيت</string>
+    <string name="dl_clear_all">مسح الكل</string>
+    <string name="dl_total_fmt">الإجمالي: %.1f ميجابايت</string>
+    <string name="dl_channel">تقدّم التنزيل</string>
+    <string name="dl_progress_fmt">%d٪</string>
+    <string name="keepalive_channel">الحماية من قاتل البطارية</string>
+    <string name="keepalive_channel_desc">إشعار دائم منخفض الأهمية يُبقي التطبيق حيًا في الخلفية</string>
+    <string name="keepalive_title">MyTube يعمل في الخلفية</string>
+    <string name="keepalive_text">الحماية من الإغلاق التلقائي مفعّلة — اضغط إيقاف للإزالة</string>
+    <string name="keepalive_stop">إيقاف</string>
+    <string name="keepalive_off">أُوقفت الحماية الدائمة</string>
+    <string name="keepalive_setting">إشعار دائم ضد الإغلاق التلقائي</string>
+    <string name="keepalive_setting_desc">يُبقي التطبيق حيًا على أجهزة أوبو/فيفو/شاومي/سامسونج — أيقونة دائمة مقابل عدم قتله</string>
 </resources>

@@ -84,6 +84,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -479,6 +480,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     var pinningKeys by remember { mutableStateOf(setOf<String>()) }
+    // Download-manager state: live per-pin progress + manager screen + keepalive toggle.
+    var pinProgress by remember { mutableStateOf(mapOf<String, Float>()) }
+    var showDownloads by remember { mutableStateOf(false) }
+    var prefKeepalive by remember { mutableStateOf(false) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
     val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
     val histFlowPinned = remember(pinKeys) {
@@ -560,6 +565,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefSkipSilence = prefs.getBoolean("pref_skip_silence", false)
             prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
             prefOffline = prefs.getBoolean("pref_offline", false)
+            prefKeepalive = prefs.getBoolean("pref_keepalive", false)
+            try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
             prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
             prefFeedCache = prefs.getBoolean("pref_feed_cache", true)
@@ -1806,7 +1813,47 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSub, ctx.estimatedDownstreamKbps())
                 } else pc.plan
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(ctx.applicationContext, dao, pc.v, plan)
+                // Storage-permission fix: app-specific dirs need NO runtime permission, but the
+                // external root can be unmounted/missing — fall back to internal LOUDLY, not silently.
+                try {
+                    val pf = com.mohamedadel.mytube.data.local.PinFiles
+                    if (pf.isCurrentLocBroken(ctx.applicationContext)) {
+                        try { prefs.edit().putString("pref_pin_location", "internal").apply() } catch (_: Exception) { }
+                        toast(ctx.getString(R.string.pin_ext_fallback))
+                    }
+                    // Free-space guard: refuse early with a clear message instead of a mid-write fail.
+                    val need = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
+                    val free = pf.freeBytes(ctx.applicationContext)
+                    if (need > 0 && free >= 0 && need > free) {
+                        toast(ctx.getString(R.string.pin_no_space)); return@launch
+                    }
+                } catch (_: Exception) { }
+                val app = ctx.applicationContext
+                val nm = try { app.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager } catch (_: Exception) { null }
+                val dlChannel = "mytube_downloads"
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        nm?.createNotificationChannel(android.app.NotificationChannel(dlChannel, ctx.getString(R.string.dl_channel), android.app.NotificationManager.IMPORTANCE_LOW))
+                    }
+                } catch (_: Exception) { }
+                val notifId = 2000 + (key.hashCode() and 0xFFF)
+                val progCb: (Long, Long) -> Unit = { done, total ->
+                    val frac = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else -1f
+                    try { pinProgress = pinProgress + (key to frac) } catch (_: Exception) { }
+                    try {
+                        val b = androidx.core.app.NotificationCompat.Builder(app, dlChannel)
+                            .setSmallIcon(android.R.drawable.stat_sys_download)
+                            .setContentTitle(pc.v.title ?: ctx.getString(R.string.dl_title))
+                            .setOngoing(true).setOnlyAlertOnce(true)
+                        if (frac >= 0) b.setProgress(100, (frac * 100).toInt(), false)
+                            .setContentText(ctx.getString(R.string.dl_progress_fmt, (frac * 100).toInt()))
+                        else b.setProgress(0, 0, true).setContentText(ctx.getString(R.string.pinning))
+                        nm?.notify(notifId, b.build())
+                    } catch (_: Exception) { }
+                }
+                val size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, pc.v, plan, progCb)
+                try { pinProgress = pinProgress - key } catch (_: Exception) { }
+                try { nm?.cancel(notifId) } catch (_: Exception) { }
                 if (size >= 0) toast(ctx.getString(R.string.toast_pin_done))
                 else toast(ctx.getString(R.string.toast_pin_fail))
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
@@ -1839,6 +1886,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     fun smartBack(): Boolean {
+        if (showDownloads) {
+            showDownloads = false
+            if (fromLibrary) { fromLibrary = false; showLibrary = true }
+            return true
+        }
         if (showFeed) {
             showFeed = false
             if (fromLibrary) { fromLibrary = false; showLibrary = true }
@@ -1913,7 +1965,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showDownloads || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -2299,6 +2351,244 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
             if (!isFullscreen) {
 
+            @Composable
+            fun SettingsPane() {
+                SettingsScreen(
+                    subLang = prefSubLang,
+                    audioLang = prefAudioLang,
+                    subLang2 = prefSubLang2,
+                    audioLang2 = prefAudioLang2,
+                    country = prefCountry,
+                    quality = prefQuality,
+                    deviceLang = try { java.util.Locale.getDefault() } catch (_: Exception) { null },
+                    onSubLang = { v ->
+                        prefSubLang = v
+                        try { prefs.edit().putString("pref_sub_lang", v).apply() } catch (_: Exception) { }
+                        applyLangPrefs()
+                    },
+                    onAudioLang = { v ->
+                        prefAudioLang = v
+                        try { prefs.edit().putString("pref_audio_lang", v).apply() } catch (_: Exception) { }
+                        applyLangPrefs()
+                    },
+                    onSubLang2 = { v ->
+                        prefSubLang2 = v
+                        try { prefs.edit().putString("pref_sub_lang2", v).apply() } catch (_: Exception) { }
+                    },
+                    onAudioLang2 = { v ->
+                        prefAudioLang2 = v
+                        try { prefs.edit().putString("pref_audio_lang2", v).apply() } catch (_: Exception) { }
+                        audioTrackIdx = pickAudioIdx()
+                    },
+                    onCountry = { v ->
+                        prefCountry = v
+                        try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
+                        refreshTrending()
+                    },
+                    onQuality = { v ->
+                        prefQuality = v
+                        try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
+                        toast(ctx.getString(R.string.toast_quality_next))
+                    },
+                    uiLang = prefUiLang,
+                    onUiLang = { v ->
+                        prefUiLang = v
+                        try { prefs.edit().putString("pref_ui_lang", v).apply() } catch (_: Exception) { }
+                        toast(ctx.getString(R.string.toast_lang_restart))
+                        try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
+                    },
+                    playMode = playMode,
+                    onPlayMode = { v ->
+                        setMode(v)
+                        toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
+                    },
+                    afMode = prefAf,
+                    onAf = { v ->
+                        prefAf = v
+                        try { prefs.edit().putString("pref_audiofocus", v).apply() } catch (_: Exception) { }
+                        try {
+                            if (v == "calls") {
+                                val granted = ctx.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+                                if (!granted) afPermLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+                            }
+                            applyAudioFocus()
+                        } catch (_: Exception) { }
+                    },
+                    sbEnabled = prefSb,
+                    onSb = { v ->
+                        prefSb = v
+                        try { prefs.edit().putBoolean("pref_sponsorblock", v).apply() } catch (_: Exception) { }
+                    },
+                    pipAuto = prefPip,
+                    onPip = { v ->
+                        prefPip = v
+                        try { prefs.edit().putBoolean("pref_pip", v).apply() } catch (_: Exception) { }
+                    },
+                    favCount = favoriteKeys.size,
+                    histCount = histCount,
+                    plCount = playlists.size,
+                    dbSize = dbSizeLabel(),
+                    onClearFavorites = { clearFavorites() },
+                    onClearHistory = { clearHistory() },
+                    onCopyDiagnostics = { copyDiagnostics() },
+                    cacheSize = cacheSizeLabel,
+                    cacheMaxMb = prefCacheMaxMb,
+                    onCacheMax = { mb ->
+                        prefCacheMaxMb = mb
+                        try { prefs.edit().putLong("pref_cache_max_mb", mb).apply() } catch (_: Exception) { }
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            try {
+                                com.mohamedadel.mytube.playback.MediaCache.setMax(mb * 1024 * 1024)
+                                com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext)
+                            } catch (_: Exception) { }
+                            refreshCacheLabel()
+                        }
+                        toast(ctx.getString(R.string.toast_cache_max))
+                    },
+                    onClearCache = { clearMediaCache() },
+                    offlineMode = prefOffline,
+                    onOfflineMode = { v ->
+                        prefOffline = v
+                        try { prefs.edit().putBoolean("pref_offline", v).apply() } catch (_: Exception) { }
+                    },
+                    keepAlive = prefKeepalive,
+                    onKeepAlive = { v ->
+                        prefKeepalive = v
+                        try { prefs.edit().putBoolean("pref_keepalive", v).apply() } catch (_: Exception) { }
+                        try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
+                        if (!v) toast(ctx.getString(R.string.keepalive_off))
+                    },
+                    pinsCount = pinsCount,
+                    pinsSize = pinsSizeLabel,
+                    pinsBytes = pinsBytes,
+                    pinsWarnMb = prefPinWarnMb,
+                    onPinsWarn = { mb ->
+                        prefPinWarnMb = mb
+                        try { prefs.edit().putLong("pref_pin_warn_mb", mb).apply() } catch (_: Exception) { }
+                    },
+                    onClearPins = { clearAllPins() },
+                    feedParallel = prefFeedParallel,
+                    onFeedParallel = { v ->
+                        prefFeedParallel = v
+                        try { prefs.edit().putBoolean("pref_feed_parallel", v).apply() } catch (_: Exception) { }
+                    },
+                    feedCache = prefFeedCache,
+                    onFeedCache = { v ->
+                        prefFeedCache = v
+                        try { prefs.edit().putBoolean("pref_feed_cache", v).apply() } catch (_: Exception) { }
+                    },
+                    preloadNext = prefPreloadNext,
+                    onPreloadNext = { v ->
+                        prefPreloadNext = v
+                        try { prefs.edit().putBoolean("pref_preload_next", v).apply() } catch (_: Exception) { }
+                        if (!v) try { prefetched.clear() } catch (_: Exception) { }
+                    },
+                    preloadWifiOnly = prefPreloadWifiOnly,
+                    titleTranslate = prefTitleTranslate,
+                    onTitleTranslate = { v ->
+                        prefTitleTranslate = v
+                        try { prefs.edit().putBoolean("pref_title_translate", v).apply() } catch (_: Exception) { }
+                    },
+                    onPreloadWifiOnly = { v ->
+                        prefPreloadWifiOnly = v
+                        try { prefs.edit().putBoolean("pref_preload_wifi_only", v).apply() } catch (_: Exception) { }
+                    },
+                    subHideAuto = prefSubHideAuto,
+                    onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
+                    subFg = prefSubFg,
+                    onSubFg = { v -> prefSubFg = v; try { prefs.edit().putString("pref_sub_fg", v).apply() } catch (_: Exception) { } },
+                    subBg = prefSubBg,
+                    onSubBg = { v -> prefSubBg = v; try { prefs.edit().putString("pref_sub_bg", v).apply() } catch (_: Exception) { } },
+                    subEdge = prefSubEdge,
+                    onSubEdge = { v -> prefSubEdge = v; try { prefs.edit().putString("pref_sub_edge", v).apply() } catch (_: Exception) { } },
+                    subScale = prefSubScale,
+                    onSubScale = { v -> prefSubScale = v; try { prefs.edit().putFloat("pref_sub_scale", v.coerceIn(0.5f, 2.0f)).apply() } catch (_: Exception) { } },
+                    subBgOpacity = prefSubBgOpacity,
+                    onSubBgOpacity = { v -> prefSubBgOpacity = v; try { prefs.edit().putInt("pref_sub_bg_opacity", v.coerceIn(0, 100)).apply() } catch (_: Exception) { } },
+                    subBold = prefSubBold,
+                    onSubBold = { v -> prefSubBold = v; try { prefs.edit().putBoolean("pref_sub_bold", v).apply() } catch (_: Exception) { } },
+                    preferOriginal = prefPreferOriginal,
+                    onPreferOriginal = { v -> prefPreferOriginal = v; try { prefs.edit().putBoolean("pref_prefer_original", v).apply() } catch (_: Exception) { }; audioTrackIdx = pickAudioIdx() },
+                    subRole = prefSubRole,
+                    onSubRole = { v -> prefSubRole = v; try { prefs.edit().putString("pref_sub_role", v).apply() } catch (_: Exception) { } },
+                    hideForced = prefHideForced,
+                    onHideForced = { v -> prefHideForced = v; try { prefs.edit().putBoolean("pref_hide_forced", v).apply() } catch (_: Exception) { } },
+                    undetermined = prefUndetermined,
+                    onUndetermined = { v -> prefUndetermined = v; try { prefs.edit().putBoolean("pref_undetermined", v).apply() } catch (_: Exception) { } },
+                    audioRole = prefAudioRole,
+                    onAudioRole = { v -> prefAudioRole = v; try { prefs.edit().putString("pref_audio_role", v).apply() } catch (_: Exception) { } },
+                    skipSilence = prefSkipSilence,
+                    onSkipSilence = { v ->
+                        prefSkipSilence = v
+                        try { prefs.edit().putBoolean("pref_skip_silence", v).apply() } catch (_: Exception) { }
+                        toast(ctx.getString(R.string.toast_skip_restart))
+                        try {
+                            // processor chain is fixed at player build: restart service so the new
+                            // RenderersFactory takes effect, then recreate to rebind the new player
+                            ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java))
+                        } catch (_: Exception) { }
+                        try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
+                    },
+                    speed = prefSpeed,
+                    onSpeed = { v -> prefSpeed = v; try { prefs.edit().putFloat("pref_speed", v).apply() } catch (_: Exception) { } },
+                    pitch = prefPitch,
+                    onPitch = { v -> prefPitch = v; try { prefs.edit().putFloat("pref_pitch", v).apply() } catch (_: Exception) { } },
+                    theme = prefTheme,
+                    onTheme = { v ->
+                        prefTheme = v
+                        try { prefs.edit().putString("pref_theme", v).apply() } catch (_: Exception) { }
+                        try { themeLive.value = v } catch (_: Exception) { }
+                        toast(ctx.getString(R.string.toast_theme_applied))
+                    },
+                    accent = prefAccent,
+                    onAccent = { v ->
+                        prefAccent = v
+                        try { prefs.edit().putString("pref_accent", v).apply() } catch (_: Exception) { }
+                        try { accentLive.value = v } catch (_: Exception) { }
+                        toast(ctx.getString(R.string.toast_theme_applied))
+                    },
+                    volume = volumeLive.value,
+                    muted = mutedLive.value,
+                    onVolume = { v ->
+                        try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }
+                        if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { }
+                        try { prefs.edit().putFloat("pref_volume", v.coerceIn(0f, 1f)).apply() } catch (_: Exception) { }
+                    },
+                    onMuted = { m ->
+                        try { mutedLive.value = m } catch (_: Exception) { }
+                        try { prefs.edit().putBoolean("pref_muted", m).apply() } catch (_: Exception) { }
+                    },
+                    eqSupported = eqSupported,
+                    eqEnabled = eqEnabled,
+                    onEqEnabled = { on ->
+                        eqEnabled = on
+                        try { prefs.edit().putBoolean("eq_enabled", on).apply() } catch (_: Exception) { }
+                        try { applyEqPrefs() } catch (_: Exception) { }
+                    },
+                    eqPresetNames = eqPresetNames,
+                    eqPreset = eqPreset,
+                    onEqPreset = { i ->
+                        eqPreset = i
+                        try { prefs.edit().putInt("eq_preset", i).apply() } catch (_: Exception) { }
+                        try { applyEqPrefs() } catch (_: Exception) { }
+                    },
+                    eqLabels = eqLabels,
+                    eqBands = eqCustom.toList(),
+                    onEqBand = { b, v ->
+                        try {
+                            while (eqCustom.size <= b) eqCustom.add(0.5f)
+                            eqCustom[b] = v.coerceIn(0f, 1f)
+                            if (eqPreset != com.mohamedadel.mytube.playback.EqManager.CUSTOM) {
+                                eqPreset = com.mohamedadel.mytube.playback.EqManager.CUSTOM
+                                prefs.edit().putInt("eq_preset", eqPreset).apply()
+                            }
+                            prefs.edit().putString("eq_custom", eqCustom.joinToString(",")).apply()
+                            applyEqPrefs()
+                        } catch (_: Exception) { }
+                    }
+                )
+            }
+
             when {
                 // Fix 3: full channel screen with tabs (header + Videos/About)
                 channelScreenUrl != null -> {
@@ -2356,6 +2646,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 showLibrary -> {
                     LibraryScreen(
                         onHistory = { showLibrary = false; fromLibrary = true; showHistory = true },
+                        onDownloads = { showLibrary = false; fromLibrary = true; showDownloads = true },
+                        pinCount = pins.size,
                         onFavorites = { showLibrary = false; fromLibrary = true; showFavorites = true },
                         onPlaylists = { showLibrary = false; fromLibrary = true; showPlaylists = true },
                         subscriptions = subscriptions,
@@ -2364,6 +2656,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onImportSubs = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } },
                         feedCounts = feedCounts,
                         onOpenChannel = { url -> openChannel(url) }
+                    )
+                }
+                showDownloads -> {
+                    com.mohamedadel.mytube.ui.library.DownloadsRoute(
+                        pins = pins,
+                        totalBytes = try { com.mohamedadel.mytube.data.local.PinFiles.totalBytes(ctx.applicationContext) } catch (_: Exception) { 0L },
+                        pinningKeys = pinningKeys,
+                        progressMap = pinProgress,
+                        thumbLookup = { k -> try { history.firstOrNull { it.videoKey == k }?.thumbnail } catch (_: Exception) { null } },
+                        onPlay = { v -> showDownloads = false; playVideo(v) },
+                        onDelete = { k -> doUnpin(k) },
+                        onClearAll = { clearAllPins() }
                     )
                 }
                 showFeed -> {
@@ -2447,235 +2751,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     }
                 }
-                showSettings -> {
-                    SettingsScreen(
-                        subLang = prefSubLang,
-                        audioLang = prefAudioLang,
-                        subLang2 = prefSubLang2,
-                        audioLang2 = prefAudioLang2,
-                        country = prefCountry,
-                        quality = prefQuality,
-                        deviceLang = try { java.util.Locale.getDefault() } catch (_: Exception) { null },
-                        onSubLang = { v ->
-                            prefSubLang = v
-                            try { prefs.edit().putString("pref_sub_lang", v).apply() } catch (_: Exception) { }
-                            applyLangPrefs()
-                        },
-                        onAudioLang = { v ->
-                            prefAudioLang = v
-                            try { prefs.edit().putString("pref_audio_lang", v).apply() } catch (_: Exception) { }
-                            applyLangPrefs()
-                        },
-                        onSubLang2 = { v ->
-                            prefSubLang2 = v
-                            try { prefs.edit().putString("pref_sub_lang2", v).apply() } catch (_: Exception) { }
-                        },
-                        onAudioLang2 = { v ->
-                            prefAudioLang2 = v
-                            try { prefs.edit().putString("pref_audio_lang2", v).apply() } catch (_: Exception) { }
-                            audioTrackIdx = pickAudioIdx()
-                        },
-                        onCountry = { v ->
-                            prefCountry = v
-                            try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
-                            refreshTrending()
-                        },
-                        onQuality = { v ->
-                            prefQuality = v
-                            try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
-                            toast(ctx.getString(R.string.toast_quality_next))
-                        },
-                        uiLang = prefUiLang,
-                        onUiLang = { v ->
-                            prefUiLang = v
-                            try { prefs.edit().putString("pref_ui_lang", v).apply() } catch (_: Exception) { }
-                            toast(ctx.getString(R.string.toast_lang_restart))
-                            try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
-                        },
-                        playMode = playMode,
-                        onPlayMode = { v ->
-                            setMode(v)
-                            toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
-                        },
-                        afMode = prefAf,
-                        onAf = { v ->
-                            prefAf = v
-                            try { prefs.edit().putString("pref_audiofocus", v).apply() } catch (_: Exception) { }
-                            try {
-                                if (v == "calls") {
-                                    val granted = ctx.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
-                                    if (!granted) afPermLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-                                }
-                                applyAudioFocus()
-                            } catch (_: Exception) { }
-                        },
-                        sbEnabled = prefSb,
-                        onSb = { v ->
-                            prefSb = v
-                            try { prefs.edit().putBoolean("pref_sponsorblock", v).apply() } catch (_: Exception) { }
-                        },
-                        pipAuto = prefPip,
-                        onPip = { v ->
-                            prefPip = v
-                            try { prefs.edit().putBoolean("pref_pip", v).apply() } catch (_: Exception) { }
-                        },
-                        favCount = favoriteKeys.size,
-                        histCount = histCount,
-                        plCount = playlists.size,
-                        dbSize = dbSizeLabel(),
-                        onClearFavorites = { clearFavorites() },
-                        onClearHistory = { clearHistory() },
-                        onCopyDiagnostics = { copyDiagnostics() },
-                        cacheSize = cacheSizeLabel,
-                        cacheMaxMb = prefCacheMaxMb,
-                        onCacheMax = { mb ->
-                            prefCacheMaxMb = mb
-                            try { prefs.edit().putLong("pref_cache_max_mb", mb).apply() } catch (_: Exception) { }
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                try {
-                                    com.mohamedadel.mytube.playback.MediaCache.setMax(mb * 1024 * 1024)
-                                    com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext)
-                                } catch (_: Exception) { }
-                                refreshCacheLabel()
-                            }
-                            toast(ctx.getString(R.string.toast_cache_max))
-                        },
-                        onClearCache = { clearMediaCache() },
-                        offlineMode = prefOffline,
-                        onOfflineMode = { v ->
-                            prefOffline = v
-                            try { prefs.edit().putBoolean("pref_offline", v).apply() } catch (_: Exception) { }
-                        },
-                        pinsCount = pinsCount,
-                        pinsSize = pinsSizeLabel,
-                        pinsBytes = pinsBytes,
-                        pinsWarnMb = prefPinWarnMb,
-                        onPinsWarn = { mb ->
-                            prefPinWarnMb = mb
-                            try { prefs.edit().putLong("pref_pin_warn_mb", mb).apply() } catch (_: Exception) { }
-                        },
-                        onClearPins = { clearAllPins() },
-                        feedParallel = prefFeedParallel,
-                        onFeedParallel = { v ->
-                            prefFeedParallel = v
-                            try { prefs.edit().putBoolean("pref_feed_parallel", v).apply() } catch (_: Exception) { }
-                        },
-                        feedCache = prefFeedCache,
-                        onFeedCache = { v ->
-                            prefFeedCache = v
-                            try { prefs.edit().putBoolean("pref_feed_cache", v).apply() } catch (_: Exception) { }
-                        },
-                        preloadNext = prefPreloadNext,
-                        onPreloadNext = { v ->
-                            prefPreloadNext = v
-                            try { prefs.edit().putBoolean("pref_preload_next", v).apply() } catch (_: Exception) { }
-                            if (!v) try { prefetched.clear() } catch (_: Exception) { }
-                        },
-                        preloadWifiOnly = prefPreloadWifiOnly,
-                        titleTranslate = prefTitleTranslate,
-                        onTitleTranslate = { v ->
-                            prefTitleTranslate = v
-                            try { prefs.edit().putBoolean("pref_title_translate", v).apply() } catch (_: Exception) { }
-                        },
-                        onPreloadWifiOnly = { v ->
-                            prefPreloadWifiOnly = v
-                            try { prefs.edit().putBoolean("pref_preload_wifi_only", v).apply() } catch (_: Exception) { }
-                        },
-                        subHideAuto = prefSubHideAuto,
-                        onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
-                        subFg = prefSubFg,
-                        onSubFg = { v -> prefSubFg = v; try { prefs.edit().putString("pref_sub_fg", v).apply() } catch (_: Exception) { } },
-                        subBg = prefSubBg,
-                        onSubBg = { v -> prefSubBg = v; try { prefs.edit().putString("pref_sub_bg", v).apply() } catch (_: Exception) { } },
-                        subEdge = prefSubEdge,
-                        onSubEdge = { v -> prefSubEdge = v; try { prefs.edit().putString("pref_sub_edge", v).apply() } catch (_: Exception) { } },
-                        subScale = prefSubScale,
-                        onSubScale = { v -> prefSubScale = v; try { prefs.edit().putFloat("pref_sub_scale", v.coerceIn(0.5f, 2.0f)).apply() } catch (_: Exception) { } },
-                        subBgOpacity = prefSubBgOpacity,
-                        onSubBgOpacity = { v -> prefSubBgOpacity = v; try { prefs.edit().putInt("pref_sub_bg_opacity", v.coerceIn(0, 100)).apply() } catch (_: Exception) { } },
-                        subBold = prefSubBold,
-                        onSubBold = { v -> prefSubBold = v; try { prefs.edit().putBoolean("pref_sub_bold", v).apply() } catch (_: Exception) { } },
-                        preferOriginal = prefPreferOriginal,
-                        onPreferOriginal = { v -> prefPreferOriginal = v; try { prefs.edit().putBoolean("pref_prefer_original", v).apply() } catch (_: Exception) { }; audioTrackIdx = pickAudioIdx() },
-                        subRole = prefSubRole,
-                        onSubRole = { v -> prefSubRole = v; try { prefs.edit().putString("pref_sub_role", v).apply() } catch (_: Exception) { } },
-                        hideForced = prefHideForced,
-                        onHideForced = { v -> prefHideForced = v; try { prefs.edit().putBoolean("pref_hide_forced", v).apply() } catch (_: Exception) { } },
-                        undetermined = prefUndetermined,
-                        onUndetermined = { v -> prefUndetermined = v; try { prefs.edit().putBoolean("pref_undetermined", v).apply() } catch (_: Exception) { } },
-                        audioRole = prefAudioRole,
-                        onAudioRole = { v -> prefAudioRole = v; try { prefs.edit().putString("pref_audio_role", v).apply() } catch (_: Exception) { } },
-                        skipSilence = prefSkipSilence,
-                        onSkipSilence = { v ->
-                            prefSkipSilence = v
-                            try { prefs.edit().putBoolean("pref_skip_silence", v).apply() } catch (_: Exception) { }
-                            toast(ctx.getString(R.string.toast_skip_restart))
-                            try {
-                                // processor chain is fixed at player build: restart service so the new
-                                // RenderersFactory takes effect, then recreate to rebind the new player
-                                ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java))
-                            } catch (_: Exception) { }
-                            try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
-                        },
-                        speed = prefSpeed,
-                        onSpeed = { v -> prefSpeed = v; try { prefs.edit().putFloat("pref_speed", v).apply() } catch (_: Exception) { } },
-                        pitch = prefPitch,
-                        onPitch = { v -> prefPitch = v; try { prefs.edit().putFloat("pref_pitch", v).apply() } catch (_: Exception) { } },
-                        theme = prefTheme,
-                        onTheme = { v ->
-                            prefTheme = v
-                            try { prefs.edit().putString("pref_theme", v).apply() } catch (_: Exception) { }
-                            try { themeLive.value = v } catch (_: Exception) { }
-                            toast(ctx.getString(R.string.toast_theme_applied))
-                        },
-                        accent = prefAccent,
-                        onAccent = { v ->
-                            prefAccent = v
-                            try { prefs.edit().putString("pref_accent", v).apply() } catch (_: Exception) { }
-                            try { accentLive.value = v } catch (_: Exception) { }
-                            toast(ctx.getString(R.string.toast_theme_applied))
-                        },
-                        volume = volumeLive.value,
-                        muted = mutedLive.value,
-                        onVolume = { v ->
-                            try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }
-                            if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { }
-                            try { prefs.edit().putFloat("pref_volume", v.coerceIn(0f, 1f)).apply() } catch (_: Exception) { }
-                        },
-                        onMuted = { m ->
-                            try { mutedLive.value = m } catch (_: Exception) { }
-                            try { prefs.edit().putBoolean("pref_muted", m).apply() } catch (_: Exception) { }
-                        },
-                        eqSupported = eqSupported,
-                        eqEnabled = eqEnabled,
-                        onEqEnabled = { on ->
-                            eqEnabled = on
-                            try { prefs.edit().putBoolean("eq_enabled", on).apply() } catch (_: Exception) { }
-                            try { applyEqPrefs() } catch (_: Exception) { }
-                        },
-                        eqPresetNames = eqPresetNames,
-                        eqPreset = eqPreset,
-                        onEqPreset = { i ->
-                            eqPreset = i
-                            try { prefs.edit().putInt("eq_preset", i).apply() } catch (_: Exception) { }
-                            try { applyEqPrefs() } catch (_: Exception) { }
-                        },
-                        eqLabels = eqLabels,
-                        eqBands = eqCustom.toList(),
-                        onEqBand = { b, v ->
-                            try {
-                                while (eqCustom.size <= b) eqCustom.add(0.5f)
-                                eqCustom[b] = v.coerceIn(0f, 1f)
-                                if (eqPreset != com.mohamedadel.mytube.playback.EqManager.CUSTOM) {
-                                    eqPreset = com.mohamedadel.mytube.playback.EqManager.CUSTOM
-                                    prefs.edit().putInt("eq_preset", eqPreset).apply()
-                                }
-                                prefs.edit().putString("eq_custom", eqCustom.joinToString(",")).apply()
-                                applyEqPrefs()
-                            } catch (_: Exception) { }
-                        }
-                    )
-                }
+                showSettings -> { SettingsPane() }
                 showHistory -> {
                     HistoryScreen(
                         flowAll = histFlowAll,
@@ -2791,13 +2867,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
                 openRemote != null -> {
                     val rp = openRemote!!
-                    com.mohamedadel.mytube.ui.results.RemotePlaylistView(
+                    com.mohamedadel.mytube.ui.results.RemoteRoute(
                         rp = rp,
                         loading = openRemoteLoading,
                         items = openRemoteItems,
                         playingUrl = playing?.url,
                         isPlaying = isPlaying,
-                        isFav = { v -> v.favKey() in favoriteSet },
+                        favSet = favoriteSet,
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys,
                         onBack = { openRemote = null; openRemoteItems = emptyList() },
                         onPlayAll = { list ->
                             results = list
@@ -2809,9 +2887,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         onLongClick = { optionsFor = it },
                         onFav = { toggleFavorite(it) },
-                        onAdd = { enqueueLast(it) },
-                        pinBadgeOf = { v -> pinBadges[v.favKey()] },
-                        pinningOf = { v -> pinningKeys.contains(v.favKey()) }
+                        onAdd = { enqueueLast(it) }
                     )
                 }
                 loading -> {
@@ -3015,97 +3091,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onDismiss = { showSleep = false }
                 )
             }
-            // pin confirm: faithful snapshot (quality + audio + subtitle) with approximate size
+            // pin confirm: own file (Scaffold content is at the 64KB method limit)
             pinConfirm?.let { pc ->
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { pinConfirm = null },
-                    title = { Text(stringResource(R.string.pin_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    text = {
-                        Column(modifier = Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                            Text(pc.v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Spacer(Modifier.height(8.dp))
-                            val sd = pinSd
-                            if (sd != null) {
-                                Text(stringResource(R.string.dl_location), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                listOf("internal", "external").forEach { loc ->
-                                    Row(modifier = Modifier.fillMaxWidth().clickable {
-                                        pinSelLoc = loc
-                                        try { prefs.edit().putString("pref_pin_location", loc).apply() } catch (_: Exception) { }
-                                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(if (pinSelLoc == loc) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelLoc == loc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(if (loc == "internal") R.string.dl_internal else R.string.dl_external), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                                Text(stringResource(R.string.dl_format), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                listOf("video", "audio").forEach { kind ->
-                                    val sel = (kind == "audio") == (pinSelQuality == "audio-only (default)")
-                                    Row(modifier = Modifier.fillMaxWidth().clickable {
-                                        pinSelQuality = if (kind == "audio") "audio-only (default)" else (sd.videoUrlByQuality.keys.firstOrNull() ?: pinSelQuality)
-                                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(if (sel) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(if (kind == "audio") R.string.quality_audio else R.string.dl_video), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                                if (pinSelQuality != "audio-only (default)") {
-                                    Text(stringResource(R.string.dl_quality), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                    sd.videoUrlByQuality.keys.forEach { q ->
-                                        Row(modifier = Modifier.fillMaxWidth().clickable { pinSelQuality = q }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(if (pinSelQuality == q) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelQuality == q) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(q, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                        }
-                                    }
-                                }
-                                if (sd.audioTracks.isNotEmpty()) {
-                                    Text(stringResource(R.string.dl_audio), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                    sd.audioTracks.forEachIndexed { i, t ->
-                                        Row(modifier = Modifier.fillMaxWidth().clickable { pinSelAudio = i }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(if (pinSelAudio == i) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelAudio == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(t.name ?: t.localeTag ?: ("#" + (i + 1)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                        }
-                                    }
-                                }
-                                if (sd.subtitles.isNotEmpty()) {
-                                    Text(stringResource(R.string.dl_captions), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                    Row(modifier = Modifier.fillMaxWidth().clickable { pinSelSub = -1 }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(if (pinSelSub == -1) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelSub == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(R.string.dl_none), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                    sd.subtitles.forEachIndexed { i, st ->
-                                        Row(modifier = Modifier.fillMaxWidth().clickable { pinSelSub = i }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(if (pinSelSub == i) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinSelSub == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(st.label ?: st.langTag ?: ("#" + (i + 1)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                        }
-                                    }
-                                }
-                                // Live size estimate for the current selection (IO, debounced by composition).
-                                androidx.compose.runtime.LaunchedEffect(pinSelQuality, pinSelAudio, pinSelSub) {
-                                    pinEst = -1L
-                                    try {
-                                        val p = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSub, 0)
-                                        }
-                                        pinEst = if (p == null) -1L else withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(p.videoUrl, p.audioUrl, p.subUrl))
-                                        }
-                                    } catch (_: Exception) { pinEst = -1L }
-                                }
-                                Spacer(Modifier.height(8.dp))
-                            }
-                            val sizeTxt = if (pinEst >= 0) ctx.getString(R.string.pin_size_fmt, pinEst / 1048576.0) else stringResource(R.string.pin_size_unknown)
-                            Text(
-                                stringResource(R.string.pin_confirm_fmt, pinSelQuality, sizeTxt),
-                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                com.mohamedadel.mytube.ui.library.PinConfirmDialog(
+                    title = pc.v.title,
+                    sd = pinSd,
+                    selLoc = pinSelLoc,
+                    selQuality = pinSelQuality,
+                    selAudio = pinSelAudio,
+                    selSub = pinSelSub,
+                    estBytes = pinEst,
+                    sizeUnknown = stringResource(R.string.pin_size_unknown),
+                    sizeFmt = { mb -> ctx.getString(R.string.pin_size_fmt, mb) },
+                    extOk = try { com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext) } catch (_: Exception) { false },
+                    onLoc = { loc ->
+                        pinSelLoc = loc
+                        try { prefs.edit().putString("pref_pin_location", loc).apply() } catch (_: Exception) { }
                     },
-                    confirmButton = { androidx.compose.material3.TextButton(onClick = { confirmPin() }) { Text(stringResource(R.string.pin_action)) } },
-                    dismissButton = { androidx.compose.material3.TextButton(onClick = { pinConfirm = null }) { Text(stringResource(R.string.cancel)) } }
+                    onQuality = { pinSelQuality = it },
+                    onAudio = { pinSelAudio = it },
+                    onSub = { pinSelSub = it },
+                    onEst = { pinEst = it },
+                    onConfirm = { confirmPin() },
+                    onDismiss = { pinConfirm = null }
                 )
             }
             // long-press video options: play now / play next / queue end / add to playlist

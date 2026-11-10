@@ -182,6 +182,8 @@ fun SettingsScreen(
     onClearCache: () -> Unit = {},
     offlineMode: Boolean = false,
     onOfflineMode: (Boolean) -> Unit = {},
+    keepAlive: Boolean = false,
+    onKeepAlive: (Boolean) -> Unit = {},
     pinsCount: Int = 0,
     pinsSize: String = "—",
     pinsBytes: Long = 0L,
@@ -760,6 +762,16 @@ fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.offline_mode), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(stringResource(R.string.offline_mode_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth().clickable { onKeepAlive(!keepAlive) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (keepAlive) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (keepAlive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.keepalive_setting), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.keepalive_setting_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

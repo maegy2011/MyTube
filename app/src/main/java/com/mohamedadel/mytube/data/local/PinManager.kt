@@ -92,13 +92,31 @@ object PinManager {
         return total
     }
 
-    private fun getTo(url: String, dest: File): Boolean {
+    private fun getTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, span: Long = 0L): Boolean {
         return try {
             dest.parentFile?.mkdirs()
             val tmp = File(dest.parentFile, dest.name + ".part")
             http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
                 if (!resp.isSuccessful || resp.body == null) return false
-                tmp.outputStream().use { out -> resp.body!!.byteStream().copyTo(out) }
+                val total = resp.header("Content-Length")?.toLongOrNull() ?: -1L
+                val body = resp.body!!
+                tmp.outputStream().use { out ->
+                    val buf = ByteArray(256 * 1024)
+                    var done = 0L
+                    var lastReport = 0L
+                    while (true) {
+                        val n = body.byteStream().read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        done += n
+                        // throttle callbacks: every ~256KB to avoid spamming the UI thread
+                        if (onProgress != null && done - lastReport >= 262144) {
+                            lastReport = done
+                            try { onProgress(base + done, span.takeIf { it > 0 } ?: total) } catch (_: Exception) { }
+                        }
+                    }
+                    if (onProgress != null) try { onProgress(base + done, span.takeIf { it > 0 } ?: total) } catch (_: Exception) { }
+                }
             }
             if (dest.exists()) dest.delete()
             tmp.renameTo(dest)
@@ -106,7 +124,8 @@ object PinManager {
     }
 
     // Downloads plan into travel/<sha>, writes meta.json, upserts the Room row. All-or-nothing.
-    suspend fun downloadPin(ctx: Context, dao: PlaylistDao, v: VideoItem, plan: PinPlan): Long {
+    // onProgress(doneBytes, totalBytes): total may be -1 when the host hides sizes.
+    suspend fun downloadPin(ctx: Context, dao: PlaylistDao, v: VideoItem, plan: PinPlan, onProgress: ((Long, Long) -> Unit)? = null): Long {
         val app = ctx.applicationContext
         val key = v.favKey()
         val dir = PinFiles.pinDir(app, key)
@@ -117,11 +136,13 @@ object PinManager {
             val vFile = File(staging, "video.mp4")
             val aFile = File(staging, "audio.m4a")
             val sFile = File(staging, "sub.vtt")
+            val estTotal = estimateBytes(listOf(plan.videoUrl, plan.audioUrl)).takeIf { it > 0 } ?: 0L
             if (plan.videoUrl != null) {
-                if (!getTo(plan.videoUrl, vFile)) { staging.deleteRecursively(); return -1L }
+                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, estTotal / 2)) { staging.deleteRecursively(); return -1L }
             }
             if (plan.audioUrl != null) {
-                if (!getTo(plan.audioUrl, aFile)) { staging.deleteRecursively(); return -1L }
+                val base = if (plan.videoUrl != null) estTotal / 2 else 0L
+                if (!getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base)) { staging.deleteRecursively(); return -1L }
             } else if (plan.videoUrl == null && plan.audioUrl == null) {
                 staging.deleteRecursively(); return -1L
             }

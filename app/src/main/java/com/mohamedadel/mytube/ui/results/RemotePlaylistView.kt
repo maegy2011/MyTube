@@ -23,6 +23,44 @@ import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.youtube.RemotePlaylist
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.data.local.favKey
+
+// Route wrapper: keeps the giant MyTubeApp when-branch to a single call (the 64KB
+// method limit is real — this branch alone carries 8 lambdas).
+@Composable
+fun RemoteRoute(
+    rp: RemotePlaylist,
+    loading: Boolean,
+    items: List<VideoItem>,
+    playingUrl: String?,
+    isPlaying: Boolean,
+    favSet: Set<String>,
+    pinBadges: Map<String, String>,
+    pinningKeys: Set<String>,
+    onBack: () -> Unit,
+    onPlayAll: (List<VideoItem>) -> Unit,
+    onPlay: (VideoItem) -> Unit,
+    onLongClick: (VideoItem) -> Unit,
+    onFav: (VideoItem) -> Unit,
+    onAdd: (VideoItem) -> Unit
+) {
+    RemotePlaylistView(
+        rp = rp,
+        loading = loading,
+        items = items,
+        playingUrl = playingUrl,
+        isPlaying = isPlaying,
+        isFav = { v -> v.favKey() in favSet },
+        onBack = onBack,
+        onPlayAll = onPlayAll,
+        onPlay = onPlay,
+        onLongClick = onLongClick,
+        onFav = onFav,
+        onAdd = onAdd,
+        pinBadgeOf = { v -> pinBadges[v.favKey()] },
+        pinningOf = { v -> pinningKeys.contains(v.favKey()) }
+    )
+}
 
 /**
  * Remote (service) playlist contents: title header + Play-all + playable rows.

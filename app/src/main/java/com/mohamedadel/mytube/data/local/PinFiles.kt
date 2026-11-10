@@ -19,7 +19,7 @@ object PinFiles {
     }
 
     fun baseDir(context: Context, location: String = loc(context)): File {
-        if (location == "external") {
+        if (location == "external" && isExternalAvailable(context)) {
             try {
                 val ext = context.getExternalFilesDir(null)
                 if (ext != null) return File(ext, DIR)
@@ -27,6 +27,25 @@ object PinFiles {
         }
         return File(context.filesDir, DIR)
     }
+
+    // External app-specific dir needs NO storage permission (scoped storage),
+    // but it can be missing (no SD/shared storage, unmounted, or OEM quirk).
+    // Callers must fall back to internal rather than failing silently.
+    fun isExternalAvailable(context: Context): Boolean {
+        return try {
+            if (android.os.Environment.getExternalStorageState() !=
+                android.os.Environment.MEDIA_MOUNTED) return false
+            val ext = context.getExternalFilesDir(null) ?: return false
+            // probe writability once: mkdirs is cheap, a failed pin is not
+            if (!ext.exists()) ext.mkdirs()
+            ext.canWrite()
+        } catch (_: Exception) { false }
+    }
+
+    // True when the current pref points somewhere unusable (user picked external
+    // but it is unmounted/missing). UI surfaces this instead of a cryptic pin fail.
+    fun isCurrentLocBroken(context: Context): Boolean =
+        try { loc(context) == "external" && !isExternalAvailable(context) } catch (_: Exception) { false }
 
     fun sha(key: String): String {
         return try {
@@ -74,16 +93,30 @@ object PinFiles {
 
     fun dirBytes(context: Context, videoKey: String): Long {
         return try {
-            pinDir(context, videoKey).walkTopDown()
+            // existingDir: legacy internal pins report their real size even after the user switches loc
+            val dir = existingDir(context, videoKey) ?: return 0L
+            dir.walkTopDown()
                 .filter { it.isFile }.sumOf { it.length() }
         } catch (_: Exception) { 0L }
     }
 
     fun totalBytes(context: Context): Long {
         return try {
-            val root = File(context.filesDir, DIR)
-            if (!root.exists()) 0L
-            else root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+            var total = 0L
+            // sum BOTH roots: pins stay where they were downloaded when the user flips location
+            val roots = listOfNotNull(
+                File(context.filesDir, DIR).takeIf { it.exists() },
+                try { context.getExternalFilesDir(null)?.let { File(it, DIR) }?.takeIf { it.exists() } } catch (_: Exception) { null }
+            )
+            for (root in roots) {
+                try { total += root.walkTopDown().filter { it.isFile }.sumOf { it.length() } } catch (_: Exception) { }
+            }
+            total
         } catch (_: Exception) { 0L }
+    }
+
+    // Free bytes at the CURRENT pin root (internal fallback included). -1 when unknown.
+    fun freeBytes(context: Context): Long {
+        return try { baseDir(context).usableSpace } catch (_: Exception) { -1L }
     }
 }

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.UploadFile
@@ -40,6 +41,8 @@ fun LibraryScreen(
     onHistory: () -> Unit,
     onFavorites: () -> Unit,
     onPlaylists: () -> Unit,
+    onDownloads: () -> Unit = {},
+    pinCount: Int = 0,
     subscriptions: List<com.mohamedadel.mytube.data.local.SubscriptionEntity> = emptyList(),
     onOpenFeed: () -> Unit = {},
     onUnsubscribe: (String) -> Unit = {},
@@ -73,6 +76,13 @@ fun LibraryScreen(
                 icon = { Icon(Icons.Rounded.Favorite, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp)) },
                 label = stringResource(R.string.nav_favorites),
                 onClick = onFavorites
+            )
+        }
+        item {
+            LibraryRow(
+                icon = { Icon(Icons.Rounded.DownloadDone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp)) },
+                label = stringResource(R.string.dl_title) + if (pinCount > 0) " ($pinCount)" else "",
+                onClick = onDownloads
             )
         }
         item {

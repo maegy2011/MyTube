@@ -285,6 +285,8 @@
     <string name="pin_size_fmt">%.1f MB</string>
     <string name="pin_size_unknown">unknown size</string>
     <string name="toast_pin_done">Pinned for offline</string>
+    <string name="pin_ext_fallback">External storage unavailable — pin saved internally instead (no permission needed)</string>
+    <string name="pin_no_space">Not enough free space for this pin</string>
     <string name="toast_pin_fail">Pin failed — check connection</string>
     <string name="toast_unpinned">Pin removed</string>
     <string name="offline_title">Offline mode</string>
@@ -398,4 +400,18 @@
     <string name="remote_playlists_title">Playlists</string>
     <string name="remote_play_all">Play all</string>
     <string name="remote_empty">Playlist is empty or failed to load</string>
+    <string name="dl_title">Downloads</string>
+    <string name="dl_empty">No pinned clips yet — long-press any video then Pin</string>
+    <string name="dl_clear_all">Clear all</string>
+    <string name="dl_total_fmt">Total: %.1f MB</string>
+    <string name="dl_channel">Download progress</string>
+    <string name="dl_progress_fmt">%d%%</string>
+    <string name="keepalive_channel">Battery-killer guard</string>
+    <string name="keepalive_channel_desc">Low-importance ongoing notification keeping the app alive in background</string>
+    <string name="keepalive_title">MyTube running in background</string>
+    <string name="keepalive_text">Auto-kill protection is on — tap Stop to remove</string>
+    <string name="keepalive_stop">Stop</string>
+    <string name="keepalive_off">Persistent guard stopped</string>
+    <string name="keepalive_setting">Persistent anti-kill notification</string>
+    <string name="keepalive_setting_desc">Keeps the app alive on Oppo/Vivo/Xiaomi/Samsung — a permanent icon for survival</string>
 </resources>
