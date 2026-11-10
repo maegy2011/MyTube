@@ -118,6 +118,11 @@ private fun ActionPill(
     }
 }
 
+// Shared volume holders (file-level so Settings + PlayerArea stay in sync live).
+// Persisted via pref_volume/pref_muted; MainActivity loads them at startup.
+internal val volumeLive = mutableStateOf(1f)
+internal val mutedLive = mutableStateOf(false)
+
 @Composable
 fun PlayerArea(
     video: VideoItem,
@@ -233,9 +238,9 @@ fun PlayerArea(
     val nativeOnly = true
     // professional controls: visible on tap, auto-hide after 3s while playing
     var controlsVisible by remember { mutableStateOf(true) }
-    // in-player volume (0..1) + mute; applied to ExoPlayer, remembered per session
-    var volume by remember { mutableStateOf(1f) }
-    var muted by remember { mutableStateOf(false) }
+    // in-player volume (0..1) + mute; applied to ExoPlayer, shared live with Settings.
+    val volume = volumeLive.value
+    val muted = mutedLive.value
     LaunchedEffect(volume, muted, player) {
         try { player?.volume = if (muted) 0f else volume.coerceIn(0f, 1f) } catch (_: Exception) { }
     }
@@ -517,7 +522,7 @@ fun PlayerArea(
                             Spacer(Modifier.weight(1f))
                             // mute toggle
                             IconButton(
-                                onClick = { controlsVisible = true; muted = !muted },
+                                onClick = { controlsVisible = true; mutedLive.value = !mutedLive.value },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -532,7 +537,7 @@ fun PlayerArea(
                             // volume slider
                             Slider(
                                 value = if (muted) 0f else volume,
-                                onValueChange = { volume = it; if (it > 0f) muted = false; controlsVisible = true },
+                                onValueChange = { volumeLive.value = it; if (it > 0f) mutedLive.value = false; controlsVisible = true },
                                 valueRange = 0f..1f,
                                 modifier = Modifier.width(110.dp)
                             )
@@ -819,7 +824,7 @@ fun PlayerArea(
                             }
                             // volume (the native controller has no volume button)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.material3.IconButton(onClick = { muted = !muted }, modifier = Modifier.size(40.dp)) {
+                                androidx.compose.material3.IconButton(onClick = { mutedLive.value = !mutedLive.value }, modifier = Modifier.size(40.dp)) {
                                     Icon(
                                         if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
                                         else if (volume < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown
@@ -831,7 +836,7 @@ fun PlayerArea(
                                 }
                                 Slider(
                                     value = if (muted) 0f else volume,
-                                    onValueChange = { volume = it; if (it > 0f) muted = false },
+                                    onValueChange = { volumeLive.value = it; if (it > 0f) mutedLive.value = false },
                                     valueRange = 0f..1f,
                                     modifier = Modifier.weight(1f)
                                 )

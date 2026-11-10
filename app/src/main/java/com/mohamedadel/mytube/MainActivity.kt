@@ -154,6 +154,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
+import com.mohamedadel.mytube.ui.player.volumeLive
+import com.mohamedadel.mytube.ui.player.mutedLive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -177,6 +179,8 @@ class MainActivity : ComponentActivity() {
         val accentPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_accent", "red") ?: "red" } catch (_: Exception) { "red" }
         try { themeLive.value = themePref } catch (_: Exception) { }
         try { accentLive.value = accentPref } catch (_: Exception) { }
+        try { volumeLive.value = getSharedPreferences("mytube_prefs", MODE_PRIVATE).getFloat("pref_volume", 1f).coerceIn(0f, 1f) } catch (_: Exception) { }
+        try { mutedLive.value = getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_muted", false) } catch (_: Exception) { }
         val uiLangPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { "ar" }
         setContent {
             MyTubeTheme(
@@ -2185,6 +2189,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             try { prefs.edit().putString("pref_accent", v).apply() } catch (_: Exception) { }
                             try { accentLive.value = v } catch (_: Exception) { }
                             toast(ctx.getString(R.string.toast_theme_applied))
+                        },
+                        volume = volumeLive.value,
+                        muted = mutedLive.value,
+                        onVolume = { v ->
+                            try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }
+                            if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { }
+                            try { prefs.edit().putFloat("pref_volume", v.coerceIn(0f, 1f)).apply() } catch (_: Exception) { }
+                        },
+                        onMuted = { m ->
+                            try { mutedLive.value = m } catch (_: Exception) { }
+                            try { prefs.edit().putBoolean("pref_muted", m).apply() } catch (_: Exception) { }
                         }
                     )
                 }

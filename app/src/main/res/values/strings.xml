@@ -351,4 +351,5 @@
     <string name="accent_orange">برتقالي</string>
     <string name="accent_teal">فيروزي</string>
     <string name="toast_theme_applied">تم تطبيق المظهر</string>
+    <string name="volume_title">مستوى الصوت</string>
 </resources>

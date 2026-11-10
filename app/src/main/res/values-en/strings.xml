@@ -351,4 +351,5 @@
     <string name="accent_orange">Orange</string>
     <string name="accent_teal">Teal</string>
     <string name="toast_theme_applied">Theme applied</string>
+    <string name="volume_title">Volume level</string>
 </resources>
