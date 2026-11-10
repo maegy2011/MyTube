@@ -1464,6 +1464,38 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         }
     }
+    // Voice search: permission -> system recognizer -> query + search. Best-effort throughout.
+    val voiceResultLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        try {
+            val heard = res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
+            if (heard.isNotEmpty()) { query = heard; svm.onQueryChange(heard); showSearch = false; doSearch(heard) }
+        } catch (_: Exception) { }
+    }
+    fun launchVoiceRecognizer() {
+        try {
+            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (prefUiLang == "en") "en" else "ar")
+                putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, ctx.getString(R.string.voice_search))
+            }
+            voiceResultLauncher.launch(intent)
+        } catch (_: Exception) {
+            toast(ctx.getString(R.string.voice_unavailable))
+        }
+    }
+    val voicePermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) try { launchVoiceRecognizer() } catch (_: Exception) { }
+        else toast(ctx.getString(R.string.voice_unavailable))
+    }
+    fun startVoiceSearch() {
+        try {
+            val granted = ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            if (granted) launchVoiceRecognizer() else voicePermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        } catch (_: Exception) { toast(ctx.getString(R.string.voice_unavailable)) }
+    }
+
 
     // Explicit close: stops audio and clears the player (X button only).
     fun closePlayer() {
@@ -1850,6 +1882,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     dropRecents = dropRecents,
                     suggestions = suggestions,
                     onPickSuggestion = { q -> query = q; svm.onQueryChange(q); showSearch = false; doSearch(q) },
+                    onVoice = { startVoiceSearch() },
                     onClearRecents = {
                         recentSearches = emptyList()
                         try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }

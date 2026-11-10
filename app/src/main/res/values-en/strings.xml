@@ -363,4 +363,6 @@
     <string name="pip_auto">Auto floating window on exit</string>
     <string name="sb_title">Skip community segments (SponsorBlock)</string>
     <string name="sb_desc">Auto-skips sponsors and intros — sends video IDs to an external server</string>
+    <string name="voice_search">Voice search</string>
+    <string name="voice_unavailable">Voice search not available on this device</string>
 </resources>

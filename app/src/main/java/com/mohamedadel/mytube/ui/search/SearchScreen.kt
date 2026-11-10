@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -51,7 +52,8 @@ fun SearchScreen(
     dropRecents: List<String> = emptyList(),
     suggestions: List<String> = emptyList(),
     onPickSuggestion: (String) -> Unit = {},
-    onClearRecents: () -> Unit = {}
+    onClearRecents: () -> Unit = {},
+    onVoice: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -67,6 +69,9 @@ fun SearchScreen(
                 },
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onVoice) {
+                            Icon(Icons.Rounded.Mic, contentDescription = stringResource(R.string.voice_search))
+                        }
                         if (!loading && query.isNotEmpty()) {
                             IconButton(onClick = onClear) {
                                 Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.search_clear))
