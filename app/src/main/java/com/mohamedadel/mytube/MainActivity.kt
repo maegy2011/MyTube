@@ -341,13 +341,13 @@ private fun decodeVideoItem(e: String): VideoItem? = try {
             isShort = p[10] == "1", channelUrl = d(11))
     }
 } catch (_: Exception) { null }
-private val VideoItemSaver = Saver<VideoItem?, String?>(
-    save = { it?.let(::encodeVideoItem) },
-    restore = { it?.let(::decodeVideoItem) }
+private val VideoItemSaver = Saver<androidx.compose.runtime.MutableState<VideoItem?>, String>(
+    save = { it.value?.let(::encodeVideoItem) ?: "" },
+    restore = { androidx.compose.runtime.mutableStateOf(if (it.isEmpty()) null else decodeVideoItem(it)) }
 )
-private val VideoQueueSaver = Saver<List<VideoItem>, ArrayList<String>>(
-    save = { ArrayList(it.take(50).map(::encodeVideoItem)) },
-    restore = { list -> list.mapNotNull(::decodeVideoItem) }
+private val VideoQueueSaver = Saver<androidx.compose.runtime.MutableState<List<VideoItem>>, ArrayList<String>>(
+    save = { ArrayList(it.value.take(50).map(::encodeVideoItem)) },
+    restore = { list -> androidx.compose.runtime.mutableStateOf(list.mapNotNull(::decodeVideoItem)) }
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2048,26 +2048,43 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 // screens-fix Music P0-M2: local audio has no related list — refuse early.
                 if (v.isLocal()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
                 val sdNow = streamData
+                // 2026-11-12 (runtime fix): related may be empty for ANY source (YTM items,
+                // SC has none by design, age-gated/region-emptied YT) — fall back to a title
+                // search for all sources instead of SC-only, and surface the extractor
+                // reason instead of swallowing it (was: generic toast on every failure).
+                var seedErr: String? = null
                 val seed: List<VideoItem> = if (playing?.favKey() == v.favKey() && !sdNow?.related.isNullOrEmpty()) {
                     // T5: local val instead of !! (race-safe snapshot).
                     sdNow.related
                 } else {
                     val url = v.url
                     if (url.isNullOrBlank()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
-                    try {
-                        // screens-fix Music P0-M1: SoundCloud streams carry no related list
-                        // (scStream returns bare StreamData) — seed from a title search instead.
-                        if (url.contains("soundcloud.com")) {
-                            val q = v.title?.takeIf { it.isNotBlank() }
-                                ?: run { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
-                            try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, null).items } catch (_: Exception) { emptyList() }
-                        } else {
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(url)?.related ?: emptyList()
+                    var list: List<VideoItem> = emptyList()
+                    if (!url.contains("soundcloud.com")) {
+                        try {
+                            val s = com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(url)
+                            list = s?.related ?: emptyList()
+                            if (list.isEmpty()) seedErr = s?.error
+                        } catch (e: Exception) { seedErr = e.message?.take(80) }
+                    }
+                    if (list.isEmpty()) {
+                        val q = v.title?.takeIf { it.isNotBlank() }
+                        if (q == null) {
+                            if (!seedErr.isNullOrBlank()) toast(ctx.getString(R.string.err_extract_detail, seedErr))
+                            else toast(ctx.getString(R.string.toast_radio_fail))
+                            return@launch
                         }
-                    } catch (_: Exception) { emptyList() }
+                        try { list = com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, null).items }
+                        catch (e: Exception) { if (seedErr == null) seedErr = e.message?.take(80) }
+                    }
+                    list
                 }
                 val fresh = seed.filter { it.url?.isNotBlank() == true }.distinctBy { it.favKey() }.take(15)
-                if (fresh.isEmpty()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
+                if (fresh.isEmpty()) {
+                    if (!seedErr.isNullOrBlank()) toast(ctx.getString(R.string.err_extract_detail, seedErr))
+                    else toast(ctx.getString(R.string.toast_radio_fail))
+                    return@launch
+                }
                 queue = listOf(v) + fresh.filter { it.favKey() != v.favKey() }
                 queueIndex = 0
                 radioOn = true
@@ -2117,8 +2134,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         return fresh
     }
     // playback modes: random pick (shuffle) + wrap-around (repeat all)
-    fun playRandomInQueue() {
-        if (queue.size < 2) { if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded); return }
+    // 2026-11-12: forcePlay=true only from the STATE_ENDED path (session keeps sounding).
+    fun playRandomInQueue(forcePlay: Boolean = false) {
+        if (queue.size < 2) { if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = forcePlay); return }
         val order = ensureShuffleOrder()
         val nxt = order.firstNotNullOfOrNull { k -> queue.firstOrNull { it.favKey() == k } }
         if (nxt == null) {
@@ -2126,31 +2144,31 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             var n = queueIndex
             var guard = 0
             while (n == queueIndex && guard++ < 8) n = (0 until queue.size).random()
-            playVideo(queue[n], inQueue = true, expand = playerExpanded)
+            playVideo(queue[n], inQueue = true, expand = playerExpanded, forcePlay = forcePlay)
             return
         }
         shuffleOrder = order.filter { it != nxt.favKey() }
-        playVideo(nxt, inQueue = true, expand = playerExpanded)
+        playVideo(nxt, inQueue = true, expand = playerExpanded, forcePlay = forcePlay)
     }
-    fun playNextInQueue() {
+    fun playNextInQueue(forcePlay: Boolean = false) {
         // F7 (audit P1 2026-11-11): manual Next honors shuffle (was: sequential always).
         // Declared after playRandomInQueue: Kotlin locals must precede use.
-        if (shuffleOn && queue.size > 1) { playRandomInQueue(); return }
+        if (shuffleOn && queue.size > 1) { playRandomInQueue(forcePlay); return }
         // T4 (audit P1): pure index math lives in PlayerController.
         val next = com.mohamedadel.mytube.playback.nextSequentialIndex(queue.size, queueIndex)?.let { queue.getOrNull(it) }
         // expand=playerExpanded: advancing from notification/lock while browsing must not yank the full player open
-        if (next != null) { playVideo(next, inQueue = true, expand = playerExpanded); return }
+        if (next != null) { playVideo(next, inQueue = true, expand = playerExpanded, forcePlay = forcePlay); return }
         // queue exhausted: radio refills from the just-played track's related list (endless)
         if (radioOn) {
             // screens-fix Music P0-M2: never refill for local tracks (no related list) — stop cleanly.
             if (playing?.isLocal() == true) { radioOn = false; autoAdvance = false; return }
             // F11: one canonical key for refill too (dedupe seeds, not just the queue).
-            val fresh = (streamData?.related ?: emptyList())
+            val cached = (streamData?.related ?: emptyList())
                 .filter { r -> (r.url?.isNotBlank() == true) && queue.none { it.favKey() == r.favKey() } }
                 .distinctBy { it.favKey() }
                 .take(10)
-            if (fresh.isNotEmpty()) {
-                queue = queue + fresh
+            if (cached.isNotEmpty()) {
+                queue = queue + cached
                 // F10 (audit P2 2026-11-11): radio grows +10 per refill — trim the consumed head,
                 // keeping the last 50 + everything upcoming (queueIndex adjusted).
                 val over = queue.size - 60
@@ -2159,18 +2177,68 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     queue = queue.drop(drop)
                     queueIndex -= drop
                 }
-                playVideo(fresh[0], inQueue = true, expand = playerExpanded)
+                playVideo(cached[0], inQueue = true, expand = playerExpanded, forcePlay = true)
                 return
             }
-            // F9 (audit P2 2026-11-11): repeatAll wraps the live queue when radio dries up
-            // instead of stranding playback at the end (inlined: playFirstInQueue is declared below).
-            if (playMode == "repeatAll" && queue.isNotEmpty()) { playVideo(queue[0], inQueue = true, expand = playerExpanded); return }
-            radioOn = false
+            // 2026-11-12 (runtime fix): cached related empty for ANY source (YTM/SC/emptied YT)
+            // must not kill the radio silently — refetch + title-search fallback async (all sources),
+            // then keep playing; only stop with a reason when that dries up too.
+            val cur = playing
+            val curUrl = cur?.url
+            if (curUrl.isNullOrBlank() && cur?.title.isNullOrBlank()) {
+                if (playMode == "repeatAll" && queue.isNotEmpty()) { playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = true); return }
+                radioOn = false
+                autoAdvance = false
+                return
+            }
+            scope.launch {
+                try {
+                    var seed: List<VideoItem> = emptyList()
+                    var err: String? = null
+                    if (!curUrl.isNullOrBlank() && !curUrl.contains("soundcloud.com")) {
+                        try {
+                            val s = com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(curUrl)
+                            seed = s?.related ?: emptyList()
+                            if (seed.isEmpty()) err = s?.error
+                        } catch (e: Exception) { err = e.message?.take(80) }
+                    }
+                    if (seed.isEmpty() && !cur?.title.isNullOrBlank()) {
+                        try { seed = com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(cur?.title ?: "", null, null).items }
+                        catch (e: Exception) { if (err == null) err = e.message?.take(80) }
+                    }
+                    val fresh = seed
+                        .filter { r -> (r.url?.isNotBlank() == true) && queue.none { it.favKey() == r.favKey() } }
+                        .distinctBy { it.favKey() }
+                        .take(10)
+                    if (fresh.isNotEmpty()) {
+                        queue = queue + fresh
+                        val over = queue.size - 60
+                        if (over > 0 && queueIndex > 0) {
+                            val drop = minOf(over, queueIndex)
+                            queue = queue.drop(drop)
+                            queueIndex -= drop
+                        }
+                        playVideo(fresh[0], inQueue = true, expand = playerExpanded, forcePlay = true)
+                        return@launch
+                    }
+                    // F9 (audit P2 2026-11-11): repeatAll wraps the live queue when radio dries up
+                    // instead of stranding playback at the end.
+                    if (playMode == "repeatAll" && queue.isNotEmpty()) { playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = true); return@launch }
+                    radioOn = false
+                    autoAdvance = false
+                    if (!err.isNullOrBlank()) toast(ctx.getString(R.string.err_extract_detail, err))
+                } catch (_: Exception) {
+                    radioOn = false
+                    autoAdvance = false
+                    toast(ctx.getString(R.string.toast_radio_fail))
+                }
+            }
+            return
         }
         autoAdvance = false
     }
-    fun playFirstInQueue() {
-        if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded) else autoAdvance = false
+    fun playFirstInQueue(forcePlay: Boolean = false) {
+        if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = forcePlay) else autoAdvance = false
     }
     // explicit queue building (long-press menu)
     fun playNowAlone(v: VideoItem) { playVideo(v, inQueue = false, expand = true) }
@@ -2300,15 +2368,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                     when {
                         playMode == "repeatOne" -> try { player?.seekTo(0L); player?.play() } catch (_: Exception) { }
-                        shuffleOn -> playRandomInQueue()
+                        // 2026-11-12: ENDED-path advances force-start (isPlaying is already false
+                        // here, so the in-queue resume heuristic alone would load paused).
+                        shuffleOn -> playRandomInQueue(forcePlay = true)
                         playMode == "repeatAll" -> {
-                            if (radioOn) playNextInQueue()
+                            if (radioOn) playNextInQueue(forcePlay = true)
                             else {
                                 val nxt = if (queueIndex >= 0) queue.getOrNull(queueIndex + 1) else null
-                                if (nxt != null) playVideo(nxt, inQueue = true) else playFirstInQueue()
+                                if (nxt != null) playVideo(nxt, inQueue = true, forcePlay = true) else playFirstInQueue(forcePlay = true)
                             }
                         }
-                        else -> playNextInQueue()
+                        else -> playNextInQueue(forcePlay = true)
                     }
                 }
             }
@@ -3084,6 +3154,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         streamData = null
         playerExpanded = false
         autoAdvance = false
+        radioOn = false
         queueIndex = -1
     }
     // Smart back: exit fullscreen first; collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
