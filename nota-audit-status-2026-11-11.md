@@ -62,4 +62,4 @@
 - بلا assembleRelease، بلا push — حسب القواعد.
 
 ## الـcommit
-- (يُملأ بعد الـcommit)
+- `d987040` — audit P1: T1 pin IO, T2 cache warm verified, F5 resume+cancel, F6 optimistic pin
