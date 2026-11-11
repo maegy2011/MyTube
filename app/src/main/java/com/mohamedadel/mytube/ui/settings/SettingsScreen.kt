@@ -237,7 +237,11 @@ fun SettingsScreen(
     onCopyDiagnostics: () -> Unit = {},
     onCheckUpdate: () -> Unit = {},
     onExportFull: () -> Unit = {},
-    onImportFull: () -> Unit = {}
+    onImportFull: () -> Unit = {},
+    // Deferred item 7 (backup metadata row) + item 8 (periodic auto-refresh toggle).
+    backupInfo: String? = null,
+    feedAutoRefresh: Boolean = false,
+    onFeedAutoRefresh: (Boolean) -> Unit = {}
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -303,6 +307,20 @@ fun SettingsScreen(
     val sAppearT = stringResource(R.string.settings_sec_appearance)
     val sDlT = stringResource(R.string.settings_sec_downloads)
     val sDataT = stringResource(R.string.settings_sec_data)
+    // Deferred-4 visibility must resolve in composable scope: LazyListScope `if` guards
+    // cannot call stringResource (composable-only), so precompute each section here.
+    val showLang = sHit(sLangT, stringResource(R.string.ui_lang_title), stringResource(R.string.country_title), stringResource(R.string.title_translate))
+    val showSubs = sHit(sSubsT, stringResource(R.string.sub_primary_title), stringResource(R.string.sub_fallback_title), stringResource(R.string.sub_hide_auto), stringResource(R.string.sub_size_title), stringResource(R.string.sub_fg_title), stringResource(R.string.sub_bg_title), stringResource(R.string.sub_edge_title), stringResource(R.string.sub_bold), stringResource(R.string.sub_role_title))
+    val showAudio = sHit(sAudioT, stringResource(R.string.audio_primary_title), stringResource(R.string.audio_fallback_title), stringResource(R.string.prefer_original), stringResource(R.string.audio_role_title), stringResource(R.string.skip_silence), stringResource(R.string.speed_title), stringResource(R.string.pitch_title), stringResource(R.string.volume_title), stringResource(R.string.eq_title))
+    val showPlayer = sHit(sPlayerT, stringResource(R.string.quality_title), stringResource(R.string.playmode_title), stringResource(R.string.af_all), stringResource(R.string.sb_title), stringResource(R.string.pip_auto), stringResource(R.string.vis_comments), stringResource(R.string.vis_related), stringResource(R.string.vis_info), stringResource(R.string.vis_subs), stringResource(R.string.vis_4k), stringResource(R.string.keepalive_setting), stringResource(R.string.age_title))
+    val showAppear = sHit(sAppearT, stringResource(R.string.theme_title), stringResource(R.string.accent_title))
+    val showDl = sHit(sDlT, stringResource(R.string.update_check), stringResource(R.string.backup_export), stringResource(R.string.backup_import), stringResource(R.string.feed_auto_refresh), stringResource(R.string.offline_mode), stringResource(R.string.perf_parallel), stringResource(R.string.perf_feedcache), stringResource(R.string.perf_preload), stringResource(R.string.clear_pins), stringResource(R.string.clear_cache), stringResource(R.string.diag_copy), stringResource(R.string.cache_title), stringResource(R.string.pin_loc_title))
+    val showData = sHit(sDataT, stringResource(R.string.clear_favorites), stringResource(R.string.clear_history))
+    // Deferred-2 (a11y): semantics{} blocks are not composable — resolve descriptions here.
+    val searchHint = stringResource(R.string.settings_search_hint)
+    val subSizeDesc = stringResource(R.string.sub_size_title)
+    val subBgOpDesc = stringResource(R.string.sub_bg_opacity)
+    val volDesc = stringResource(R.string.volume_title)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -317,10 +335,10 @@ fun SettingsScreen(
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 placeholder = { Text(stringResource(R.string.settings_search_hint)) },
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = stringResource(R.string.settings_search_hint) }
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = searchHint }
             )
         }
-        if (sHit(sLangT, stringResource(R.string.ui_lang_title), stringResource(R.string.country_title), stringResource(R.string.title_translate))) item {
+        if (showLang) item {
             SettingsSection(title = sLangT, forceExpand = sQ.isNotEmpty()) {
                 Text(
                     stringResource(R.string.device_line_fmt, deviceLang?.displayLanguage ?: deviceTag, deviceTag),
@@ -347,7 +365,7 @@ fun SettingsScreen(
                 )
             }
         }
-        if (sHit(sSubsT, stringResource(R.string.sub_primary_title), stringResource(R.string.sub_fallback_title), stringResource(R.string.sub_hide_auto), stringResource(R.string.sub_size_title), stringResource(R.string.sub_fg_title), stringResource(R.string.sub_bg_title), stringResource(R.string.sub_edge_title), stringResource(R.string.sub_bold), stringResource(R.string.sub_role_title))) item {
+        if (showSubs) item {
             SettingsSection(title = sSubsT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.sub_primary_title),
@@ -392,7 +410,7 @@ fun SettingsScreen(
                     Text(stringResource(R.string.sub_size_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.width(8.dp))
                     // Deferred item 2 (a11y): sliders carry their label for TalkBack.
-                    Slider(value = subScale.coerceIn(0.5f, 2.0f), onValueChange = onSubScale, valueRange = 0.5f..2.0f, steps = 14, modifier = Modifier.weight(1f).semantics { contentDescription = stringResource(R.string.sub_size_title) })
+                    Slider(value = subScale.coerceIn(0.5f, 2.0f), onValueChange = onSubScale, valueRange = 0.5f..2.0f, steps = 14, modifier = Modifier.weight(1f).semantics { contentDescription = subSizeDesc })
                     Spacer(Modifier.width(8.dp))
                     Text(String.format(java.util.Locale.US, "%.1fx", subScale.coerceIn(0.5f, 2.0f)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -411,7 +429,7 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.sub_bg_opacity), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.width(8.dp))
-                    Slider(value = subBgOpacity.toFloat(), onValueChange = { onSubBgOpacity(it.toInt()) }, valueRange = 0f..100f, steps = 19, modifier = Modifier.weight(1f).semantics { contentDescription = stringResource(R.string.sub_bg_opacity) }, enabled = subBg != "transparent")
+                    Slider(value = subBgOpacity.toFloat(), onValueChange = { onSubBgOpacity(it.toInt()) }, valueRange = 0f..100f, steps = 19, modifier = Modifier.weight(1f).semantics { contentDescription = subBgOpDesc }, enabled = subBg != "transparent")
                     Spacer(Modifier.width(8.dp))
                     Text("$subBgOpacity%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -444,7 +462,7 @@ fun SettingsScreen(
                 )
             }
         }
-        if (sHit(sAudioT, stringResource(R.string.audio_primary_title), stringResource(R.string.audio_fallback_title), stringResource(R.string.prefer_original), stringResource(R.string.audio_role_title), stringResource(R.string.skip_silence), stringResource(R.string.speed_title), stringResource(R.string.pitch_title), stringResource(R.string.volume_title), stringResource(R.string.eq_title))) item {
+        if (showAudio) item {
             SettingsSection(title = sAudioT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.audio_primary_title),
@@ -489,7 +507,7 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (muted || volume == 0f) Icons.AutoMirrored.Filled.VolumeOff else if (volume < 0.5f) Icons.AutoMirrored.Filled.VolumeDown else Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
-                    Slider(value = if (muted) 0f else volume, onValueChange = onVolume, valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = stringResource(R.string.volume_title) })
+                    Slider(value = if (muted) 0f else volume, onValueChange = onVolume, valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = volDesc })
                     Spacer(Modifier.width(8.dp))
                     Text("${(if (muted) 0f else volume * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -528,7 +546,7 @@ fun SettingsScreen(
                 }
             }
         }
-        if (sHit(sPlayerT, stringResource(R.string.quality_title), stringResource(R.string.playmode_title), stringResource(R.string.af_all), stringResource(R.string.sb_title), stringResource(R.string.pip_auto), stringResource(R.string.vis_comments), stringResource(R.string.vis_related), stringResource(R.string.vis_info), stringResource(R.string.vis_subs), stringResource(R.string.vis_4k), stringResource(R.string.keepalive_setting), stringResource(R.string.age_title))) item {
+        if (showPlayer) item {
             SettingsSection(title = sPlayerT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.quality_title),
@@ -606,7 +624,7 @@ fun SettingsScreen(
                 AgeModeRow(mode = "allow", sel = ageMode, onPick = onAgeMode)
             }
         }
-        if (sHit(sAppearT, stringResource(R.string.theme_title), stringResource(R.string.accent_title))) item {
+        if (showAppear) item {
             SettingsSection(title = sAppearT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.theme_title),
@@ -637,7 +655,7 @@ fun SettingsScreen(
                 Text(stringResource(R.string.accent_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (sHit(sDlT, stringResource(R.string.update_check), stringResource(R.string.backup_export), stringResource(R.string.backup_import), stringResource(R.string.offline_mode), stringResource(R.string.perf_parallel), stringResource(R.string.perf_feedcache), stringResource(R.string.perf_preload), stringResource(R.string.clear_pins), stringResource(R.string.clear_cache), stringResource(R.string.diag_copy), stringResource(R.string.cache_title), stringResource(R.string.pin_loc_title))) item {
+        if (showDl) item {
             SettingsSection(title = sDlT, forceExpand = sQ.isNotEmpty()) {
                 Text(
                     stringResource(R.string.pins_line_fmt, pinsCount, pinsSize),
@@ -716,6 +734,10 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     androidx.compose.material3.OutlinedButton(onClick = onImportFull, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.backup_import)) }
                 }
+                // Deferred item 7: last-backup metadata row (hidden until the first export).
+                if (!backupInfo.isNullOrBlank()) {
+                    Text(backupInfo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                }
                 Text(stringResource(R.string.update_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(stringResource(R.string.backup_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(stringResource(R.string.diag_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -750,9 +772,16 @@ fun SettingsScreen(
                     enabled = preloadNext,
                     onToggle = { onPreloadWifiOnly(!preloadWifiOnly) }
                 )
+                // Deferred item 8: periodic feed refresh (WorkManager, 15-min minimum, default OFF).
+                SwitchRow(
+                    label = stringResource(R.string.feed_auto_refresh),
+                    desc = stringResource(R.string.feed_auto_refresh_desc),
+                    checked = feedAutoRefresh,
+                    onToggle = { onFeedAutoRefresh(!feedAutoRefresh) }
+                )
             }
         }
-        if (sHit(sDataT, stringResource(R.string.clear_favorites), stringResource(R.string.clear_history))) item {
+        if (showData) item {
             SettingsSection(title = sDataT, forceExpand = sQ.isNotEmpty()) {
                 Text(
                     stringResource(R.string.settings_data_line, favCount, histCount, plCount, dbSize),

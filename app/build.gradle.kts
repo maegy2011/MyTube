@@ -56,6 +56,8 @@ dependencies {
     implementation(libs.play.services.cast.framework)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    // Deferred item 8 (2026-11-11): periodic feed refresh behind a pref (default OFF).
+    implementation(libs.work.runtime)
     ksp(libs.room.compiler)
     // P2 tests (audit 2026-11-11): resolve on the first ONLINE sync; compileDebugKotlin needs none of these.
     testImplementation("junit:junit:4.13.2")

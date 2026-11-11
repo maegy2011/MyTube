@@ -1,27 +1,19 @@
 package com.mohamedadel.mytube.ui.library
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-
-// Deferred item 1 (2026-11-11): channel-header rows for the feed (file-private: local sealed types are illegal).
-sealed interface FeedRow {
-    data class Header(val key: String, val name: String, val count: Int) : FeedRow
-    data class Video(val v: VideoItem) : FeedRow
-}
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,23 +27,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.mohamedadel.mytube.data.local.favKey
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.results.SearchRow
+
+
+// Deferred item 1 (2026-11-11): channel-header rows for the feed (file-private: local sealed types are illegal).
+sealed interface FeedRow {
+    data class Header(val key: String, val name: String, val count: Int) : FeedRow
+    data class Video(val v: VideoItem) : FeedRow
+}
 
 // A3 subscription feed: merged latest videos of all subscribed channels (manual refresh,
 // each channel fetched in its own try — one dead channel never kills the feed).

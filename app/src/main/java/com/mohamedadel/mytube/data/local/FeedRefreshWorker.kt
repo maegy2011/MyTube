@@ -1,0 +1,60 @@
+// Deferred item 8 (2026-11-11): periodic feed refresh behind a pref (default OFF).
+// What it does: warms the 6h Room feed cache (FeedCacheEntity) for every subscribed channel
+// (RSS first, videos-tab fallback — same sources as MainActivity.refreshFeed's oneChannel).
+// It does NOT touch UI state: the next foreground open reads the warmed cache.
+// Constraints: CONNECTED network only; WorkManager enforces the 15-minute minimum interval.
+// Scheduling lives in MainActivity.syncFeedWorker (toggle in Settings > Downloads).
+package com.mohamedadel.mytube.data.local
+
+import android.content.Context
+import androidx.room.Room
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import com.mohamedadel.mytube.data.youtube.YouTubeRepo
+import kotlinx.coroutines.flow.first
+import java.util.concurrent.TimeUnit
+
+class FeedRefreshWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(appCtx, params) {
+    override suspend fun doWork(): Result {
+        return try {
+            val db = Room.databaseBuilder(applicationContext, MyTubeDb::class.java, "mytube.db").build()
+            val dao = try { db.playlists() } catch (_: Exception) { return Result.failure() }
+            val subs = try { dao.observeSubscriptions().first() } catch (_: Exception) { emptyList() }
+            if (subs.isEmpty()) return Result.success()
+            for (sub in subs) {
+                try {
+                    val id = YouTubeRepo.channelIdFor(sub.channelUrl) ?: continue
+                    val fresh = try {
+                        val rss = YouTubeRepo.feedFor(id)
+                        if (rss.isNotEmpty()) rss else YouTubeRepo.channelVideos(sub.channelUrl).take(15)
+                    } catch (_: Exception) { continue }
+                    if (fresh.isEmpty()) continue
+                    try { dao.upsertFeedCache(FeedCacheEntity(id, System.currentTimeMillis(), FeedJson.toJson(fresh))) } catch (_: Exception) { }
+                } catch (_: Exception) { }
+            }
+            try { db.close() } catch (_: Exception) { }
+            Result.success()
+        } catch (_: Exception) { Result.retry() }
+    }
+
+    companion object {
+        const val TAG = "feed-refresh"
+        fun schedule(appCtx: Context, enable: Boolean) {
+            val wm = try { WorkManager.getInstance(appCtx) } catch (_: Exception) { return }
+            if (!enable) {
+                try { wm.cancelUniqueWork(TAG) } catch (_: Exception) { }
+                return
+            }
+            val req = PeriodicWorkRequestBuilder<FeedRefreshWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .addTag(TAG)
+                .build()
+            try { wm.enqueueUniquePeriodicWork(TAG, ExistingPeriodicWorkPolicy.UPDATE, req) } catch (_: Exception) { }
+        }
+    }
+}

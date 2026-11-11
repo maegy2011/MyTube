@@ -499,6 +499,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Perf toggles (settings): feed parallelism + feed cache; lazy lists stay lazy (no toggle needed)
     var prefFeedParallel by remember { mutableStateOf(true) }
     var prefFeedCache by remember { mutableStateOf(true) }
+    // Deferred item 8 (2026-11-11): periodic feed refresh toggle (WorkManager, default OFF).
+    var prefFeedAuto by remember { mutableStateOf(false) }
     // M1: next-item stream prefetch (latency only — no media bytes; one extractor fetch).
     // Skipped when offline (pins need no resolve) and capped at 2 entries.
     var prefPreloadNext by remember { mutableStateOf(true) }
@@ -737,6 +739,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
             prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
             prefFeedCache = prefs.getBoolean("pref_feed_cache", true)
+            prefFeedAuto = try { prefs.getBoolean("pref_feed_auto", false) } catch (_: Exception) { false }
             prefPreloadNext = prefs.getBoolean("pref_preload_next", true)
             prefPreloadWifiOnly = prefs.getBoolean("pref_preload_wifi_only", true)
             prefTitleTranslate = prefs.getBoolean("pref_title_translate", true)
@@ -1547,6 +1550,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
+    // Deferred item 8: apply the periodic worker on startup (toggle changes re-apply it).
+    LaunchedEffect(prefFeedAuto) { try { com.mohamedadel.mytube.data.local.FeedRefreshWorker.schedule(ctx.applicationContext, prefFeedAuto) } catch (_: Exception) { } }
     val svm: SearchViewModel = viewModel()
     val suggestions by svm.suggestions.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
@@ -2405,6 +2410,33 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // G-A4 (audit P2 2026-11-11): full export/import — every list, fav, history row
     // (capped 500), subscription, group + all prefs in one JSON file shared via FileProvider.
     // Pins are descriptors only: bytes stay on the old device (re-pin after moving).
+    // Deferred item 7: last-backup metadata line for the Settings downloads section
+    // (null until the first export; survives process death — plain prefs).
+    fun backupInfoText(): String? {
+        return try {
+            val at = try { prefs.getLong("backup_last_at", 0L) } catch (_: Exception) { 0L }
+            if (at <= 0L) return null
+            val date = try {
+                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(at))
+            } catch (_: Exception) { "" }
+            val bytes = try { prefs.getLong("backup_last_bytes", 0L) } catch (_: Exception) { 0L }
+            val size = if (bytes >= 1048576L) String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0)
+            else String.format(java.util.Locale.US, "%d KB", bytes / 1024)
+            ctx.getString(
+                R.string.backup_last_fmt, date,
+                try { prefs.getInt("backup_last_pl", 0) } catch (_: Exception) { 0 },
+                try { prefs.getInt("backup_last_fav", 0) } catch (_: Exception) { 0 },
+                try { prefs.getInt("backup_last_hist", 0) } catch (_: Exception) { 0 },
+                size
+            )
+        } catch (_: Exception) { null }
+    }
+    // Deferred item 8: WorkManager scheduler for the periodic feed refresh (see FeedRefreshWorker).
+    fun syncFeedWorker(appCtx: android.content.Context, enable: Boolean) {
+        try {
+            com.mohamedadel.mytube.data.local.FeedRefreshWorker.schedule(appCtx, enable)
+        } catch (_: Exception) { }
+    }
     fun exportFullBackup() {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -2476,6 +2508,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
                 val f = java.io.File(dir, "mytube_backup_" + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date()) + ".json")
                 f.writeText(root.toString())
+                // Deferred item 7 (2026-11-11): backup metadata row — timestamp + size + counts in prefs.
+                try {
+                    prefs.edit()
+                        .putLong("backup_last_at", System.currentTimeMillis())
+                        .putLong("backup_last_bytes", f.length())
+                        .putInt("backup_last_pl", root.optJSONArray("playlists")?.length() ?: 0)
+                        .putInt("backup_last_fav", root.optJSONArray("favorites")?.length() ?: 0)
+                        .putInt("backup_last_hist", root.optJSONArray("history")?.length() ?: 0)
+                        .apply()
+                } catch (_: Exception) { }
                 val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "com.mohamedadel.mytube.fileprovider", f)
                 val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                     type = "application/json"
@@ -2495,28 +2537,46 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val root = org.json.JSONObject(text)
                 if (root.optString("app") != "mytube") { uiToast(ctx.getString(R.string.backup_import_fail)); return@launch }
                 var nPl = 0; var nFav = 0
+                // Deferred item 5 (2026-11-11): import robustness — counters only, restore semantics untouched.
+                // - " (import)" suffix applies ONLY on real name clashes (was blind on every import).
+                // - rows with neither videoId nor url are invalid and skipped (were inserted as ghosts).
+                var nSkippedPlaylists = 0; var nSkippedItems = 0; var nRenamed = 0
+                val usedNames = try { dao.observePlaylists().first().map { it.name }.toMutableSet() } catch (_: Exception) { mutableSetOf() }
                 val jpls = root.optJSONArray("playlists") ?: org.json.JSONArray()
                 for (i in 0 until jpls.length()) {
                     try {
                         val o = jpls.getJSONObject(i)
+                        val base = o.optString("name", "import").ifBlank { "import" }.take(80)
+                        var finalName = base
+                        if (finalName in usedNames) {
+                            var n = 1
+                            var cand = "$base (import)"
+                            while (cand in usedNames) { n++; cand = "$base (import $n)" }
+                            finalName = cand.take(80)
+                            nRenamed++
+                        }
+                        usedNames.add(finalName)
                         val pid = dao.insertPlaylist(com.mohamedadel.mytube.data.local.PlaylistEntity(
-                            name = (o.optString("name", "import") + " (import)").take(80),
+                            name = finalName,
                             emoji = o.optString("emoji", "\uD83C\uDFB5"), mode = o.optString("mode", "music")))
                         val items = o.optJSONArray("items") ?: org.json.JSONArray()
                         val rows = (0 until items.length()).mapNotNull { j ->
                             try {
                                 val e = items.getJSONObject(j)
-                                com.mohamedadel.mytube.data.local.PlaylistItemEntity(
-                                    playlistId = pid, videoId = e.optString("videoId").ifBlank { null },
+                                val vid = e.optString("videoId").ifBlank { null }
+                                val url = e.optString("url").ifBlank { null }
+                                if (vid == null && url == null) { nSkippedItems++; null }
+                                else com.mohamedadel.mytube.data.local.PlaylistItemEntity(
+                                    playlistId = pid, videoId = vid,
                                     title = e.optString("title").ifBlank { null }, channel = e.optString("channel").ifBlank { null },
-                                    thumbnail = e.optString("thumbnail").ifBlank { null }, url = e.optString("url").ifBlank { null },
+                                    thumbnail = e.optString("thumbnail").ifBlank { null }, url = url,
                                     durationSec = e.optLong("durationSec", -1).takeIf { it >= 0 }, viewCount = e.optLong("viewCount", -1).takeIf { it >= 0 },
                                     position = e.optInt("position", j))
-                            } catch (_: Exception) { null }
+                            } catch (_: Exception) { nSkippedItems++; null }
                         }
                         if (rows.isNotEmpty()) dao.insertItems(rows)
                         nPl++
-                    } catch (_: Exception) { }
+                    } catch (_: Exception) { nSkippedPlaylists++ }
                 }
                 fun vrow(e: org.json.JSONObject, playedAt: Long): com.mohamedadel.mytube.data.local.HistoryEntity {
                     return com.mohamedadel.mytube.data.local.HistoryEntity(
@@ -2530,18 +2590,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 for (i in 0 until jf.length()) {
                     try {
                         val h = vrow(jf.getJSONObject(i), System.currentTimeMillis())
+                        // Deferred item 5: skip identifier-less rows (no key/id/url = unrestorable ghost).
+                        if (h.videoKey.isBlank() && h.videoId.isNullOrBlank() && h.url.isNullOrBlank()) { nSkippedItems++; continue }
                         if (h.videoKey.isNotBlank() && dao.favoriteCount(h.videoKey) == 0) {
                             dao.insertFavorite(com.mohamedadel.mytube.data.local.FavoriteEntity(
                                 videoKey = h.videoKey, videoId = h.videoId, title = h.title, channel = h.channel,
                                 thumbnail = h.thumbnail, url = h.url, durationSec = h.durationSec, viewCount = h.viewCount))
                             nFav++
                         }
-                    } catch (_: Exception) { }
+                    } catch (_: Exception) { nSkippedItems++ }
                 }
                 var nHist = 0
                 val jh = root.optJSONArray("history") ?: org.json.JSONArray()
                 for (i in 0 until jh.length()) {
-                    try { dao.upsertHistory(vrow(jh.getJSONObject(i), System.currentTimeMillis())); nHist++ } catch (_: Exception) { }
+                    try {
+                        val h = vrow(jh.getJSONObject(i), System.currentTimeMillis())
+                        // Deferred item 5: skip identifier-less rows.
+                        if (h.videoKey.isBlank() && h.videoId.isNullOrBlank() && h.url.isNullOrBlank()) { nSkippedItems++; continue }
+                        dao.upsertHistory(h); nHist++
+                    } catch (_: Exception) { nSkippedItems++ }
                 }
                 val js = root.optJSONArray("subscriptions") ?: org.json.JSONArray()
                 for (i in 0 until js.length()) {
@@ -2606,9 +2673,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     } catch (_: Exception) { }
                 }
                 uiToast(ctx.getString(R.string.backup_import_ok_fmt, nPl, nFav, nHist))
+                // Deferred item 5: report skipped/invalid rows + renames (restore itself unchanged).
+                val nSkippedTotal = nSkippedPlaylists + nSkippedItems
+                if (nSkippedTotal > 0 || nRenamed > 0) uiToast(ctx.getString(R.string.backup_import_skipped_fmt, nSkippedTotal, nRenamed))
             } catch (_: Exception) { uiToast(ctx.getString(R.string.backup_import_fail)) }
         }
     }
+    // Deferred item 6 (2026-11-11): update dialog payload (version + changelog + download URL).
+    var updateInfo by remember { mutableStateOf<com.mohamedadel.mytube.data.UpdateCheck.Release?>(null) }
     // G-A2 (audit P2 2026-11-11): compare installed versionName with latest GitHub tag.
     fun checkUpdate() {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -2617,11 +2689,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val repo = try { ctx.getString(R.string.update_repo_name) } catch (_: Exception) { "" }
                 if (owner.isBlank() || repo.isBlank()) { uiToast(ctx.getString(R.string.update_not_configured)); return@launch }
                 uiToast(ctx.getString(R.string.update_checking))
-                val tag = com.mohamedadel.mytube.data.UpdateCheck.latestTag(owner, repo)
-                if (tag == null) { uiToast(ctx.getString(R.string.update_fail)); return@launch }
+                val rel = com.mohamedadel.mytube.data.UpdateCheck.latestRelease(owner, repo)
+                if (rel == null) { uiToast(ctx.getString(R.string.update_fail)); return@launch }
                 val cur = com.mohamedadel.mytube.BuildConfig.VERSION_NAME
-                if (!com.mohamedadel.mytube.data.UpdateCheck.isNewer(tag, cur)) uiToast(ctx.getString(R.string.update_latest))
-                else uiToast(ctx.getString(R.string.update_available_fmt, tag, cur))
+                if (!com.mohamedadel.mytube.data.UpdateCheck.isNewer(rel.tag, cur)) uiToast(ctx.getString(R.string.update_latest))
+                // Deferred item 6: dialog with changelog + download (was toast-only).
+                else updateInfo = rel
             } catch (_: Exception) { uiToast(ctx.getString(R.string.update_fail)) }
         }
     }
@@ -3903,6 +3976,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         prefFeedCache = v
                         try { prefs.edit().putBoolean("pref_feed_cache", v).apply() } catch (_: Exception) { }
                     },
+                    // Deferred items 7+8: last-backup metadata row + periodic refresh toggle.
+                    backupInfo = backupInfoText(),
+                    feedAutoRefresh = prefFeedAuto,
+                    onFeedAutoRefresh = { v ->
+                        prefFeedAuto = v
+                        try { prefs.edit().putBoolean("pref_feed_auto", v).apply() } catch (_: Exception) { }
+                        try { syncFeedWorker(ctx.applicationContext, v) } catch (_: Exception) { }
+                    },
                     preloadNext = prefPreloadNext,
                     onPreloadNext = { v ->
                         prefPreloadNext = v
@@ -4700,6 +4781,38 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onStartRadio = { startRadio(v); optionsFor = null },
                     isSubscribed = v.channelUrl != null && subscriptions.any { it.channelUrl == v.channelUrl },
                     onDismiss = { optionsFor = null }
+                )
+            }
+            // Deferred item 6: update dialog — version + changelog + Download (was toast-only).
+            updateInfo?.let { rel ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { updateInfo = null },
+                    title = { Text(stringResource(R.string.update_available_fmt, rel.tag, com.mohamedadel.mytube.BuildConfig.VERSION_NAME)) },
+                    text = {
+                        androidx.compose.foundation.layout.Column(modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                            Text(
+                                (rel.body?.take(2000)?.ifBlank { rel.tag } ?: rel.tag),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            try {
+                                val url = rel.htmlUrl
+                                if (!url.isNullOrBlank()) {
+                                    val view = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                    view.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    ctx.startActivity(view)
+                                } else uiToast(ctx.getString(R.string.update_fail))
+                            } catch (_: Exception) { uiToast(ctx.getString(R.string.update_fail)) }
+                            updateInfo = null
+                        }) { Text(stringResource(R.string.download)) }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { updateInfo = null }) { Text(stringResource(R.string.close)) }
+                    }
                 )
             }
         }

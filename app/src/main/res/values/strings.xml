@@ -281,6 +281,10 @@
     <string name="queue_removed_fmt">أُزيل “%1$s” من القائمة</string>
     <string name="undo">تراجع</string>
     <string name="settings_search_hint">بحث في الإعدادات…</string>
+    <string name="backup_import_skipped_fmt">تُخطي %1$d عنصرًا غير صالح، وأُعيد تسمية %2$d قائمة مكررة</string>
+    <string name="backup_last_fmt">آخر نسخة: %1$s • %2$d قوائم • %3$d مفضلة • %4$d سجل • %5$s</string>
+    <string name="feed_auto_refresh">تحديث الخلاصة دوريًا</string>
+    <string name="feed_auto_refresh_desc">تحديث خلاصة الاشتراكات في الخلفية كل 15 دقيقة على الأقل (مغلق افتراضيًا)</string>
     <string name="feed_refresh">تحديث</string>
     <string name="feed_empty">لا اشتراكات بعد — اشترك من صفحة قناة أو استورد ملفًا.</string>
     <!-- screens-fix Library P1-L8: distinct group-feed empty copy -->

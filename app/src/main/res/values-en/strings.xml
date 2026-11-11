@@ -281,6 +281,10 @@
     <string name="queue_removed_fmt">Removed “%1$s” from queue</string>
     <string name="undo">Undo</string>
     <string name="settings_search_hint">Search settings…</string>
+    <string name="backup_import_skipped_fmt">Skipped %1$d invalid items, renamed %2$d duplicate playlists</string>
+    <string name="backup_last_fmt">Last backup: %1$s • %2$d playlists • %3$d favorites • %4$d history • %5$s</string>
+    <string name="feed_auto_refresh">Auto-refresh feed</string>
+    <string name="feed_auto_refresh_desc">Refresh the subscriptions feed in the background (15 min minimum, off by default)</string>
     <string name="feed_refresh">Refresh</string>
     <string name="feed_empty">No subscriptions yet — subscribe from a channel page or import a file.</string>
     <!-- screens-fix Library P1-L8: distinct group-feed empty copy -->

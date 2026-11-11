@@ -18,8 +18,10 @@ object UpdateCheck {
             .build()
     }
 
-    // latest release tag (e.g. "v0.3.2"), or null on any failure (offline/rate-limit/no release).
-    fun latestTag(owner: String, repo: String): String? {
+    // Deferred item 6 (2026-11-11): full release payload for the update dialog
+    // (version + changelog body + download URL). Tag-only callers keep latestTag.
+    data class Release(val tag: String, val body: String?, val htmlUrl: String?)
+    fun latestRelease(owner: String, repo: String): Release? {
         return try {
             val req = Request.Builder()
                 .url("https://api.github.com/repos/" + owner + "/" + repo + "/releases/latest")
@@ -28,10 +30,14 @@ object UpdateCheck {
             client.newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return null
                 val body = r.body?.string() ?: return null
-                JSONObject(body).optString("tag_name", "").takeIf { it.isNotBlank() }
+                val o = JSONObject(body)
+                val tag = o.optString("tag_name", "").takeIf { it.isNotBlank() } ?: return null
+                Release(tag, o.optString("body", "").takeIf { it.isNotBlank() }, o.optString("html_url", "").takeIf { it.isNotBlank() })
             }
         } catch (_: Exception) { null }
     }
+    // latest release tag (e.g. "v0.3.2"), or null on any failure (offline/rate-limit/no release).
+    fun latestTag(owner: String, repo: String): String? = latestRelease(owner, repo)?.tag
 
     // screens-fix Settings P0-S1: real numeric semver compare (was: any different tag = newer,
     // which also flagged older tags as "updates"). Numeric tie with differing text falls back

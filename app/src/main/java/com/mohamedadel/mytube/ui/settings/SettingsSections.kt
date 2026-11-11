@@ -59,6 +59,8 @@ fun SettingsSection(
     // Deferred item 4 (settings search): forceExpand opens matching sections from the filter.
     var expanded by rememberSaveable { mutableStateOf(expandedDefault) }
     val shown = expanded || forceExpand
+    // Deferred item 2 (a11y): semantics{} is not composable — resolve the state label here.
+    val expandStateDesc = stringResource(if (shown) R.string.expanded else R.string.collapsed)
     Card(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -68,7 +70,7 @@ fun SettingsSection(
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .clickable(onClick = { expanded = !expanded }, onClickLabel = title, role = Role.Button)
-                    .semantics { stateDescription = stringResource(if (shown) R.string.expanded else R.string.collapsed) }
+                    .semantics { stateDescription = expandStateDesc }
                     .padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -194,13 +196,14 @@ fun SwitchRow(
         }
         Spacer(Modifier.width(8.dp))
         // Deferred item 2 (a11y): the switch itself carries the label + state for TalkBack.
+        val switchStateDesc = stringResource(if (checked) R.string.state_on else R.string.state_off)
         Switch(
             checked = checked,
             onCheckedChange = { onToggle() },
             enabled = enabled,
             modifier = Modifier.semantics {
                 contentDescription = label
-                stateDescription = stringResource(if (checked) R.string.state_on else R.string.state_off)
+                stateDescription = switchStateDesc
             }
         )
     }
