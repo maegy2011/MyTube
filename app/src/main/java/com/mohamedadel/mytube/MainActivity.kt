@@ -222,6 +222,8 @@ class MainActivity : ComponentActivity() {
     }
     private fun enterPip() {
         val p = player
+        // L2 (audit P0 2026-11-11): auto-enter follows pref_pip — a stale `true` used to stick after the first manual PiP.
+        val autoPip = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_pip", true) } catch (_: Exception) { true }
         val ratio = run {
             val w = p?.videoSize?.width ?: 0
             val h = p?.videoSize?.height ?: 0
@@ -236,7 +238,7 @@ class MainActivity : ComponentActivity() {
         }
         val params = PictureInPictureParams.Builder()
             .setAspectRatio(ratio)
-            .apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(true) }
+            .apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(autoPip) }
             .build()
         try { setPictureInPictureParams(params) } catch (_: Exception) { }
         enterPictureInPictureMode(params)
@@ -248,11 +250,17 @@ class MainActivity : ComponentActivity() {
         // Auto-PiP obeys the pref (default on = current behavior); the manual PiP button always works.
         val autoPip = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_pip", true) } catch (_: Exception) { true }
         if (playing && h > 0 && autoPip) enterPip()
+        else if (!autoPip && android.os.Build.VERSION.SDK_INT >= 31) {
+            // L2: clear a sticky auto-enter flag when the user turned the pref off.
+            try {
+                setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(false).build())
+            } catch (_: Exception) { }
+        }
         super.onUserLeaveHint()
     }
     // H1: NEVER release here — the ExoPlayer instance is owned by PlaybackService (shared reference).
     // Releasing it killed background audio on activity exit + double-released with the service.
-    override fun onDestroy() { player = null; super.onDestroy() }
+    override fun onDestroy() { player = null; try { PlaybackService.onCustomAction = null } catch (_: Exception) { }; super.onDestroy() }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -643,6 +651,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val dl = prefs.getLong("sleep_deadline", 0L)
                 if (dl > android.os.SystemClock.uptimeMillis() + 30000L) {
                     sleepAtMs = dl
+                    // F1: re-arm the service-side deadline after process restart.
+                    try { PlaybackService.scheduleSleep(dl - android.os.SystemClock.uptimeMillis()) } catch (_: Exception) { }
                 } else if (dl > 0L) {
                     try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
                 }
@@ -1495,6 +1505,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             return@launch
                         } else if (prefAgeMode == "warn") {
                             playerLoading = false
+                            // L3 (audit P0 2026-11-11): queue auto-advance must never freeze silently — skip with a toast.
+                            // Inline (not playNextInQueue()): local funs declared below are out of scope here.
+                            if (inQueue) {
+                                toast(ctx.getString(R.string.err_age_blocked))
+                                val nxt = queue.getOrNull(queueIndex + 1)
+                                if (nxt != null) playVideo(nxt, inQueue = true, expand = playerExpanded)
+                                else { radioOn = false; autoAdvance = false }
+                                return@launch
+                            }
                             agePending = Triple(v, inQueue, null)
                             return@launch
                         }
@@ -1585,6 +1604,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     return@launch
                 } else if (prefAgeMode == "warn") {
                     playerLoading = false
+                    // L3 (audit P0 2026-11-11): queue auto-advance must never freeze silently — skip with a toast.
+                    // Inline (not playNextInQueue()): local funs declared below are out of scope here.
+                    if (inQueue) {
+                        toast(ctx.getString(R.string.err_age_blocked))
+                        val nxt = queue.getOrNull(queueIndex + 1)
+                        if (nxt != null) playVideo(nxt, inQueue = true, expand = playerExpanded)
+                        else { radioOn = false; autoAdvance = false }
+                        return@launch
+                    }
                     agePending = Triple(v, inQueue, s)
                     return@launch
                 }
@@ -1858,6 +1886,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         onDispose {
             try { player?.removeListener(queueListener) } catch (_: Exception) { }
             try { player?.removeListener(eqSessionListener) } catch (_: Exception) { }
+            // T3 (audit P0 2026-11-11): release the static service callback so it never pins this composition.
+            try { PlaybackService.onCustomAction = null } catch (_: Exception) { }
         }
     }
     // SponsorBlock segments: fetch on video/toggle change (IO), clear when off.
@@ -3920,8 +3950,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         if (m == null) {
                             sleepLeft = ""
                             try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
+                            // F1: cancel the service-side deadline too.
+                            try { PlaybackService.cancelSleep() } catch (_: Exception) { }
                         } else {
                             try { prefs.edit().putLong("sleep_deadline", sleepAtMs ?: 0L).apply() } catch (_: Exception) { }
+                            // F1: service-side deadline survives Activity death (Compose watcher is UI-only).
+                            try { PlaybackService.scheduleSleep(m * 60000L) } catch (_: Exception) { }
                         }
                         showSleep = false
                     },

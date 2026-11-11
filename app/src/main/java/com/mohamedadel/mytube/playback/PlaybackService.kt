@@ -31,6 +31,24 @@ class PlaybackService : MediaSessionService() {
         const val ACTION_PREV = "mytube_prev"
         const val ACTION_NEXT = "mytube_next"
         var onCustomAction: ((String) -> Unit)? = null
+        // F1 (audit P0 2026-11-11): service-side sleep deadline — survives Activity death.
+        // MainActivity mirrors its Compose deadline here; the service pauses even if the UI is gone.
+        var sleepDeadlineMs: Long? = null
+            private set
+        private val sleepHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        private val sleepRunnable = Runnable {
+            try { player?.pause() } catch (_: Exception) { }
+            sleepDeadlineMs = null
+        }
+        fun scheduleSleep(ms: Long) {
+            cancelSleep()
+            sleepDeadlineMs = android.os.SystemClock.elapsedRealtime() + ms
+            sleepHandler.postDelayed(sleepRunnable, ms)
+        }
+        fun cancelSleep() {
+            try { sleepHandler.removeCallbacks(sleepRunnable) } catch (_: Exception) { }
+            sleepDeadlineMs = null
+        }
     }
 
     // forwards notification / lock-screen prev+next taps to whoever owns the queue (MainActivity)
@@ -90,6 +108,7 @@ class PlaybackService : MediaSessionService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
     override fun onDestroy() {
+        cancelSleep()
         session?.let { removeSession(it) }
         session?.release()
         session = null

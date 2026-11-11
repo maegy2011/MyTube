@@ -111,13 +111,16 @@ object PinManager {
         return try {
             dest.parentFile?.mkdirs()
             val tmp = File(dest.parentFile, dest.name + ".part")
+            var done = 0L
+            var respTotal = -1L
             http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
                 if (!resp.isSuccessful || resp.body == null) return false
-                val total = resp.header("Content-Length")?.toLongOrNull() ?: -1L
+                // F2 (audit P0 2026-11-11): capture the declared size from THIS response —
+                // no extra HEAD round-trip; a short read below is rejected as truncated.
+                respTotal = resp.header("Content-Length")?.toLongOrNull() ?: -1L
                 val body = resp.body!!
                 tmp.outputStream().use { out ->
                     val buf = ByteArray(256 * 1024)
-                    var done = 0L
                     var lastReport = 0L
                     val input = body.byteStream()
                     while (true) {
@@ -128,11 +131,15 @@ object PinManager {
                         // throttle callbacks: every ~256KB to avoid spamming the UI thread
                         if (onProgress != null && done - lastReport >= 262144) {
                             lastReport = done
-                            try { onProgress(base + done, span.takeIf { it > 0 } ?: total) } catch (_: Exception) { }
+                            try { onProgress(base + done, span.takeIf { it > 0 } ?: respTotal) } catch (_: Exception) { }
                         }
                     }
-                    if (onProgress != null) try { onProgress(base + done, span.takeIf { it > 0 } ?: total) } catch (_: Exception) { }
+                    if (onProgress != null) try { onProgress(base + done, span.takeIf { it > 0 } ?: respTotal) } catch (_: Exception) { }
                 }
+            }
+            if (respTotal > 0 && done != respTotal) {
+                try { tmp.delete() } catch (_: Exception) { }
+                return false
             }
             if (dest.exists()) dest.delete()
             tmp.renameTo(dest)
@@ -198,6 +205,8 @@ object PinManager {
                 .put("age", plan.ageLimit)
                 .put("videoId", v.id ?: "")
                 .put("title", v.title ?: "")
+                // F2 (audit P0 2026-11-11): expected bytes for post-download verification on the play path.
+                .put("expectedBytes", estTotal)
             File(staging, "meta.json").writeText(meta.toString())
             try { if (dir.exists()) dir.deleteRecursively() } catch (_: Exception) { }
             if (!staging.renameTo(dir)) {
@@ -210,6 +219,12 @@ object PinManager {
                 try { if (staging.exists()) staging.deleteRecursively() } catch (_: Exception) { }
             }
             val size = PinFiles.dirBytes(app, key)
+            // F2 (audit P0 2026-11-11): post-download length check — refuse empty/zero-byte snapshots.
+            try {
+                val vf = File(dir, "video.mp4")
+                if (!vf.exists() || vf.length() <= 0L) { try { dir.deleteRecursively() } catch (_: Exception) { }; return -1L }
+                if (estTotal > 0 && size > 0 && size < estTotal / 2) { try { dir.deleteRecursively() } catch (_: Exception) { }; return -1L }
+            } catch (_: Exception) { }
             dao.upsertPin(
                 PinEntity(
                     videoKey = key, videoId = v.id, title = v.title, channel = v.channel, url = v.url,

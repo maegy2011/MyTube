@@ -3,3 +3,6 @@ build/
 local.properties
 *.iml
 .idea/
+# S1 (audit P0 prerequisite 2026-11-11): signed APKs must never live in git history
+*.apk
+*.idsig

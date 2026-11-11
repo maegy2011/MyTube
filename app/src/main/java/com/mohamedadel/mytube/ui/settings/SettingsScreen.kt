@@ -311,7 +311,7 @@ fun SettingsScreen(
                     checked = subHideAuto,
                     onToggle = { onSubHideAuto(!subHideAuto) }
                 )
-                Box(modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(if (subBg == "transparent" || subBg == "black") Color(0xFF3A3A44) else Color(0xFF1A1A1F)).padding(12.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp), contentAlignment = Alignment.Center) {
                     val pvFg = when (subFg) { "yellow" -> Color.Yellow; "black" -> Color.Black; "cyan" -> Color.Cyan; else -> Color.White }
                     val pvBgBase = when (subBg) { "black" -> Color.Black; "white" -> Color.White; else -> Color.Transparent }
                     val pvBg = if (subBg == "transparent") Color.Transparent else pvBgBase.copy(alpha = subBgOpacity.coerceIn(0, 100) / 100f)
