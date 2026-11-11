@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -138,6 +139,7 @@ internal val mutedLive = mutableStateOf(false)
 
 @Composable
 fun PlayerArea(
+    modifier: Modifier = Modifier,
     video: VideoItem,
     player: ExoPlayer?,
     quality: String,
@@ -272,11 +274,16 @@ fun PlayerArea(
         }
     }
     ElevatedCard(
-        modifier = if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(16.dp),
+        modifier = (if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(16.dp)).then(modifier),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
     ) {
-        Column {
+        // 2026-11-12 (runtime fix): the info column below the video had no scroll —
+        // tall content clipped with no way to reach it. ScrollableColumn with the
+        // Card's bounded height; related rows stay a bounded plain Column
+        // (no unbounded LazyColumn inside a Column).
+        val playerScroll = rememberScrollState()
+        Column(Modifier.verticalScroll(playerScroll)) {
             // Fix 1: visible collapse/close — the mini player was reachable only via system back.
             if (!isFullscreen) {
                 Row(

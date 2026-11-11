@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Timer
@@ -86,7 +87,10 @@ fun MiniPlayer(
     titleOverride: String? = null,
     hasNext: Boolean = false,
     hasPrev: Boolean = false,
-    castAvailable: Boolean = false
+    castAvailable: Boolean = false,
+    // 2026-11-12 (runtime fix): queue reachable straight from the mini-player
+    // (was only inside the full player) — remove/reorder/clear live in QueuePanel.
+    onQueue: (() -> Unit)? = null
 ) {
     val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState()
     val dismissed = dismissState.currentValue != androidx.compose.material3.SwipeToDismissBoxValue.Settled
@@ -123,6 +127,11 @@ fun MiniPlayer(
                 }
                 EqualizerBars(playing = isPlaying)
                 Spacer(Modifier.width(4.dp))
+                if (onQueue != null) {
+                    IconButton(onClick = onQueue) {
+                        Icon(Icons.Rounded.QueueMusic, contentDescription = stringResource(R.string.cd_manage_queue), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                    }
+                }
                 if (onPrev != null) {
                     IconButton(onClick = onPrev, enabled = hasPrev) {
                         Icon(Icons.Rounded.SkipPrevious, contentDescription = stringResource(R.string.prev), tint = if (hasPrev) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), modifier = Modifier.size(22.dp))

@@ -180,8 +180,32 @@ object PinFiles {
         } catch (_: Exception) { 0L }
     }
 
-    // Free bytes at the CURRENT pin root (internal fallback included). -1 when unknown.
-    fun freeBytes(context: Context): Long {
-        return try { baseDir(context).usableSpace } catch (_: Exception) { -1L }
+    // Free bytes at the ACTUAL chosen pin root. -1 when unknown (caller must not block).
+    // 2026-11-12 (runtime fix): baseDir() may not exist yet on fresh installs and
+    // usableSpace on a missing path returns 0 — every pin then failed with a false
+    // "no space" error though space exists. mkdirs first, then fall back to filesDir
+    // and the external root before giving up with -1.
+    fun freeBytes(context: Context, location: String = loc(context)): Long {
+        return try {
+            val base = try { baseDir(context, location) } catch (_: Exception) { null }
+            if (base != null) {
+                try { if (!base.exists()) base.mkdirs() } catch (_: Exception) { }
+                if (base.exists()) {
+                    val u = try { base.usableSpace } catch (_: Exception) { -1L }
+                    if (u > 0) return u
+                }
+            }
+            val internal = try {
+                val f = context.filesDir
+                try { if (!f.exists()) f.mkdirs() } catch (_: Exception) { }
+                f.usableSpace
+            } catch (_: Exception) { -1L }
+            if (internal > 0) return internal
+            val ext = try { context.getExternalFilesDir(null)?.usableSpace ?: -1L } catch (_: Exception) { -1L }
+            if (ext > 0) return ext
+            // 0 can still mean a truly full disk, but without a readable root we must
+            // not block: -1 lets the guard skip instead of crying wolf.
+            -1L
+        } catch (_: Exception) { -1L }
     }
 }

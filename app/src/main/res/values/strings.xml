@@ -614,4 +614,6 @@
     <string name="update_repo_owner" translatable="false"></string>
     <string name="update_repo_name" translatable="false"></string>
     <string name="pause">إيقاف مؤقت</string>
+    <string name="autoplay_title">التشغيل التلقائي</string>
+    <string name="autoplay_desc">متابعة الراديو والقائمة تلقائيًا بعد انتهاء المقطع — الإيقاف يوقف التقدم التلقائي</string>
 </resources>

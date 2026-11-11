@@ -599,4 +599,6 @@
     <string name="backup_import_fail">Invalid backup file</string>
     <string name="backup_desc">All playlists, favorites, history, subscriptions and settings in one file</string>
     <string name="update_desc">Compares your build against the latest GitHub Release</string>
+    <string name="autoplay_title">Autoplay</string>
+    <string name="autoplay_desc">Auto-advance radio and queues when a track ends — off stops automatic advance</string>
 </resources>

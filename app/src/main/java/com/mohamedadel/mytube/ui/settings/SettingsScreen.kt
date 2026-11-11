@@ -159,6 +159,9 @@ fun SettingsScreen(
     afMode: String = "all",
     onAf: (String) -> Unit = {},
     onPlayMode: (String) -> Unit,
+    // 2026-11-12 (runtime fix): persisted autoplay toggle, default ON — drives radio auto-advance.
+    autoplay: Boolean = true,
+    onAutoplay: (Boolean) -> Unit = {},
     subHideAuto: Boolean = false,
     onSubHideAuto: (Boolean) -> Unit = {},
     subFg: String = "white",
@@ -312,7 +315,7 @@ fun SettingsScreen(
     val showLang = sHit(sLangT, stringResource(R.string.ui_lang_title), stringResource(R.string.country_title), stringResource(R.string.title_translate))
     val showSubs = sHit(sSubsT, stringResource(R.string.sub_primary_title), stringResource(R.string.sub_fallback_title), stringResource(R.string.sub_hide_auto), stringResource(R.string.sub_size_title), stringResource(R.string.sub_fg_title), stringResource(R.string.sub_bg_title), stringResource(R.string.sub_edge_title), stringResource(R.string.sub_bold), stringResource(R.string.sub_role_title))
     val showAudio = sHit(sAudioT, stringResource(R.string.audio_primary_title), stringResource(R.string.audio_fallback_title), stringResource(R.string.prefer_original), stringResource(R.string.audio_role_title), stringResource(R.string.skip_silence), stringResource(R.string.speed_title), stringResource(R.string.pitch_title), stringResource(R.string.volume_title), stringResource(R.string.eq_title))
-    val showPlayer = sHit(sPlayerT, stringResource(R.string.quality_title), stringResource(R.string.playmode_title), stringResource(R.string.af_all), stringResource(R.string.sb_title), stringResource(R.string.pip_auto), stringResource(R.string.vis_comments), stringResource(R.string.vis_related), stringResource(R.string.vis_info), stringResource(R.string.vis_subs), stringResource(R.string.vis_4k), stringResource(R.string.keepalive_setting), stringResource(R.string.age_title))
+    val showPlayer = sHit(sPlayerT, stringResource(R.string.quality_title), stringResource(R.string.playmode_title), stringResource(R.string.autoplay_title), stringResource(R.string.af_all), stringResource(R.string.sb_title), stringResource(R.string.pip_auto), stringResource(R.string.vis_comments), stringResource(R.string.vis_related), stringResource(R.string.vis_info), stringResource(R.string.vis_subs), stringResource(R.string.vis_4k), stringResource(R.string.keepalive_setting), stringResource(R.string.age_title))
     val showAppear = sHit(sAppearT, stringResource(R.string.theme_title), stringResource(R.string.accent_title))
     val showDl = sHit(sDlT, stringResource(R.string.update_check), stringResource(R.string.backup_export), stringResource(R.string.backup_import), stringResource(R.string.feed_auto_refresh), stringResource(R.string.offline_mode), stringResource(R.string.perf_parallel), stringResource(R.string.perf_feedcache), stringResource(R.string.perf_preload), stringResource(R.string.clear_pins), stringResource(R.string.clear_cache), stringResource(R.string.diag_copy), stringResource(R.string.cache_title), stringResource(R.string.pin_loc_title))
     val showData = sHit(sDataT, stringResource(R.string.clear_favorites), stringResource(R.string.clear_history))
@@ -559,6 +562,12 @@ fun SettingsScreen(
                     entries = PLAYMODE_OPTIONS.map { it.first to stringResource(it.second) },
                     selected = playMode,
                     onPick = onPlayMode
+                )
+                SwitchRow(
+                    label = stringResource(R.string.autoplay_title),
+                    desc = stringResource(R.string.autoplay_desc),
+                    checked = autoplay,
+                    onToggle = { onAutoplay(!autoplay) }
                 )
                 listOf("all", "calls").forEach { code ->
                     // screens-fix Settings P1-S4: selectable radio rows (were clickable + icon-mimic).

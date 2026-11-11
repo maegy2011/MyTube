@@ -503,6 +503,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefUiLang by remember { mutableStateOf("ar") }
     // default video quality for every new video: audio-only | auto | saver | high
     var prefQuality by remember { mutableStateOf("audio-only") }
+    // 2026-11-12 (runtime fix): persisted autoplay toggle, default ON (بأمر محمد) —
+    // drives radio/queue auto-advance; OFF stops automatic advance. Declared up here
+    // (next to the other prefs) because the prefs-load LaunchedEffect below assigns it.
+    var prefAutoplay by remember { mutableStateOf(true) }
     // subtitle studio: hide auto-generated, fg/bg/edge/size/bold (applied via CaptionStyleCompat)
     var prefSubHideAuto by remember { mutableStateOf(false) }
     var prefSubFg by remember { mutableStateOf("white") }
@@ -741,6 +745,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             eqPreset = try { prefs.getInt("eq_preset", 0) } catch (_: Exception) { 0 }
             prefUiLang = prefs.getString("pref_ui_lang", "ar") ?: "ar"
             prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
+            // 2026-11-12 (runtime fix): autoplay persisted, default ON (بأمر محمد).
+            prefAutoplay = try { prefs.getBoolean("pref_autoplay", true) } catch (_: Exception) { true }
             prefContentFilter = prefs.getString("pref_content_filter", "all") ?: "all"
             prefSubHideAuto = prefs.getBoolean("pref_sub_hide_auto", false)
             prefSubFg = prefs.getString("pref_sub_fg", "white") ?: "white"
@@ -2366,6 +2372,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             return
                         }
                     }
+                    // 2026-11-12 (runtime fix): autoplay OFF stops automatic advance
+                    // (explicit repeatOne replay still honors the user's picked mode).
+                    if (!prefAutoplay && playMode != "repeatOne") {
+                        radioOn = false
+                        autoAdvance = false
+                        return
+                    }
                     when {
                         playMode == "repeatOne" -> try { player?.seekTo(0L); player?.play() } catch (_: Exception) { }
                         // 2026-11-12: ENDED-path advances force-start (isPlaying is already false
@@ -3311,7 +3324,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                     // Free-space guard: refuse early with a clear message instead of a mid-write fail.
                     val need = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl) + plan.subs.drop(1).map { it.url })
-                    val free = pf.freeBytes(ctx.applicationContext)
+                    // 2026-11-12 (runtime fix): free bytes on the ACTUAL chosen pin root
+                    // (pinSelLoc) — default-root query read 0 on fresh installs (missing
+                    // travel dir) and cried "no space" though space exists. -1 = unknown = skip.
+                    val free = pf.freeBytes(ctx.applicationContext, pinSelLoc)
                     if (need > 0 && free >= 0 && need > free) {
                         uiToast(ctx.getString(R.string.pin_no_space)); return@launch
                     }
@@ -3639,8 +3655,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     Scaffold(
         topBar = { },
         bottomBar = {
-            // Mini-player above the bottom nav (YouTube order): visible whenever audio plays while collapsed.
-            if (!isInPip && !isFullscreen && playing != null && !playerExpanded) {
+            // Mini-player above the bottom nav (YouTube order): Scaffold layering keeps
+            // this bar above ALL destinations except Settings (2026-11-12 runtime fix).
+            if (!isInPip && !isFullscreen && playing != null && !playerExpanded && !showSettings) {
                 MiniPlayer(
                     video = playing!!,
                     titleOverride = translatedTitle,
@@ -3657,6 +3674,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     hasNext = queueIndex >= 0 && queueIndex < queue.size - 1,
                     hasPrev = queueIndex > 0,
                     castAvailable = CastManager.available.value,
+                    // 2026-11-12 (runtime fix): queue reachable straight from the mini-player.
+                    onQueue = { showQueue = true },
                     onTap = {
                         // reopen the full player + jump the queue to the currently playing row
                         playerExpanded = true
@@ -3753,7 +3772,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (playerExpanded || playing != null || showPlaylists || showSettings || showSearch || showLibrary || results.isNotEmpty()) {
+                // 2026-11-12 (runtime fix): hierarchical Up on EVERY non-root screen —
+                // pops the nav stack via smartBack(), never jumps home. Root = home feed
+                // with nothing playing and no results. Mirrors the BackHandler enable set.
+                val canGoBack = playerExpanded || playing != null || showPlaylists || showSettings || showSearch || showLibrary || results.isNotEmpty() || showFeed || showDownloads || showFavorites || showHistory || showSC || channelScreenUrl != null || showQueue || showGroups || openGroup != null || openRemote != null || showLocal || openPlaylistId != null
+                if (canGoBack) {
                     IconButton(onClick = { smartBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
@@ -3798,8 +3821,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // screens-fix queue (method-size, 2026-11-11): the 130-line PlayerArea call lived inline
     // in MyTubeApp.invoke and helped breach the 64KB limit — same local-fun trick as SettingsPane.
     @Composable
-    fun PlayerPane() {
+    fun PlayerPane(paneMod: Modifier = Modifier) {
                 PlayerArea(
+                    modifier = paneMod,
                     video = cur,
                     player = player,
                     quality = quality,
@@ -3937,7 +3961,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     storyboards = streamData?.storyboards ?: emptyList()
                 )
     }
-                PlayerPane()
+                // 2026-11-12 (runtime fix): bounded height (weight) so the player's
+                // internal ScrollableColumn can scroll — unbounded content clipped before.
+                if (isFullscreen) PlayerPane()
+                else Box(Modifier.weight(1f)) { PlayerPane(paneMod = Modifier.fillMaxSize()) }
                 // comments sheet (real CommentsExtractor, pageless first 30)
                 if (showComments) {
                     androidx.compose.material3.AlertDialog(
@@ -4048,6 +4075,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onPlayMode = { v ->
                         setMode(v)
                         toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
+                    },
+                    // 2026-11-12 (runtime fix): autoplay persisted, default ON (بأمر محمد).
+                    autoplay = prefAutoplay,
+                    onAutoplay = { v ->
+                        prefAutoplay = v
+                        try { prefs.edit().putBoolean("pref_autoplay", v).apply() } catch (_: Exception) { }
                     },
                     afMode = prefAf,
                     onAf = { v ->
@@ -4362,6 +4395,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onClearAll = { queue = emptyList(); queueIndex = 0 }
                     )
                 }
+                // 2026-11-12 (runtime fix): expanded player fills the screen — plain
+                // destinations hide so the player's ScrollableColumn gets a bounded
+                // height (queue + channel stay visible above for management/back).
+                playerExpanded && !showQueue && channelScreenUrl == null -> { }
                 showLibrary -> {
                     // screens-fix Library P2-L12: load most-replayed when the hub opens (IO, silent fail).
                     LaunchedEffect(showLibrary) {
@@ -4638,7 +4675,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 } catch (_: Exception) { toast(ctx.getString(R.string.toast_move_fail)) }
                             }
                         },
-                        onBack = { showPlaylists = false; openPlaylistId = null },
+                        // 2026-11-12 (runtime fix): hierarchical pop via smartBack — the old
+                        // inline close dropped fromLibrary and landed on home instead of Library.
+                        onBack = { smartBack() },
                         pinBadges = pinBadges,
                         onLongClick = { optionsFor = it },
                         covers = plCovers,
