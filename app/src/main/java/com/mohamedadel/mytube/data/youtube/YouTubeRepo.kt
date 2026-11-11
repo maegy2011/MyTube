@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 
@@ -729,23 +730,24 @@ object YouTubeRepo {
         }
     }
 
-    // Audio-only StreamData for a SoundCloud track (highest-bitrate audio stream).
-    // pin-deepfix 2026-11-11: skip HLS (.m3u8) variants — pinning stores raw bytes, so a
-    // playlist URL would produce a corrupt audio.m4a. audioHlsOnly lets callers say so clearly.
-    // 2026-11-12 (runtime fix): HLS-only used to return NO url at all, so ONLINE playback
-    // died with err_no_sources too. Now the HLS url rides along (flag set): pins still
-    // refuse via the flag, but online playback routes it through HlsMediaSource in applyQuality.
+    // Audio-only StreamData for a SoundCloud track (highest-bitrate progressive audio stream).
+    // Official partition per the extractor's own API: AudioStream.getDeliveryMethod()
+    // (HLS vs progressive) — never URL-substring sniffing. HLS entries ride along flagged
+    // (audioHlsOnly): pins refuse them as before, online playback routes them through
+    // HlsMediaSource in applyQuality. Covers the 0.27.1 aac_96k transcodings either way.
     suspend fun scStream(url: String): StreamData? = withContext(Dispatchers.IO) {
         try {
             val ext = scService().getStreamExtractor(url)
             ext.fetchPage()
             val audios = try { ext.audioStreams } catch (_: Exception) { null } ?: emptyList()
-            val withUrl = audios.mapNotNull { a -> try { a.content?.let { a to it } } catch (_: Exception) { null } }
-            if (withUrl.isEmpty()) return@withContext StreamData(error = "empty")
-            val progressive = withUrl.filter { (_, u) -> !u.contains("m3u8", ignoreCase = true) }
+            if (audios.isEmpty()) return@withContext StreamData(error = "empty")
+            fun isHls(a: org.schabi.newpipe.extractor.stream.AudioStream): Boolean =
+                try { a.deliveryMethod == DeliveryMethod.HLS } catch (_: Exception) { false }
+            fun urlOf(a: org.schabi.newpipe.extractor.stream.AudioStream): String? =
+                try { a.content?.takeIf { it.isNotBlank() } } catch (_: Exception) { null }
+            val progressive = audios.filter { a -> !isHls(a) && urlOf(a) != null }
             if (progressive.isEmpty()) {
-                val hlsUrl = withUrl.map { it.second }.firstOrNull { it.contains("m3u8", ignoreCase = true) }
-                    ?: withUrl.map { it.second }.firstOrNull { it.contains("/hls", ignoreCase = true) }
+                val hlsUrl = audios.filter(::isHls).mapNotNull(::urlOf).firstOrNull()
                 return@withContext StreamData(
                     audioLowestUrl = hlsUrl,
                     audioHlsOnly = true,
@@ -753,8 +755,8 @@ object YouTubeRepo {
                     error = if (hlsUrl == null) "hls-only" else null
                 )
             }
-            val best = progressive.sortedByDescending { (a, _) -> try { a.averageBitrate } catch (_: Exception) { 0 } }.firstOrNull()
-            val audioUrl: String? = best?.second
+            val best = progressive.sortedByDescending { a -> try { a.averageBitrate } catch (_: Exception) { 0 } }.firstOrNull()
+            val audioUrl: String? = best?.let(::urlOf)
             if (audioUrl.isNullOrBlank()) return@withContext StreamData(error = "empty")
             StreamData(
                 audioLowestUrl = audioUrl,

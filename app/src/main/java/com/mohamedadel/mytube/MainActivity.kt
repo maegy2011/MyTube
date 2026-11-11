@@ -71,6 +71,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -319,6 +320,36 @@ class MainActivity : ComponentActivity() {
 // screens-fix Library P2-L10: single const for the default quality key (was a magic string ×5).
 private const val QUALITY_AUDIO_ONLY = "audio-only (default)"
 
+// 2026-11-12 (runtime fix): playback session survives rotation/process death so the
+// mini-player, queue position and radio flag are not wiped by a config change.
+// VideoItem is not Parcelable, so it is encoded as one \u001F-joined string of
+// Uri-encoded fields (Bundle-safe); the queue saver caps at 50 items (Binder ~1MB).
+private fun encodeVideoItem(v: VideoItem): String {
+    fun s(x: String?): String = try { android.net.Uri.encode(x ?: "") } catch (_: Exception) { "" }
+    return listOf(s(v.id), s(v.title), s(v.channel), s(v.thumbnail),
+        v.durationSec?.toString() ?: "", v.viewCount?.toString() ?: "",
+        s(v.url), s(v.channelAvatar), if (v.verified) "1" else "",
+        s(v.uploadDate), if (v.isShort) "1" else "", s(v.channelUrl)).joinToString("\u001F")
+}
+private fun decodeVideoItem(e: String): VideoItem? = try {
+    val p = e.split("\u001F")
+    if (p.size < 12) null else {
+        fun d(i: Int): String? = try { android.net.Uri.decode(p[i]).takeIf { it.isNotEmpty() } } catch (_: Exception) { p[i].takeIf { it.isNotEmpty() } }
+        VideoItem(id = d(0), title = d(1), channel = d(2), thumbnail = d(3),
+            durationSec = p[4].toLongOrNull(), viewCount = p[5].toLongOrNull(), url = d(6),
+            channelAvatar = d(7), verified = p[8] == "1", uploadDate = d(9),
+            isShort = p[10] == "1", channelUrl = d(11))
+    }
+} catch (_: Exception) { null }
+private val VideoItemSaver = Saver<VideoItem?, String?>(
+    save = { it?.let(::encodeVideoItem) },
+    restore = { it?.let(::decodeVideoItem) }
+)
+private val VideoQueueSaver = Saver<List<VideoItem>, ArrayList<String>>(
+    save = { ArrayList(it.take(50).map(::encodeVideoItem)) },
+    restore = { list -> list.mapNotNull(::decodeVideoItem) }
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, pipMode: androidx.compose.runtime.MutableState<Boolean> = androidx.compose.runtime.mutableStateOf(false)) {
@@ -333,7 +364,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var nextPage by remember { mutableStateOf<Page?>(null) }
     // search content filter: all | videos | channels | playlists (persisted; no sort API exists)
     var prefContentFilter by remember { mutableStateOf("all") }
-    var playing by remember { mutableStateOf<VideoItem?>(null) }
+    var playing by rememberSaveable(saver = VideoItemSaver) { mutableStateOf<VideoItem?>(null) }
     var streamData by remember { mutableStateOf<StreamData?>(null) }
     // selected dubbed/original audio track (auto-matched to the audio pref once prefs load below)
     var audioTrackIdx by remember { mutableStateOf(0) }
@@ -353,13 +384,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var playerBufferedPct by remember { mutableStateOf(0) }
     var playerError by remember { mutableStateOf<String?>(null) }
     // queue (suggestion #3): sequential playback of the result list, started only by explicit user action
-    var autoAdvance by remember { mutableStateOf(false) }
+    var autoAdvance by rememberSaveable { mutableStateOf(false) }
     // Radio (endless related queue): seeded from StreamData.related, refilled at every
     // queue end from the just-played track's own related list. Local-only, no account.
-    var radioOn by remember { mutableStateOf(false) }
-    var queueIndex by remember { mutableStateOf(-1) }
+    var radioOn by rememberSaveable { mutableStateOf(false) }
+    var queueIndex by rememberSaveable { mutableStateOf(-1) }
     // full player vs mini player: back collapses (keeps audio), X closes (stops audio)
-    var playerExpanded by remember { mutableStateOf(false) }
+    var playerExpanded by rememberSaveable { mutableStateOf(false) }
     // fullscreen experiment: native ExoPlayer controls only; follows device rotation via SENSOR
     var isFullscreen by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
@@ -386,7 +417,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val lifecycleOwner = LocalLifecycleOwner.current
     // explicit queue: ONLY what the user queued (play-single => one item; play-all => results copy; long-press => insert/append).
     // Search results are display-only; nothing joins the queue implicitly.
-    var queue by remember { mutableStateOf(emptyList<VideoItem>()) }
+    var queue by rememberSaveable(saver = VideoQueueSaver) { mutableStateOf(emptyList<VideoItem>()) }
     // playlists (Room) + playback modes. Modes persist in prefs; playlists persist in Room.
     val db = remember {
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
@@ -1602,11 +1633,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).setSubtitleConfigurations(subConfigs).apply { try { s.videoMime?.takeIf { it.isNotBlank() }?.let { setMimeType(it) } } catch (_: Exception) { } }.build()
         // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
         val resume = (autoplay && wasPlaying) || forceStart
-        // 2026-11-12 (runtime fix): extensionless HLS urls (SC /stream/hls pointers,
-        // cached/redirected variants) are mis-sniffed as Progressive by the default
-        // factory — route the flagged/playlist urls through HlsMediaSource explicitly.
+        // 2026-11-12 (runtime fix): HLS-flagged urls (scStream sets audioHlsOnly from
+        // the extractor's own DeliveryMethod, never URL sniffing) go through HlsMediaSource
+        // explicitly — extensionless HLS pointers are mis-sniffed as Progressive otherwise.
         // Single tap still prepares paused (no-autoplay policy unchanged).
-        val hlsOnly = s.audioHlsOnly || url.contains("m3u8", ignoreCase = true)
+        val hlsOnly = s.audioHlsOnly
         p.playWhenReady = false
         // Fix: muxed files bake their own audio, so a picked track was silently ignored there.
         // Merged rebuild (muxed video + picked audio) + one-shot disable of the baked audio group.
@@ -1753,7 +1784,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Single taps never expand: the mini player appears (SoundCloud/YTM-phone behavior);
     // tap the mini player to expand. Explicit actions (play-now, queue-when-idle) pass
     // expand = true; queue advances preserve the current state.
-    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null) {
+    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null, forcePlay: Boolean = false) {
         playing = v
         recordHistory(v)
         if (expand) playerExpanded = true
@@ -1771,8 +1802,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         playerLoading = true
         playerError = null
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
-        // queue continuity: advancing inside a playing queue resumes; a fresh tap stays paused (no-autoplay policy)
-        val wasPlayingQueue = inQueue && try { player?.isPlaying == true } catch (_: Exception) { false }
+        // queue continuity: advancing inside a playing queue resumes; a fresh tap stays paused (no-autoplay policy).
+        // 2026-11-12 (runtime fix): at STATE_ENDED isPlaying is already false, so the check
+        // below was ALWAYS false on auto-advance — the next radio/queue track loaded paused
+        // (radio looked dead). forcePlay=true is passed ONLY from the ENDED path, i.e. inside
+        // an already user-started session; cold taps keep forcePlay=false (no autoplay).
+        val wasPlayingQueue = (inQueue && try { player?.isPlaying == true } catch (_: Exception) { false }) || forcePlay
         if (!inQueue) try { prefetched.clear() } catch (_: Exception) { }
         try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
         scope.launch {
