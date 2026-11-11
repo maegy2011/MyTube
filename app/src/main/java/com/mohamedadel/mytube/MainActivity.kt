@@ -3428,21 +3428,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             onVoice = { startVoiceSearch() },
                             fillMax = false
                         )
-                        androidx.compose.foundation.layout.Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
-                        ) {
-                            androidx.compose.material3.FilterChip(
-                                selected = scSource == 0,
-                                onClick = { if (scSource != 0) { scSource = 0; scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 0) } },
-                                label = { Text(stringResource(R.string.sc_source_sc)) }
-                            )
-                            androidx.compose.material3.FilterChip(
-                                selected = scSource == 1,
-                                onClick = { if (scSource != 1) { scSource = 1; scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 1) } },
-                                label = { Text(stringResource(R.string.sc_source_ytm)) }
-                            )
-                        }
+                        com.mohamedadel.mytube.ui.library.MusicSourceSegment(
+                            selected = scSource,
+                            onSelect = { src -> scSource = src; scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, src) }
+                        )
                         if (scSource == 1) {
                             androidx.compose.foundation.layout.Row(
                                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
@@ -3461,24 +3450,54 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         // leftover height (weight). Siblings in a plain Column squeezed the list to ~0
                         // height — the More button sat off-screen and scrolling died.
                         androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f), state = scListState) {
-                            item(key = "sc-taste") {
-                                com.mohamedadel.mytube.ui.library.MusicTasteSection(
-                                    visible = scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true),
-                                    profile = tasteProfile,
-                                    mix = tasteMix,
-                                    mixTitle = try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
-                                    mixLoading = tasteMixLoading,
-                                    playingUrl = playing?.url,
-                                    isPlaying = isPlaying,
-                                    isFav = { v -> v.favKey() in favoriteSet },
-                                    pinBadge = { v -> pinBadges[v.favKey()] },
-                                    pinning = { v -> pinningKeys.contains(v.favKey()) },
-                                    onPickTerm = { t -> scQuery = t; doScSearch(t) },
-                                    onPlay = { v -> playVideo(v) },
-                                    onOpenChannel = { url -> openChannel(url) },
-                                    onLongClick = { optionsFor = it },
-                                    onFav = { toggleFavorite(it) }
-                                )
+                            // Music home: term chips + horizontal shelves (redesigned — shelves, not a flat list).
+                            if (scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true)) {
+                                if (tasteProfile?.terms?.isNotEmpty() == true) {
+                                    item(key = "sc-terms") {
+                                        androidx.compose.foundation.layout.Row(
+                                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            tasteProfile!!.terms.forEach { t ->
+                                                androidx.compose.material3.FilterChip(
+                                                    selected = false,
+                                                    onClick = { scQuery = t; doScSearch(t) },
+                                                    label = { Text(t) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                if (tasteProfile?.picks?.isNotEmpty() == true) {
+                                    item(key = "sc-picks") {
+                                        com.mohamedadel.mytube.ui.library.MusicShelf(
+                                            title = stringResource(R.string.quick_picks),
+                                            items = (tasteProfile?.picks ?: emptyList()).take(8),
+                                            playingUrl = playing?.url,
+                                            isPlaying = isPlaying,
+                                            onPlay = { v -> playVideo(v) },
+                                            onLongClick = { optionsFor = it }
+                                        )
+                                    }
+                                }
+                                if (tasteMixLoading || tasteMix.isNotEmpty()) {
+                                    item(key = "sc-mix") {
+                                        if (tasteMixLoading && tasteMix.isEmpty()) {
+                                            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                            }
+                                        } else {
+                                            com.mohamedadel.mytube.ui.library.MusicShelf(
+                                                title = try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
+                                                items = tasteMix,
+                                                playingUrl = playing?.url,
+                                                isPlaying = isPlaying,
+                                                onPlay = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
+                                                onLongClick = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else { optionsFor = v } }
+                                            )
+                                        }
+                                    }
+                                }
                             }
                             if (scError != null) {
                                 item(key = "sc-err") {
