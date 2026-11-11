@@ -53,44 +53,87 @@ object YouTubeRepo {
     // default Trending + trending_music + trending_gaming + trending_movies_and_shows
     // + trending_podcasts_episodes + live. "news" has NO kiosk — served as region search, labeled honestly.
     // Any failing kiosk returns empty (caller shows the fallback, never a fake list).
+    // Deferred item 1 (2026-11-11): real kiosk pagination. KioskExtractor IS a ListExtractor
+    // (verified in NewPipeExtractor 0.27.1: getPage(Page)/getInitialPage + InfoItemsPage.nextPage),
+    // so "show more" pages the same kiosk — the old "extractor lacks nextPage" note was wrong.
+    // YouTube kiosks often return everything on page 1 (nextPage null) — then hasMore is false
+    // and the UI hides the button honestly instead of faking more content.
+    private var kioskKey: String? = null
+    private var kioskNext: Page? = null
+    private var kioskHasMore: Boolean = false
+    private fun mapKioskItems(items: List<org.schabi.newpipe.extractor.InfoItem>): List<VideoItem> {
+        val out = mutableListOf<VideoItem>()
+        for (info in items) {
+            if (info is StreamInfoItem) {
+                val url: String? = try { info.url } catch (_: Exception) { null }
+                val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
+                var thumb: String? = null
+                try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
+                var dur: Long? = null
+                try { dur = info.duration } catch (_: Exception) {}
+                var views: Long? = null
+                try { views = info.viewCount } catch (_: Exception) {}
+                var avatar: String? = null
+                try { avatar = bestThumb(info.uploaderAvatars) } catch (_: Exception) {}
+                var verified = false
+                try { verified = info.isUploaderVerified } catch (_: Exception) {}
+                var upDate: String? = null
+                try { upDate = info.textualUploadDate } catch (_: Exception) {}
+                var isShort = false
+                try { isShort = info.isShortFormContent } catch (_: Exception) {}
+                val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                var chUrl: String? = null
+                try { chUrl = info.uploaderUrl } catch (_: Exception) {}
+                out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort, chUrl))
+            }
+        }
+        return out
+    }
+    private fun kioskExtractorFor(kioskId: String?): org.schabi.newpipe.extractor.kiosk.KioskExtractor<*>? {
+        return try {
+            val svc = service()
+            if (kioskId.isNullOrBlank()) svc.kioskList.getDefaultKioskExtractor(null)
+            else svc.kioskList.getExtractorById(kioskId, null)
+        } catch (_: Exception) { null }
+    }
     suspend fun trending(region: String? = null, kioskId: String? = null): List<VideoItem> = withContext(Dispatchers.IO) {
+        val key = (region ?: "") + "|" + (kioskId ?: "")
+        kioskKey = key
+        kioskNext = null
+        kioskHasMore = false
         try {
             applyRegion(region)
-            val svc = service()
-            val kiosk = try {
-                if (kioskId.isNullOrBlank()) svc.kioskList.getDefaultKioskExtractor(null)
-                else svc.kioskList.getExtractorById(kioskId, null)
-            } catch (_: Exception) { null } ?: return@withContext emptyList()
+            val kiosk = kioskExtractorFor(kioskId) ?: return@withContext emptyList()
             kiosk.fetchPage()
             val lp = try { kiosk.initialPage } catch (_: Exception) { return@withContext emptyList() }
-            val out = mutableListOf<VideoItem>()
-            for (info in lp.items) {
-                if (info is StreamInfoItem) {
-                    val url: String? = try { info.url } catch (_: Exception) { null }
-                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
-                    val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
-                    var thumb: String? = null
-                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) {}
-                    var dur: Long? = null
-                    try { dur = info.duration } catch (_: Exception) {}
-                    var views: Long? = null
-                    try { views = info.viewCount } catch (_: Exception) {}
-                    var avatar: String? = null
-                    try { avatar = bestThumb(info.uploaderAvatars) } catch (_: Exception) {}
-                    var verified = false
-                    try { verified = info.isUploaderVerified } catch (_: Exception) {}
-                    var upDate: String? = null
-                    try { upDate = info.textualUploadDate } catch (_: Exception) {}
-                    var isShort = false
-                    try { isShort = info.isShortFormContent } catch (_: Exception) {}
-                    val id: String? = url?.substringAfter("v=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
-                    var chUrl: String? = null
-                    try { chUrl = info.uploaderUrl } catch (_: Exception) {}
-                    out.add(VideoItem(id, name, up, thumb, dur, views, url, avatar, verified, upDate, isShort, chUrl))
-                }
-            }
+            val out = mapKioskItems(lp.items)
+            try {
+                kioskHasMore = lp.hasNextPage()
+                kioskNext = if (kioskHasMore) try { lp.nextPage } catch (_: Exception) { null } else null
+                if (kioskNext == null) kioskHasMore = false
+            } catch (_: Exception) { kioskHasMore = false; kioskNext = null }
             out
         } catch (_: Exception) { emptyList() }
+    }
+    // Next kiosk page for the last trending() call (key-guarded: a tab switch invalidates it).
+    // Returns (items, hasMoreAfterThis).
+    suspend fun trendingMore(region: String? = null, kioskId: String? = null): Pair<List<VideoItem>, Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val key = (region ?: "") + "|" + (kioskId ?: "")
+            val pg = kioskNext
+            if (key != kioskKey || pg == null) return@withContext emptyList<VideoItem>() to false
+            applyRegion(region)
+            val kiosk = kioskExtractorFor(kioskId) ?: return@withContext emptyList<VideoItem>() to false
+            val lp = try { kiosk.getPage(pg) } catch (_: Exception) { return@withContext emptyList<VideoItem>() to false }
+            val out = mapKioskItems(lp.items)
+            try {
+                kioskHasMore = lp.hasNextPage()
+                kioskNext = if (kioskHasMore) try { lp.nextPage } catch (_: Exception) { null } else null
+                if (kioskNext == null) kioskHasMore = false
+            } catch (_: Exception) { kioskHasMore = false; kioskNext = null }
+            out to kioskHasMore
+        } catch (_: Exception) { emptyList<VideoItem>() to false }
     }
 
     // Display upscale: extractors hand us the smallest variant (YTM InnerTube thumbs are

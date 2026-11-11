@@ -13,7 +13,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,9 +81,39 @@ fun HomeEmptyState(
     pinningKeys: Set<String> = emptySet(),
     // screens-fix Home P0-H2: error surface + retry.
     trendingError: String? = null,
-    onRetryTrending: () -> Unit = {}
+    onRetryTrending: () -> Unit = {},
+    // Deferred item 1 (2026-11-11): real kiosk/search pagination + pull-to-refresh on Home.
+    hasMore: Boolean = false,
+    loadingMore: Boolean = false,
+    onShowMore: () -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Deferred item 1: hoisted scroll state (was recreated per composition inside the else branch).
+    val trendListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Deferred item 1: custom pull-to-refresh for Home (same 360px pattern as FeedScreen,
+    // with a visible release hint so it is discoverable + TalkBack-announced).
+    var pullPx by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0f) }
+    var pullFired by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val pullConn = androidx.compose.runtime.remember(trendingLoading) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (trendingLoading) return androidx.compose.ui.geometry.Offset.Zero
+                val atTop = trendListState.firstVisibleItemIndex == 0 && trendListState.firstVisibleItemScrollOffset == 0
+                if (available.y > 0 && atTop && !pullFired) {
+                    pullPx += available.y
+                    if (pullPx >= 360f) { pullFired = true; onRetryTrending() }
+                    return available
+                }
+                if (available.y < 0) pullPx = 0f
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+            override suspend fun onPostFling(consumed: androidx.compose.ui.unit.Velocity, available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                pullPx = 0f; pullFired = false
+                return super.onPostFling(consumed, available)
+            }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(trendingLoading) { if (!trendingLoading) { pullPx = 0f; pullFired = false } }
+    Column(modifier = Modifier.fillMaxSize().nestedScroll(pullConn)) {
         ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
             TREND_TABS.forEachIndexed { i, (label, _, _) ->
                 Tab(selected = trendTab == i, onClick = { onTrendTab(i) }, text = { Text(stringResource(label)) })
@@ -89,6 +128,17 @@ fun HomeEmptyState(
             Text(stringResource(R.string.trending_now), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                 Text(countryName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            }
+            // Deferred item 1: explicit refresh affordance next to the country badge.
+            androidx.compose.material3.IconButton(onClick = onRetryTrending, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
+                androidx.compose.material3.Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.feed_refresh), tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+        if (pullPx > 24f && !trendingLoading) {
+            // Pull hint: visible release cue (was silent in FeedScreen's version).
+            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                if (pullFired) CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                else Text(stringResource(R.string.pull_to_refresh), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         // every tab is a real kiosk list (or labeled region-search for news); empty = honest fallback chips
@@ -124,8 +174,6 @@ fun HomeEmptyState(
                 }
             }
         } else {
-            // screens-fix Home P1-H4: dedicated scroll state preserves position per tab set.
-            val trendListState = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyColumn(
                 state = trendListState,
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -165,6 +213,15 @@ fun HomeEmptyState(
                 }
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
                     SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
+                }
+                // Deferred item 1: honest pagination — hidden when the kiosk/search has no next page.
+                if (!isSuggestionsTab && (hasMore || loadingMore)) {
+                    item(key = "trend-more") {
+                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            if (loadingMore) CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            else androidx.compose.material3.Button(onClick = onShowMore) { Text(stringResource(R.string.show_more)) }
+                        }
+                    }
                 }
             }
         }

@@ -32,6 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -187,9 +190,11 @@ fun DownloadsScreen(
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 if (prog != null && prog >= 0) {
+                                    // Deferred item 2 (a11y): determinate progress announces its % to TalkBack.
                                     LinearProgressIndicator(
                                         progress = { prog },
                                         modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.extraSmall)
+                                            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(prog, 0f..1f) }
                                     )
                                     Text(
                                         stringResource(R.string.dl_progress_fmt, (prog * 100).toInt()),
@@ -241,9 +246,11 @@ fun DownloadsScreen(
                                 )
                                 if (inFlight && prog != null) {
                                     Spacer(Modifier.height(4.dp))
+                                    // Deferred item 2 (a11y): determinate progress announces its % to TalkBack.
                                     LinearProgressIndicator(
                                         progress = { prog },
                                         modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.extraSmall)
+                                            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(prog, 0f..1f) }
                                     )
                                     Text(
                                         stringResource(R.string.dl_progress_fmt, (prog * 100).toInt()),

@@ -549,6 +549,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var trendingError by remember { mutableStateOf<String?>(null) }
     // screens-fix 2026-11-11 Home P1-H5: cancellable suggestions job.
     var suggestJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // Deferred item 1 (2026-11-11): trending pagination — kiosk next-page + news search page.
+    var trendingHasMore by remember { mutableStateOf(false) }
+    var trendingLoadingMore by remember { mutableStateOf(false) }
+    var trendingNewsNext by remember { mutableStateOf<Page?>(null) }
+    var trendingNewsQuery by remember { mutableStateOf<String?>(null) }
     var openPlaylistId by remember { mutableStateOf<Long?>(null) }
     val openItems by remember(openPlaylistId) {
         openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
@@ -1460,6 +1465,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // screens-fix Home P1-H5: cancel in-flight suggestions when switching tabs.
         if (kiosk != "suggestions") suggestJob?.cancel()
         trendingError = null
+        // Deferred item 1: reset pagination on every fresh load.
+        trendingHasMore = false
+        trendingNewsNext = null
+        trendingNewsQuery = null
         if (kiosk == "suggestions") {
             val region = if (prefCountry == "global") null else prefCountry
             val myTab = trendTab
@@ -1469,17 +1478,55 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scope.launch {
             try {
                 val region = if (prefCountry == "global") null else prefCountry
-                trendingItems = if (isSearchTab) {
+                if (isSearchTab) {
                     // "news" has no YouTube kiosk: honest region-scoped search instead of a fake list
                     // Gate-4: news query follows UI language (was hardcoded Arabic for everyone).
-                    YouTubeRepo.search(if (prefUiLang == "ar") "أخبار" else "news", null, region).items
+                    // Deferred item 1: keep the SearchPage cursor so "show more" pages the search.
+                    val nq = if (prefUiLang == "ar") "أخبار" else "news"
+                    val page = YouTubeRepo.search(nq, null, region)
+                    trendingItems = page.items
+                    trendingNewsQuery = nq
+                    trendingNewsNext = page.nextPage
+                    trendingHasMore = page.hasNext && page.nextPage != null
                 } else {
-                    YouTubeRepo.trending(region, kiosk)
+                    trendingItems = YouTubeRepo.trending(region, kiosk)
+                    trendingHasMore = trendingItems.isNotEmpty()
                 }
                 // screens-fix Home P0-H2: empty trending = error surface (was silent).
                 trendingError = if (trendingItems.isEmpty()) ctx.getString(R.string.err_kiosk) else null
             } catch (_: Exception) { trendingItems = emptyList(); trendingError = ctx.getString(R.string.err_kiosk) }
             finally { trendingLoading = false }
+        }
+    }
+    // Deferred item 1 (2026-11-11): "show more" — kiosk next-page, or next search page for news.
+    fun loadMoreTrending() {
+        if (trendingLoadingMore || !trendingHasMore) return
+        val tab = TREND_TABS.getOrNull(trendTab)
+        val kiosk = tab?.second
+        val isSearchTab = tab?.third == true
+        trendingLoadingMore = true
+        scope.launch {
+            try {
+                val region = if (prefCountry == "global") null else prefCountry
+                if (isSearchTab) {
+                    val pg = trendingNewsNext
+                    val nq = trendingNewsQuery
+                    if (pg == null || nq == null) { trendingHasMore = false; return@launch }
+                    val page = YouTubeRepo.search(nq, pg, region)
+                    val seen = trendingItems.mapNotNull { it.url ?: it.id }.toSet()
+                    trendingItems = trendingItems + page.items.filter { (it.url ?: it.id ?: it.title) !in seen }
+                    trendingNewsNext = page.nextPage
+                    trendingHasMore = page.hasNext && page.nextPage != null
+                } else {
+                    val (more, hasMore) = YouTubeRepo.trendingMore(region, kiosk)
+                    if (more.isNotEmpty()) {
+                        val seen = trendingItems.mapNotNull { it.url ?: it.id }.toSet()
+                        trendingItems = trendingItems + more.filter { (it.url ?: it.id ?: it.title) !in seen }
+                    }
+                    trendingHasMore = hasMore && more.isNotEmpty()
+                }
+            } catch (_: Exception) { trendingHasMore = false }
+            finally { trendingLoadingMore = false }
         }
     }
     LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
@@ -4363,6 +4410,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         trendingLoading = trendingLoading,
                         trendingError = trendingError,
                         onRetryTrending = { refreshTrending() },
+                        // Deferred item 1: pagination + pull-to-refresh wiring.
+                        hasMore = trendingHasMore,
+                        loadingMore = trendingLoadingMore,
+                        onShowMore = { loadMoreTrending() },
                         countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry,
                         onSearch = { q -> query = q; doSearch(q) },
                         isSuggestionsTab = TREND_TABS.getOrNull(trendTab)?.second == "suggestions",

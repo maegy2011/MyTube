@@ -9,7 +9,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+
+// Deferred item 1 (2026-11-11): channel-header rows for the feed (file-private: local sealed types are illegal).
+sealed interface FeedRow {
+    data class Header(val key: String, val name: String, val count: Int) : FeedRow
+    data class Video(val v: VideoItem) : FeedRow
+}
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,6 +76,22 @@ fun FeedScreen(
     val shown = remember(items, filterChannelUrl, filterUrls) {
         if (filterUrls.isNotEmpty()) items.filter { it.channelUrl in filterUrls }
         else if (filterChannelUrl == null) items else items.filter { it.channelUrl == filterChannelUrl }
+    }
+    // Deferred item 1 (2026-11-11): channel headers. The feed stays round-robin interleaved
+    // (P0-H1: no publishedAt in VideoItem, so grouping would rebuild channel blocks) — instead a
+    // compact header precedes each channel's FIRST visible video and names its video count,
+    // YouTube-"latest from X" style. Filtered views skip headers (single channel already known).
+    val rows: List<FeedRow> = remember(shown, filterChannelUrl, filterUrls) {
+        if (filterChannelUrl != null || filterUrls.isNotEmpty()) return@remember shown.map { FeedRow.Video(it) }
+        val counts = shown.groupingBy { it.channelUrl ?: it.channel ?: "?" }.eachCount()
+        val seen = mutableSetOf<String>()
+        buildList {
+            for (v in shown) {
+                val ck = v.channelUrl ?: v.channel ?: "?"
+                if (seen.add(ck)) add(FeedRow.Header("h-$ck", v.channel ?: ck, counts[ck] ?: 1))
+                add(FeedRow.Video(v))
+            }
+        }
     }
     // R4: nested-scroll pull gesture — only when the list rests at the very top.
     var pullPx by remember { mutableStateOf(0f) }
@@ -143,8 +171,22 @@ fun FeedScreen(
                         }
                     }
                     // screens-fix Home P0-H3: stable keys (no index prefix).
-                    itemsIndexed(items = shown, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
-                        SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
+                    items(items = rows, key = { r -> when (r) { is FeedRow.Header -> r.key; is FeedRow.Video -> r.v.id ?: r.v.url ?: r.v.title ?: r.v.hashCode().toString() } }) { r ->
+                        when (r) {
+                            is FeedRow.Header -> Text(
+                                stringResource(R.string.feed_channel_fmt, r.name, r.count),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .semantics { heading() }
+                            )
+                            is FeedRow.Video -> {
+                                val v = r.v
+                                SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
+                            }
+                        }
                     }
                 }
             }

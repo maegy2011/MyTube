@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -350,7 +352,8 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.sub_size_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.width(8.dp))
-                    Slider(value = subScale.coerceIn(0.5f, 2.0f), onValueChange = onSubScale, valueRange = 0.5f..2.0f, steps = 14, modifier = Modifier.weight(1f))
+                    // Deferred item 2 (a11y): sliders carry their label for TalkBack.
+                    Slider(value = subScale.coerceIn(0.5f, 2.0f), onValueChange = onSubScale, valueRange = 0.5f..2.0f, steps = 14, modifier = Modifier.weight(1f).semantics { contentDescription = stringResource(R.string.sub_size_title) })
                     Spacer(Modifier.width(8.dp))
                     Text(String.format(java.util.Locale.US, "%.1fx", subScale.coerceIn(0.5f, 2.0f)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -369,7 +372,7 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.sub_bg_opacity), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.width(8.dp))
-                    Slider(value = subBgOpacity.toFloat(), onValueChange = { onSubBgOpacity(it.toInt()) }, valueRange = 0f..100f, steps = 19, modifier = Modifier.weight(1f), enabled = subBg != "transparent")
+                    Slider(value = subBgOpacity.toFloat(), onValueChange = { onSubBgOpacity(it.toInt()) }, valueRange = 0f..100f, steps = 19, modifier = Modifier.weight(1f).semantics { contentDescription = stringResource(R.string.sub_bg_opacity) }, enabled = subBg != "transparent")
                     Spacer(Modifier.width(8.dp))
                     Text("$subBgOpacity%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -447,7 +450,7 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (muted || volume == 0f) Icons.AutoMirrored.Filled.VolumeOff else if (volume < 0.5f) Icons.AutoMirrored.Filled.VolumeDown else Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
-                    Slider(value = if (muted) 0f else volume, onValueChange = onVolume, valueRange = 0f..1f, modifier = Modifier.weight(1f))
+                    Slider(value = if (muted) 0f else volume, onValueChange = onVolume, valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = stringResource(R.string.volume_title) })
                     Spacer(Modifier.width(8.dp))
                     Text("${(if (muted) 0f else volume * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -477,7 +480,8 @@ fun SettingsScreen(
                             eqLabels.forEachIndexed { b, _ ->
                                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Text(eqLabels[b], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp))
-                                    Slider(value = eqBands.getOrNull(b) ?: 0.5f, onValueChange = { onEqBand(b, it) }, valueRange = 0f..1f, modifier = Modifier.weight(1f))
+                                    // Deferred item 2 (a11y): EQ band sliders carry their band label.
+                                    Slider(value = eqBands.getOrNull(b) ?: 0.5f, onValueChange = { onEqBand(b, it) }, valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = eqLabels.getOrElse(b) { "" } })
                                 }
                             }
                         }

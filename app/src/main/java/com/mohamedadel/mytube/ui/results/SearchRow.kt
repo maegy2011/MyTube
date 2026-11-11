@@ -43,7 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,7 +83,9 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { onLongClick(v) },
-                onClickLabel = v.title ?: ""
+                onClickLabel = v.title ?: "",
+                // Deferred item 2 (2026-11-11): card announces as a button, not a silent layout.
+                role = Role.Button
             )
             .semantics(mergeDescendants = false) { contentDescription = v.title ?: "" },
     ) {
@@ -182,12 +186,13 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
 @OptIn(ExperimentalFoundationApi::class)
 fun PlaylistCard(p: com.mohamedadel.mytube.data.youtube.RemotePlaylist, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        // Deferred item 2 (2026-11-11): remote playlist card announces as a button with its title.
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick, onClickLabel = p.title ?: "", role = Role.Button).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.size(width = 160.dp, height = 90.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
             if (!p.thumbnail.isNullOrBlank()) {
-                AsyncImage(model = p.thumbnail, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                AsyncImage(model = p.thumbnail, contentDescription = p.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             } else {
                 Icon(Icons.Rounded.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

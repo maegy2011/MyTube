@@ -273,6 +273,13 @@
     <string name="import_subs">استيراد (OPML / Takeout)</string>
     <string name="imported_fmt">تم استيراد %1$d قناة</string>
     <string name="feed_title">خلاصة الاشتراكات</string>
+    <string name="pull_to_refresh">اسحب للتحديث</string>
+    <string name="feed_channel_fmt">%1$s • %2$d فيديو</string>
+    <string name="expanded">موسّع</string>
+    <string name="collapsed">مطوي</string>
+    <string name="picker_search_hint">بحث…</string>
+    <string name="queue_removed_fmt">أُزيل “%1$s” من القائمة</string>
+    <string name="undo">تراجع</string>
     <string name="feed_refresh">تحديث</string>
     <string name="feed_empty">لا اشتراكات بعد — اشترك من صفحة قناة أو استورد ملفًا.</string>
     <!-- screens-fix Library P1-L8: distinct group-feed empty copy -->

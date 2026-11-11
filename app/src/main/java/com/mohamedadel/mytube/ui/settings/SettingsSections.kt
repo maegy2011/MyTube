@@ -35,8 +35,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mohamedadel.mytube.R
 
 // One collapsible card per settings group. All start collapsed — the screen shows
 // 7 headers instead of 88 rows.
@@ -44,10 +51,14 @@ import androidx.compose.ui.unit.dp
 fun SettingsSection(
     title: String,
     expandedDefault: Boolean = false,
+    forceExpand: Boolean = false,
     content: @Composable () -> Unit
 ) {
     // screens-fix Settings P1-S6: survive rotation (was remember).
+    // Deferred item 2 (a11y): headers announce as buttons with expanded/collapsed state.
+    // Deferred item 4 (settings search): forceExpand opens matching sections from the filter.
     var expanded by rememberSaveable { mutableStateOf(expandedDefault) }
+    val shown = expanded || forceExpand
     Card(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -55,7 +66,10 @@ fun SettingsSection(
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth()
+                    .clickable(onClick = { expanded = !expanded }, onClickLabel = title, role = Role.Button)
+                    .semantics { stateDescription = stringResource(if (shown) R.string.expanded else R.string.collapsed) }
+                    .padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -67,12 +81,13 @@ fun SettingsSection(
                     overflow = TextOverflow.Ellipsis
                 )
                 Icon(
-                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    if (shown) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    // Decorative: the row itself carries button semantics + expanded state.
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            AnimatedVisibility(visible = expanded) {
+            AnimatedVisibility(visible = shown) {
                 Column {
                     content()
                     Spacer(Modifier.height(8.dp))
@@ -93,6 +108,12 @@ fun DropRow(
     enabled: Boolean = true
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
+    // Deferred item 2 (a11y): long pickers (countries = 22) get an inline search filter.
+    var filter by rememberSaveable { mutableStateOf("") }
+    val visibleEntries = remember(filter, entries) {
+        if (filter.isBlank() || entries.size <= 8) entries
+        else entries.filter { it.second.contains(filter, ignoreCase = true) }
+    }
     val cur = entries.firstOrNull { it.first == selected }?.second ?: selected
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -122,12 +143,22 @@ fun DropRow(
             )
             ExposedDropdownMenu(
                 expanded = open && enabled,
-                onDismissRequest = { open = false }
+                onDismissRequest = { open = false; filter = "" }
             ) {
-                entries.forEach { (code, name) ->
+                if (entries.size > 8) {
+                    OutlinedTextField(
+                        value = filter,
+                        onValueChange = { filter = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        placeholder = { Text(stringResource(R.string.picker_search_hint), style = MaterialTheme.typography.bodySmall) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
+                visibleEntries.forEach { (code, name) ->
                     DropdownMenuItem(
                         text = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        onClick = { onPick(code); open = false },
+                        onClick = { onPick(code); open = false; filter = "" },
                         trailingIcon = {
                             if (code == selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         }
@@ -148,7 +179,7 @@ fun SwitchRow(
     onToggle: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().let { m -> if (enabled) m.clickable { onToggle() } else m }.padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().let { m -> if (enabled) m.clickable(onClick = onToggle, onClickLabel = label, role = Role.Switch) else m }.padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -162,6 +193,15 @@ fun SwitchRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = { onToggle() }, enabled = enabled)
+        // Deferred item 2 (a11y): the switch itself carries the label + state for TalkBack.
+        Switch(
+            checked = checked,
+            onCheckedChange = { onToggle() },
+            enabled = enabled,
+            modifier = Modifier.semantics {
+                contentDescription = label
+                stateDescription = stringResource(if (checked) R.string.state_on else R.string.state_off)
+            }
+        )
     }
 }

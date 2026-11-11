@@ -47,6 +47,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.data.youtube.VideoItem
@@ -79,7 +81,8 @@ fun QueuePanel(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.queue_title_fmt, items.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                // Deferred item 2 (a11y): queue title is a heading for screen-reader navigation.
+                Text(stringResource(R.string.queue_title_fmt, items.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f).semantics { heading() })
                 // screens-fix Library P2-L13: clear-all next to dismiss.
                 if (onClearAll != null && items.isNotEmpty()) {
                     androidx.compose.material3.TextButton(onClick = onClearAll) { Text(stringResource(R.string.clear)) }

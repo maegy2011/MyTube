@@ -36,6 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,7 +54,8 @@ import com.mohamedadel.mytube.data.youtube.VideoItem
 @Composable
 fun ScCorrectionRow(sugg: String, corrected: Boolean, onPick: (String) -> Unit) {
     androidx.compose.foundation.layout.Row(
-        modifier = Modifier.fillMaxWidth().clickable { onPick(sugg) }.padding(horizontal = 12.dp, vertical = 6.dp),
+        // Deferred item 2 (2026-11-11): correction row announces as a button with its action.
+        modifier = Modifier.fillMaxWidth().clickable(onClick = { onPick(sugg) }, onClickLabel = sugg, role = Role.Button).padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -162,7 +166,8 @@ fun MusicSourceSegment(
                     modifier = Modifier.weight(1f)
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (sel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .clickable { if (!sel) onSelect(i) }
+                        // Deferred item 2: segment halves are tabs with an action label, not silent boxes.
+                        .clickable(onClick = { if (!sel) onSelect(i) }, onClickLabel = label, role = Role.Tab)
                         .padding(vertical = 8.dp)
                         // screens-fix Music P2-M10: tab semantics (explicit receiver: param shadows name).
                         .semantics { this.selected = sel },
@@ -191,9 +196,10 @@ fun MusicCard(
 ) {
     Column(
         // screens-fix Music P2-M10: card semantics for TalkBack.
+        // Deferred item 2: role=Button so the card announces as an action.
         modifier = Modifier.width(140.dp)
             .clip(RoundedCornerShape(12.dp))
-            .combinedClickable(onClick = onPlay, onLongClick = onLongClick, onClickLabel = v.title ?: "")
+            .combinedClickable(onClick = onPlay, onLongClick = onLongClick, onClickLabel = v.title ?: "", role = Role.Button)
     ) {
         Box(
             modifier = Modifier.size(140.dp)
@@ -248,7 +254,8 @@ fun MusicShelf(
         title,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        // Deferred item 2: shelf titles are headings for screen-reader navigation.
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).semantics { heading() }
     )
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),

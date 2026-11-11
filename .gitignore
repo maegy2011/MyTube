@@ -12,3 +12,4 @@ local.properties
 *.keystore
 *.env
 google-services.json
+.kotlin/
