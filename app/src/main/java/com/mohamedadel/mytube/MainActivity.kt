@@ -585,6 +585,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             prefSubLang2 = prefs.getString("pref_sub_lang2", "en") ?: "en"
             prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
             prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
+            try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.contentLang = prefs.getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { }
+            try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(prefCountry) } catch (_: Exception) { }
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefPip = try { prefs.getBoolean("pref_pip", true) } catch (_: Exception) { true }
             prefAf = try { prefs.getString("pref_audiofocus", "all") ?: "all" } catch (_: Exception) { "all" }
@@ -3007,6 +3009,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onCountry = { v ->
                         prefCountry = v
                         try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
+                        try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(v, prefUiLang) } catch (_: Exception) { }
                         refreshTrending()
                     },
                     onQuality = { v ->

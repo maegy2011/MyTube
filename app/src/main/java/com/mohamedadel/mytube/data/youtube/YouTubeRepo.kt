@@ -135,7 +135,7 @@ object YouTubeRepo {
             val url = "https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=" +
                 URLEncoder.encode(query, "UTF-8")
             val req = Request.Builder().url(url)
-                .header("Accept-Language", "ar,en;q=0.9")
+                .header("Accept-Language", if (contentLang == "en") "en,ar;q=0.9" else "ar,en;q=0.9")
                 .header("User-Agent", "Mozilla/5.0").build()
             client.newCall(req).execute().use { r ->
                 val body = r.body?.string() ?: ""
@@ -153,11 +153,16 @@ object YouTubeRepo {
     }
 
     // Manual content country (no IP, no permission): drives YouTube search/trending region.
-    // "global" = leave NewPipe default; otherwise force Arabic + chosen country.
-    fun applyRegion(country: String?) {
+    // "global" = neutral YouTube default (resets any previous country — never leave stale).
+    // Language follows the UI lang (contentLang, synced from MainActivity), never forced.
+    var contentLang: String = "ar"
+    fun applyRegion(country: String?, lang: String? = null) {
         runCatching {
-            if (!country.isNullOrBlank() && country != "global")
-                NewPipe.setupLocalization(Localization("ar", country))
+            val l = (lang ?: contentLang).takeIf { it == "ar" || it == "en" } ?: "en"
+            if (country.isNullOrBlank() || country == "global")
+                NewPipe.setupLocalization(Localization(l, "US"))
+            else
+                NewPipe.setupLocalization(Localization(l, country))
         }
     }
 
