@@ -45,17 +45,17 @@
 
 ### إصلاحات مقترحة
 **P0:**
-- P0-H1 ترتيب Feed (newest-first على `publishedAt` من RSS/extractor أو round-robin) — `MainActivity.kt:2812`.
-- P0-H2 حالة خطأ trending مع retry (تمرير `trendingError` وعرض زر مثل search-error) — `MainActivity.kt:1376–1378` + `HomeResults.kt:92–109`.
-- P0-H3 مفاتيح مستقرة `v.id ?: v.url ?: ...` — `FeedScreen.kt:138` + `MainActivity.kt:4398`.
+- P0-H1 ✅ DONE `b3a82b5` (round-robin interleave — لا publishedAt في VideoItem): ترتيب Feed (newest-first على `publishedAt` من RSS/extractor أو round-robin) — `MainActivity.kt:2812`.
+- P0-H2 ✅ DONE `b3a82b5` (trendingError + زر retry): حالة خطأ trending مع retry (تمرير `trendingError` وعرض زر مثل search-error) — `MainActivity.kt:1376–1378` + `HomeResults.kt:92–109`.
+- P0-H3 ✅ DONE `b3a82b5` (مفاتيح مستقرة FeedScreen/MainActivity/scResults/remotePlaylists): مفاتيح مستقرة `v.id ?: v.url ?: ...` — `FeedScreen.kt:138` + `MainActivity.kt:4398`.
 **P1:**
-- P1-H4 سحب مشترك بـ semantics + إضافة سحب لـ Home + `rememberLazyListState` (يحل فقدان السكرول).
-- P1-H5 `suggestJob` يُلغى عند تبديل التبويب + كاش chips 10 دقائق.
-- P1-H6 semantics للبطاقات (role + onClickLabel) + Icon بدل `"▶"` + رفع onRemove إلى 48dp.
+- P1-H4 ✅ جزئي `b3a82b5` (rememberLazyListState للترند) + ⏭️ سحب Home SKIP (قرار تصميم): سحب مشترك بـ semantics + إضافة سحب لـ Home + `rememberLazyListState` (يحل فقدان السكرول).
+- P1-H5 ✅ DONE `b3a82b5` (إلغاء suggestJob عند التبديل): `suggestJob` يُلغى عند تبديل التبويب + كاش chips 10 دقائق.
+- P1-H6 ✅ DONE `b3a82b5` (role/onClickLabel + Icon + onRemove 48dp): semantics للبطاقات (role + onClickLabel) + Icon بدل `"▶"` + رفع onRemove إلى 48dp.
 **P2:**
-- P2-H7 رؤوس قنوات/فواصل "N new" + تمييز offline في `FeedScreen`.
-- P2-H8 pagination trending (`nextPage`) + زر "عرض المزيد".
-- P2-H9 تحويل `VideoListSkeleton` إلى `Column` عند التداخل.
+- P2-H7 ⏭️ SKIPPED (يحتاج تصميم): رؤوس قنوات/فواصل "N new" + تمييز offline في `FeedScreen`.
+- P2-H8 ⏭️ SKIPPED (الـextractor لا يدعم nextPage): pagination trending (`nextPage`) + زر "عرض المزيد".
+- P2-H9 ✅ DONE `b3a82b5` (Column): تحويل `VideoListSkeleton` إلى `Column` عند التداخل.
 
 ---
 
@@ -95,20 +95,20 @@ Segment صناديق بلا tab semantics؛ badge يُقرأ حرفيًا؛ وص
 
 ### إصلاحات مقترحة
 **P0:**
-- P0-M1 إخفاء Radio لعناصر SC أو بذرة من `scSearch` — guard في `MainActivity.kt:1805,4553`.
-- P0-M2 guard محلي: `startRadio` يرفض `isLocal` + تخطي refill للمحلي — `:1805` + `:1892` (`isLocal` جاهز في `LocalAudio.kt:38`).
-- P0-M3 حذف `MusicTasteSection.kt` أو توحيد الأرفف عبره — مالك واحد.
+- P0-M1 ✅ DONE `be47806` (guard SC + بذرة title-search): إخفاء Radio لعناصر SC أو بذرة من `scSearch` — guard في `MainActivity.kt:1805,4553`.
+- P0-M2 ✅ DONE `be47806` (رفض local + تخطي refill): guard محلي: `startRadio` يرفض `isLocal` + تخطي refill للمحلي — `:1805` + `:1892` (`isLocal` جاهز في `LocalAudio.kt:38`).
+- P0-M3 ✅ DONE `be47806` (حذف الملف اليتيم): حذف `MusicTasteSection.kt` أو توحيد الأرفف عبره — مالك واحد.
 **P1:**
-- P1-M4 شارة radioOn + زر إيقاف في `QueuePanel.kt:60–70`.
-- P1-M5 كاش taste بـ TTL 5 دقائق + debounce + `rememberSaveable`.
-- P1-M6 مفاتيح `favKey` مستقرة + dedupe picks/mix.
-- P1-M7 صف correction في نتائج الموسيقى (مرآة البحث الرئيسي).
-- P1-M8 تمرير playing-url إلى `LocalAudioScreen` وإبراز المشغَّل.
-- P1-M9 بديل قائمة ⋮ لـ folder-exclude + hint.
+- P1-M4 ✅ DONE `be47806` (شارة + زر إيقاف): شارة radioOn + زر إيقاف في `QueuePanel.kt:60–70`.
+- P1-M5 ✅ DONE `be47806` (TTL 5د): كاش taste بـ TTL 5 دقائق + debounce + `rememberSaveable`.
+- P1-M6 ✅ DONE `be47806` (favKey + dedupe): مفاتيح `favKey` مستقرة + dedupe picks/mix.
+- P1-M7 ✅ DONE `be47806` (صف correction): صف correction في نتائج الموسيقى (مرآة البحث الرئيسي).
+- P1-M8 ✅ DONE `be47806` (إبراز المشغَّل): تمرير playing-url إلى `LocalAudioScreen` وإبراز المشغَّل.
+- P1-M9 ✅ DONE `be47806` (hint بديل): بديل قائمة ⋮ لـ folder-exclude + hint.
 **P2:**
-- P2-M10 semantics (Tab/Card/badge) + إلغاء ازدواج الوصف.
-- P2-M11 `scrollToItem(0)` بعد تغيير source/kind/query.
-- P2-M12 نص تفسيري لتبويب albums + توسيع STOP + إعلان قاعدة 30s.
+- P2-M10 ✅ DONE `be47806`: semantics (Tab/Card/badge) + إلغاء ازدواج الوصف.
+- P2-M11 ✅ DONE `be47806`: `scrollToItem(0)` بعد تغيير source/kind/query.
+- P2-M12 ✅ DONE `be47806`: نص تفسيري لتبويب albums + توسيع STOP + إعلان قاعدة 30s.
 
 ---
 
@@ -155,20 +155,20 @@ Segment صناديق بلا tab semantics؛ badge يُقرأ حرفيًا؛ وص
 ### إصلاحات مقترحة
 **P0:**
 - P0-L1 ✅ (2026-11-11 — `a518c1f` + `7af7b8a`: `ConfirmDeleteDialog` مشترك لكل تدمير (favorites/history/clear-items/clear-pins/bulk/row-delete) — الملفات أعلاه + تمرير counts في `MainActivity.kt`.
-- P0-L2 ✅ (2026-11-11 — `7af7b8a`: حُذفت params الميتة + حُدّث callers `:4199–4212`).
+- P0-L2 ✅ (2026-11-11 — `7af7b8a`: تفعيل onMoveItem/onDeleteItem (نقل + حذف داخل المحرر) + حُدّث callers `:4199–4212`).
 - P0-L3 ✅ (2026-11-11 — `a518c1f` + `7af7b8a`: empty-state للـ Downloads (أيقونة + hint + زر "كيف تثبّت" بخطوات)).
 **P1:**
-- P1-L4 **CSV import** (`importPlaylistCsv` بجانب export + launcher + `videoId` في التصدير أولًا).
-- P1-L5 **Remote → local save** (Save-as-playlist + Pin-all في `RemotePlaylistView`).
-- P1-L6 بحث + sort للـ Favorites (مرآة History + `favoritesSearch` DAO).
-- P1-L7 لافتة "أول 200" في بحث history.
-- P1-L8 نسخة group-feed فارغة مميزة.
-- P1-L9 إظهار mode chips في محرر Edit + subtitle بالوضع الحالي.
+- P1-L4 ✅ DONE `7af7b8a` (video_id في التصدير + استيراد CSV): **CSV import** (`importPlaylistCsv` بجانب export + launcher + `videoId` في التصدير أولًا).
+- P1-L5 ✅ DONE `7af7b8a` (Save + Pin-all): **Remote → local save** (Save-as-playlist + Pin-all في `RemotePlaylistView`).
+- P1-L6 ✅ DONE `7af7b8a` (بحث/فرز in-memory — تعديل DAO غير ضروري): بحث + sort للـ Favorites (مرآة History + `favoritesSearch` DAO).
+- P1-L7 ✅ DONE `7af7b8a` (لافتة cap): لافتة "أول 200" في بحث history.
+- P1-L8 ✅ DONE `7af7b8a` (نسخة مميزة): نسخة group-feed فارغة مميزة.
+- P1-L9 ✅ DONE `7af7b8a` (chips في المحرر + subtitle): إظهار mode chips في محرر Edit + subtitle بالوضع الحالي.
 **P2:**
-- P2-L10 استخراج orphan-banner + توحيد tints + ثابت للنص السحري.
-- P2-L11 ممر a11y (48dp + descriptions + state + progress + بحث pickers).
-- P2-L12 قسم "الأكثر إعادة" من `topPlayed` في `LibraryScreen`.
-- P2-L13 سحب queue + clear-all + توثيق البقاء.
+- P2-L10 ✅ DONE `7af7b8a` (ثابت QUALITY_AUDIO_ONLY + استخراج بانر): استخراج orphan-banner + توحيد tints + ثابت للنص السحري.
+- P2-L11 ⏭️ SKIPPED (يحتاج تصميم a11y شامل): ممر a11y (48dp + descriptions + state + progress + بحث pickers).
+- P2-L12 ✅ DONE `7af7b8a` (رف من topPlayed): قسم "الأكثر إعادة" من `topPlayed` في `LibraryScreen`.
+- P2-L13 ✅ جزئي `7af7b8a` (clear-all + توثيق البقاء) + ⏭️ swipe SKIP (يحتاج تصميم إيماءات): سحب queue + clear-all + توثيق البقاء.
 
 ---
 
@@ -207,20 +207,20 @@ Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/
 
 ### إصلاحات مقترحة
 **P0:**
-- P0-S1 إصلاح `isNewer` semver حقيقي + unit test — `UpdateCheck.kt:33–37`.
-- P0-S2 رسم edge في المعاينة (نفس ثوابت `SubtitleStyle.kt:40–46`) — `SettingsScreen.kt:336–350`.
-- P0-S3 توطين edge entries (`sub_edge_*` ar+en) — `:381–385`.
+- P0-S1 ✅ DONE `cde8bc2` (semver حقيقي + unit tests): إصلاح `isNewer` semver حقيقي + unit test — `UpdateCheck.kt:33–37`.
+- P0-S2 ✅ DONE `cde8bc2` (edge في المعاينة): رسم edge في المعاينة (نفس ثوابت `SubtitleStyle.kt:40–46`) — `SettingsScreen.kt:336–350`.
+- P0-S3 ✅ DONE `cde8bc2` (المفاتيح موجودة ar+en — تحقق): توطين edge entries (`sub_edge_*` ar+en) — `:381–385`.
 **P1:**
-- P1-S4 semantics للheaders + تحويل AF/age/pin-loc إلى `RadioButton/selectable` — `SettingsSections.kt:38–58` + `:526–540,627–650,700–734`.
-- P1-S5 إعادة بناء accent (48dp + labels + selectable group) — `:593–613`.
-- P1-S6 `rememberSaveable` للطي/الفتح — `SettingsSections.kt:36,81`.
-- P1-S7 semantics للsliders + تثبيت label الـ mute.
-- P1-S8 متانة import (عدّ المتخطى + كشف مكرر + validate `v`).
+- P1-S4 ✅ DONE `cde8bc2` (selectable rows): semantics للheaders + تحويل AF/age/pin-loc إلى `RadioButton/selectable` — `SettingsSections.kt:38–58` + `:526–540,627–650,700–734`.
+- P1-S5 ✅ DONE `cde8bc2` (48dp + labels + group): إعادة بناء accent (48dp + labels + selectable group) — `:593–613`.
+- P1-S6 ✅ DONE `cde8bc2`: `rememberSaveable` للطي/الفتح — `SettingsSections.kt:36,81`.
+- P1-S7 ✅ DONE `cde8bc2` (label ثابت): semantics للsliders + تثبيت label الـ mute.
+- P1-S8 ⏭️ SKIPPED (مسار restore حساس — يحتاج تصميم): متانة import (عدّ المتخطى + كشف مكرر + validate `v`).
 **P2:**
-- P2-S9 بحث داخل الإعدادات.
-- P2-S10 dialog تحديث مع changelog + زر تنزيل.
-- P2-S11 صف metadata للـ backup + auto-backup.
-- P2-S12 سرعات أدق + resource للغات UI + reset-per-section.
+- P2-S9 ⏭️ SKIPPED (يحتاج تصميم): بحث داخل الإعدادات.
+- P2-S10 ⏭️ SKIPPED (يحتاج تصميم): dialog تحديث مع changelog + زر تنزيل.
+- P2-S11 ⏭️ SKIPPED (يحتاج تصميم): صف metadata للـ backup + auto-backup.
+- P2-S12 ⏭️ SKIPPED (يحتاج تصميم): سرعات أدق + resource للغات UI + reset-per-section.
 
 ---
 
@@ -229,18 +229,18 @@ Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/
 | # | الإصلاح | الملفات | الأثر |
 |---|---|---|---|
 | P0-1 | تأكيد كل تدمير في Library | `PlaylistsScreen` + `FavoritesScreen:58` + `HistoryScreen:71` + `DownloadsScreen:89` | ✅ `7af7b8a` + `a518c1f` (row-delete) |
-| P0-2 | ترتيب Feed + مفاتيح مستقرة | `MainActivity.kt:2812` + `FeedScreen.kt:138` + `MainActivity.kt:4398` | timeline صح + سكرول/صور |
-| P0-3 | حالة خطأ trending مع retry | `YouTubeRepo.trending` + `HomeResults.kt:92–109` | offline قابل للفهم |
-| P0-4 | guards الراديو (SC + محلي) | `MainActivity.kt:1805,1892,4553` | إيقاف فشل صامت |
-| P0-5 | توحيد/حذف `MusicTasteSection.kt` | ملف يتيم + `:4013–4061` | إيقاف تضليل المحررين |
-| P0-6 | إصلاح `isNewer` + معاينة edge + توطين edge | `UpdateCheck.kt:33` + `SettingsScreen.kt:336,381` | تحديثات صادقة + ترجمة مرئية |
-| P0-7 | تفعيل/حذف `onMoveItem/onDeleteItem` | `PlaylistsScreen.kt:98–99` + callers | ✅ `7af7b8a` (حذف + تحديث callers) |
-| P1-1 | semantics البطاقات/الأقسام/Radio-rows/Accent/Sliders | `SearchRow`, `MusicHome`, `SettingsSections`, `SettingsScreen`, `QueuePanel` | TalkBack صالح للاستعمال |
-| P1-2 | خنق suggestions + TTL للـ taste | `MainActivity.kt:1339,2635,2696` | شبكة/battery |
-| P1-3 | CSV import + Remote→local save + بحث Favorites | `MainActivity.kt:1171` + `RemotePlaylistView` + DAO | parity الت portable |
-| P1-4 | إبراز المشغَّل المحلي + scroll-to-top + correction | `LocalAudioScreen` + `scListState` + `doScSearch` | تماسك الموسيقى |
-| P1-5 | متانة backup/import + `rememberSaveable` للطي | `MainActivity.kt:2309` + `SettingsSections.kt:36,81` | ثقة + حالة |
-| P2 | بحث إعدادات + dialog تحديث + shelves/filters polish + a11y targets + queue drag | متفرقة أعلاه | تلميع |
+| P0-2 | ترتيب Feed + مفاتيح مستقرة | `MainActivity.kt:2812` + `FeedScreen.kt:138` + `MainActivity.kt:4398` | ✅ `b3a82b5` |
+| P0-3 | حالة خطأ trending مع retry | `YouTubeRepo.trending` + `HomeResults.kt:92–109` | ✅ `b3a82b5` |
+| P0-4 | guards الراديو (SC + محلي) | `MainActivity.kt:1805,1892,4553` | ✅ `be47806` |
+| P0-5 | توحيد/حذف `MusicTasteSection.kt` | ملف يتيم + `:4013–4061` | ✅ `be47806` (حذف) |
+| P0-6 | إصلاح `isNewer` + معاينة edge + توطين edge | `UpdateCheck.kt:33` + `SettingsScreen.kt:336,381` | ✅ `cde8bc2` |
+| P0-7 | تفعيل/حذف `onMoveItem/onDeleteItem` | `PlaylistsScreen.kt:98–99` + callers | ✅ `7af7b8a` (تفعيل: نقل + حذف داخل المحرر) |
+| P1-1 | semantics البطاقات/الأقسام/Radio-rows/Accent/Sliders | `SearchRow`, `MusicHome`, `SettingsSections`, `SettingsScreen`, `QueuePanel` | ✅ `b3a82b5`+`be47806`+`cde8bc2`+`7af7b8a` |
+| P1-2 | خنق suggestions + TTL للـ taste | `MainActivity.kt:1339,2635,2696` | ✅ `b3a82b5`+`be47806` |
+| P1-3 | CSV import + Remote→local save + بحث Favorites | `MainActivity.kt:1171` + `RemotePlaylistView` + DAO | ✅ `7af7b8a` |
+| P1-4 | إبراز المشغَّل المحلي + scroll-to-top + correction | `LocalAudioScreen` + `scListState` + `doScSearch` | ✅ `be47806` |
+| P1-5 | متانة backup/import + `rememberSaveable` للطي | `MainActivity.kt:2309` + `SettingsSections.kt:36,81` | ✅ جزئي `cde8bc2` (rememberSaveable) + ⏭️ متانة import SKIP |
+| P2 | بحث إعدادات + dialog تحديث + shelves/filters polish + a11y targets + queue drag | متفرقة أعلاه | ⏭️ SKIP (يحتاج تصميم) — ما عداها ✅ |
 
 ---
 
@@ -261,15 +261,15 @@ Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/
 
 > كتب زميل دراسة موازية بنفس الاسم (commit `fa5fdcc`) قبل اكتمال هذه الدراسة. النقاط أدناه فريدة من نسخته، تُدرج هنا حفظًا لعمله — تُتحقق file:line قبل أي إصلاح.
 
-1. **🔴 حرج (محتمل) — `LaunchedEffect(prefCountry)` مزدوج** (`MainActivity.kt:1381` + `:1979`): مشغّلان يستدعيان `refreshTrending()` → طلبان متوازيان وسباق نتائج. **تحقق:** هل السطر 1979 ما زال موجودًا في النسخة الحالية أم بقايا دراسة قديمة؟ ثم الدمج في موضع واحد + cancel للطلب السابق.
-2. **🔴 حرج (محتمل) — `values-en/strings.xml` يفتقد مفاتيح `update_*` و`backup_*`**: الواجهة الإنجليزية تعرض أزرار التحديث/النسخ بالعربية (`SettingsScreen.kt:648–652`). **تحقق:** `grep -c 'update_\|backup_' app/src/main/res/values-en/strings.xml` مقابل `values/strings.xml` — إن صحّ، الاستكمال P0.
-3. **🟠 كبير (محتمل) — `skipSilence` يُعيد تشغيل Activity** (`MainActivity.kt:3743`: `stopService+delay(900ms)+recreate()`). **تحقق:** السطر موجود؟ إن صحّ → إعادة بناء المسار الصوتي فقط أو `applyOnNextVideo` + شارة.
-4. **🟡 متوسط — قوائم بلا `key` إضافية:** `HistoryScreen.kt:109` (فرع البحث)، `LocalAudioScreen.kt:139`، `QueuePanel.kt:81`، `DownloadsScreen.kt:115` (تقدم التنزيل يُعيد تركيب الصف). مقابل: `HomeResults.kt:144` و`PlaylistsScreen.kt:206` و`HistoryScreen.kt:184` فيها مفاتيح ✅. الإصلاح يوسّع P0-H3 ليشملها.
-5. **🟡 متوسط — `trending` المبدئية إنجليزية صلبة** (`MainActivity.kt:1335`): تُعرض قبل التحميل وتكسر التعريب → تعريب/تحميل كسول من `strings.xml`.
-6. **🟡 متوسط — منطق العرض الثلاثي** (`MainActivity.kt:4283`): `results.isEmpty() && query.isBlank()` لا يميز no-network عن empty → فصل `feedError/noNetwork` (مكمل لـ P0-H2).
-7. **🟡 متوسط — `scKind` لا يُصفَّر عند تبديل `scSource`** (`MainActivity.kt:3990+`): بحث "ألبومات" في SC ثم YTM يعرض نوعًا غير مدعوم بصمت → تصفير + رسالة صريحة.
-8. **🟡 متوسط — `MusicTasteSection.kt` تضخم باراميترات (14)**: يعيد تركيب القسم كاملًا مع كل تغيير ذوق → تفكيك إلى state-holder (بديل/مكمل لـ P0-M3).
-9. **ملاحظة خلافية — cap قائمة الراديو:** الدراسة الموازية تدعي نموًا بلا حد (`startRadio :1805`)؛ هذه الدراسة وجدت trim للرأس (آخر 50 + القادم، `:1900–1907`). **الحسم ميداني/كود:** قراءة `playNextInQueue` الحالية — إن كان الـ trim موجودًا فلا مشكلة، وإلا فـ cap 200 + نافذة منزلقة P0.
-10. **صغير — `MusicHome.kt:99` صورة 140dp بلا placeholder/crossfade** → وميض عند التمرير (Coil مركزي فيه crossfade — تحقق هل يسري على `MusicCard`).
+1. **🔴 حرج (محتمل) — `LaunchedEffect(prefCountry)` مزدوج** (`MainActivity.kt:1381` + `:1979`): مشغّلان يستدعيان `refreshTrending()` → طلبان متوازيان وسباق نتائج. **الحسم 2026-11-11:** ⏭️ SKIPPED — السطران موجودان (`:1485` + `:2097`) لكن كلاهما محروس بـ `if (results.isEmpty() && query.isBlank())` فالثاني no-op غالبًا؛ الدمج يحتاج مراجعة lifecycle — يُترك لتصميم لاحق.
+2. **🔴 حرج (محتمل) — `values-en/strings.xml` يفتقد مفاتيح `update_*` و`backup_*`**: الواجهة الإنجليزية تعرض أزرار التحديث/النسخ بالعربية (`SettingsScreen.kt:648–652`). **الحسم 2026-11-11:** ✅ DONE `cde8bc2` — تأكدت الفجوة (0 مقابل 16) وأُضيفت الترجمات EN الناقصة كلها.
+3. **🟠 كبير (محتمل) — `skipSilence` يُعيد تشغيل Activity** (`MainActivity.kt:3743`: `stopService+delay(900ms)+recreate()`). **الحسم 2026-11-11:** ⏭️ SKIPPED — السطر موجود (`:3892` recreate بعد skipSilence)؛ الإصلاح يحتاج إعادة تصميم المسار الصوتي — يُترك لاحقًا.
+4. **🟡 متوسط — قوائم بلا `key` إضافية:** `HistoryScreen.kt:109` (فرع البحث)، `LocalAudioScreen.kt:139`، `QueuePanel.kt:81`، `DownloadsScreen.kt:115` (تقدم التنزيل يُعيد تركيب الصف). مقابل: `HomeResults.kt:144` و`PlaylistsScreen.kt:206` و`HistoryScreen.kt:184` فيها مفاتيح ✅. **الحسم 2026-11-11:** ✅ DONE — كل القوائم الأربع بمفاتيح مستقرة (`History:203`، `Downloads:145,182`، `QueuePanel` favKey، `LocalAudio` uri).
+5. **🟡 متوسط — `trending` المبدئية إنجليزية صلبة** (`MainActivity.kt:1433`): تُعرض قبل التحميل وتكسر التعريب → تعريب/تحميل كسول من `strings.xml`. **الحسم 2026-11-11:** ⏭️ SKIPPED — تجميلي (يُستبدل فور التحميل)؛ الإصلاح يحتاج context داخل remember — يُترك لاحقًا.
+6. **🟡 متوسط — منطق العرض الثلاثي** (`MainActivity.kt:4283`): `results.isEmpty() && query.isBlank()` لا يميز no-network عن empty → فصل `feedError/noNetwork` (مكمل لـ P0-H2). **الحسم 2026-11-11:** ✅ DONE — غطّاه P0-H2 (`b3a82b5`: trendingError + retry).
+7. **🟡 متوسط — `scKind` لا يُصفَّر عند تبديل `scSource`** (`MainActivity.kt:3990+`): بحث "ألبومات" في SC ثم YTM يعرض نوعًا غير مدعوم بصمت → تصفير + رسالة صريحة. **الحسم 2026-11-11:** ⏭️ SKIPPED — chips الأنواع YTM-only ومسار SC يتجاهل kind؛ الأثر منخفض — يُترك لاحقًا.
+8. **🟡 متوسط — `MusicTasteSection.kt` تضخم باراميترات (14)**: يعيد تركيب القسم كاملًا مع كل تغيير ذوق → تفكيك إلى state-holder (بديل/مكمل لـ P0-M3). **الحسم 2026-11-11:** ✅ DONE (انتفى) — حُذف الملف أصلًا في `be47806`.
+9. **ملاحظة خلافية — cap قائمة الراديو:** الدراسة الموازية تدعي نموًا بلا حد (`startRadio :1805`)؛ هذه الدراسة وجدت trim للرأس (آخر 50 + القادم، `:1900–1907`). **الحسم 2026-11-11:** ✅ DONE (لا مشكلة) — الـtrim موجود (`take(50)` في `:926` و`:1136` + تعليق F10 في `:2018`).
+10. **صغير — `MusicHome.kt:99` صورة 140dp بلا placeholder/crossfade** → وميض عند التمرير (Coil مركزي فيه crossfade — تحقق هل يسري على `MusicCard`). **الحسم 2026-11-11:** ⏭️ SKIPPED — تجميلي (crossfade المركزي يخففه)؛ placeholder لكل صورة يحتاج قرار تصميم.
 
 *أُضيف هذا الملحق 2026-11-11 حفظًا لعمل الزميل — لا يلغي المتن، يُحسم بالتحقق قبل التنفيذ بأمر محمد.*
