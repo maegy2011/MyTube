@@ -57,15 +57,30 @@ object PinFiles {
     fun pinDir(context: Context, videoKey: String): File =
         File(baseDir(context), sha(videoKey))
 
-    // Whichever dir actually holds this pin (current loc first, legacy internal fallback).
+    // All roots that can hold pins, regardless of the current pref (offline fix
+    // 2026-11-11: pins stranded by a loc flip/unmounted SD must still resolve).
+    fun roots(context: Context): List<File> {
+        return try {
+            val out = mutableListOf(File(context.filesDir, DIR))
+            try {
+                val ext = context.getExternalFilesDir(null)?.let { File(it, DIR) }
+                if (ext != null && ext != out[0] && ext.exists()) out.add(ext)
+            } catch (_: Exception) { }
+            out
+        } catch (_: Exception) { emptyList() }
+    }
+
+    // Whichever dir actually holds this pin: current loc first, then every known
+    // root (internal + external). Pref flips and unmounted-SD fallbacks no longer orphan pins.
     fun existingDir(context: Context, videoKey: String): File? {
         return try {
-            val cur = pinDir(context, videoKey)
-            if (File(cur, "meta.json").exists()) cur
-            else {
-                val legacy = File(File(context.filesDir, DIR), sha(videoKey))
-                if (File(legacy, "meta.json").exists()) legacy else null
+            val h = sha(videoKey)
+            val ordered = mutableListOf(pinDir(context, videoKey))
+            for (r in roots(context)) {
+                val d = File(r, h)
+                if (ordered.none { it == d }) ordered.add(d)
             }
+            ordered.firstOrNull { File(it, "meta.json").exists() }
         } catch (_: Exception) { null }
     }
 
@@ -119,8 +134,12 @@ object PinFiles {
     }
 
     fun delete(context: Context, videoKey: String) {
+        // offline fix 2026-11-11: clear EVERY root (a pin may live on the non-current one).
         try { pinDir(context, videoKey).deleteRecursively() } catch (_: Exception) { }
-        try { File(File(context.filesDir, DIR), sha(videoKey)).deleteRecursively() } catch (_: Exception) { }
+        try {
+            val h = sha(videoKey)
+            for (r in roots(context)) try { File(r, h).deleteRecursively() } catch (_: Exception) { }
+        } catch (_: Exception) { }
     }
 
     fun clearAll(context: Context) {

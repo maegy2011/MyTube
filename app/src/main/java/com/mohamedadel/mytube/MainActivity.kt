@@ -1595,7 +1595,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     .setMimeType(cap.mime).setLanguage(cap.langTag).setLabel(cap.label).build()
             } catch (_: Exception) { null }
         }
-        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).setSubtitleConfigurations(subConfigs).build()
+        // offline fix 2026-11-11: pinned files carry their recorded container (Cause 2);
+        // explicit MIME beats extension sniffing. Online streams pass null = unchanged.
+        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).setSubtitleConfigurations(subConfigs).apply { try { s.videoMime?.takeIf { it.isNotBlank() }?.let { setMimeType(it) } } catch (_: Exception) { } }.build()
         // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
         val resume = (autoplay && wasPlaying) || forceStart
         p.playWhenReady = false
@@ -1613,7 +1615,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
             } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
             val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
-            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(Uri.parse(selAudio)))
+            val audioItem = MediaItem.Builder().setUri(Uri.parse(selAudio)).apply { try { s.audioMime?.takeIf { it.isNotBlank() }?.let { setMimeType(it) } } catch (_: Exception) { } }.build()
+            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(audioItem)
             val merged = MergingMediaSource(videoSource, audioSource)
             p.setMediaSource(merged)
             p.prepare()
@@ -1862,13 +1865,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 mime = meta.optString("subMime", "text/vtt").takeIf { it.isNotBlank() } ?: "text/vtt"
                             )
                         ) else emptyList()
+                    // offline fix 2026-11-11: recorded containers (Cause 2) — explicit MIME
+                    // frees playback from file-extension sniffing (audio-opus-as-.mp4 etc.).
+                    // Legacy pins (no mime keys) fall back to null = old sniffing behavior.
+                    fun cleanMime(raw: String?): String? {
+                        val m = raw?.trim()?.takeIf { it.contains("/") } ?: return null
+                        return if (m.startsWith("audio/") || m.startsWith("video/")) m else null
+                    }
                     val s = com.mohamedadel.mytube.data.youtube.StreamData(
                         audioLowestUrl = if (hasAudio && aFile != null) android.net.Uri.fromFile(aFile).toString() else vUri,
                         videoUrlByQuality = mapOf(label to vUri),
                         muxedQualities = if (hasAudio) emptySet() else setOf(label),
                         title = v.title,
                         subtitles = subs,
-                        channelUrl = v.channelUrl
+                        channelUrl = v.channelUrl,
+                        videoMime = cleanMime(meta.optString("videoMime", "")),
+                        audioMime = cleanMime(meta.optString("audioMime", ""))
                     )
                     streamData = s
                     qualityList = listOf(label)

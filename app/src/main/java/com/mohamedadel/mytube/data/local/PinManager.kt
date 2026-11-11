@@ -135,7 +135,9 @@ object PinManager {
         } catch (_: Exception) { }
     }
 
-    private fun getTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, span: Long = 0L, isCancelled: (() -> Boolean)? = null): Boolean {
+    // offline fix 2026-11-11: mimeOut receives the response Content-Type so the pin
+    // descriptor records the real container (bytes are not always MP4 despite fixed names).
+    private fun getTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, span: Long = 0L, isCancelled: (() -> Boolean)? = null, mimeOut: ((String?) -> Unit)? = null): Boolean {
         return try {
             dest.parentFile?.mkdirs()
             val tmp = File(dest.parentFile, dest.name + ".part")
@@ -152,6 +154,7 @@ object PinManager {
                     if (resp.code != 200) return false
                 }
                 if (!resp.isSuccessful || resp.body == null) return false
+                try { mimeOut?.invoke(resp.header("Content-Type")?.substringBefore(";")?.trim()) } catch (_: Exception) { }
                 // F2 (audit P0 2026-11-11): capture the declared size from THIS response —
                 // no extra HEAD round-trip; a short read below is rejected as truncated.
                 // With 206 the Content-Range carries the FULL length ("bytes 100-199/1000").
@@ -210,12 +213,14 @@ object PinManager {
             val estTotal = estimateBytes(listOf(plan.videoUrl, plan.audioUrl)).takeIf { it > 0 } ?: 0L
             // single-stream pins span the full estimate (the old /2 showed a stuck 50% bar)
             val videoSpan = if (plan.audioUrl != null) estTotal / 2 else estTotal
+            var videoMime: String? = null
+            var audioMime: String? = null
             if (plan.videoUrl != null) {
-                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, videoSpan) { cancelKeys.contains(key) }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
+                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, videoSpan, { cancelKeys.contains(key) }) { m -> videoMime = m }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
             }
             if (plan.audioUrl != null) {
                 val base = if (plan.videoUrl != null) videoSpan else 0L
-                if (!getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base) { cancelKeys.contains(key) }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
+                if (!getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base, { cancelKeys.contains(key) }) { m -> audioMime = m }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
             } else if (plan.videoUrl == null && plan.audioUrl == null) {
                 staging.deleteRecursively(); return -1L
             }
@@ -234,7 +239,12 @@ object PinManager {
                 val f = File(staging, "sub${i + 2}.vtt")
                 try { if (getTo(ps.url, f)) extraNames.add(f.name) else try { f.delete() } catch (_: Exception) { } } catch (_: Exception) { }
             }
+            // audio-only pins store the single stream as video.mp4: the mime still
+            // describes the AUDIO bytes, so playback tags the item correctly.
+            if (plan.videoUrl == null && plan.audioUrl != null) videoMime = audioMime
             val meta = JSONObject()
+                .put("videoMime", videoMime ?: "")
+                .put("audioMime", audioMime ?: "")
                 .put("kind", plan.kind)
                 .put("quality", plan.quality)
                 .put("audioTag", plan.audioTag ?: "")
