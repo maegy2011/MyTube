@@ -3457,43 +3457,52 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 }
                             }
                         }
-                        com.mohamedadel.mytube.ui.library.MusicTasteSection(
-                            visible = scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true),
-                            profile = tasteProfile,
-                            mix = tasteMix,
-                            mixTitle = try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
-                            mixLoading = tasteMixLoading,
-                            playingUrl = playing?.url,
-                            isPlaying = isPlaying,
-                            isFav = { v -> v.favKey() in favoriteSet },
-                            pinBadge = { v -> pinBadges[v.favKey()] },
-                            pinning = { v -> pinningKeys.contains(v.favKey()) },
-                            onPickTerm = { t -> scQuery = t; doScSearch(t) },
-                            onPlay = { v -> playVideo(v) },
-                            onOpenChannel = { url -> openChannel(url) },
-                            onLongClick = { optionsFor = it },
-                            onFav = { toggleFavorite(it) }
-                        )
-                        if (scError != null) {
-                            Text(
-                                scError ?: "",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                        }
-                        if (remotePlaylists.isNotEmpty()) {
-                            Text(
-                                stringResource(R.string.remote_playlists_title),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            )
-                            remotePlaylists.forEach { p ->
-                                com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
+                        // Single scroll surface: header rows + results share one LazyColumn with the
+                        // leftover height (weight). Siblings in a plain Column squeezed the list to ~0
+                        // height — the More button sat off-screen and scrolling died.
+                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f), state = scListState) {
+                            item(key = "sc-taste") {
+                                com.mohamedadel.mytube.ui.library.MusicTasteSection(
+                                    visible = scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true),
+                                    profile = tasteProfile,
+                                    mix = tasteMix,
+                                    mixTitle = try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
+                                    mixLoading = tasteMixLoading,
+                                    playingUrl = playing?.url,
+                                    isPlaying = isPlaying,
+                                    isFav = { v -> v.favKey() in favoriteSet },
+                                    pinBadge = { v -> pinBadges[v.favKey()] },
+                                    pinning = { v -> pinningKeys.contains(v.favKey()) },
+                                    onPickTerm = { t -> scQuery = t; doScSearch(t) },
+                                    onPlay = { v -> playVideo(v) },
+                                    onOpenChannel = { url -> openChannel(url) },
+                                    onLongClick = { optionsFor = it },
+                                    onFav = { toggleFavorite(it) }
+                                )
                             }
-                        }
-                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxSize(), state = scListState) {
+                            if (scError != null) {
+                                item(key = "sc-err") {
+                                    Text(
+                                        scError ?: "",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                            if (remotePlaylists.isNotEmpty()) {
+                                item(key = "sc-pl-title") {
+                                    Text(
+                                        stringResource(R.string.remote_playlists_title),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                    )
+                                }
+                                itemsIndexed(items = remotePlaylists, key = { idx, p -> "pl|$idx|" + (p.url ?: p.title ?: "?") }) { _, p ->
+                                    com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
+                                }
+                            }
                             itemsIndexed(items = scResults, key = { idx, v -> "$idx|${v.url ?: v.title ?: "n/a"}" }) { _, v ->
                                 SearchRow(
                                     v = v,

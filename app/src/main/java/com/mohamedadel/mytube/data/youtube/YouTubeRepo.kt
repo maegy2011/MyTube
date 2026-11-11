@@ -93,6 +93,24 @@ object YouTubeRepo {
         } catch (_: Exception) { emptyList() }
     }
 
+    // Display upscale: extractors hand us the smallest variant (YTM InnerTube thumbs are
+    // often w60-h60 and YT default.jpg is 120px — blurry on high-density screens). Both CDNs
+    // serve bigger renders of the same path, so rewrite the size token instead of refetching.
+    // Unknown patterns pass through untouched.
+    fun upgradeThumb(url: String?): String? {
+        if (url.isNullOrBlank()) return url
+        return try {
+            var u = url
+            if (u.contains("sndcdn.com") && u.contains("-large.")) u = u.replace("-large.", "-t500x500.")
+            if (u.contains("googleusercontent.com") && ("=w" in u || "-w" in u)) {
+                u = u.replace(Regex("=w\\d+-h\\d+"), "=w540-h540")
+                u = u.replace(Regex("-w\\d+-h\\d+"), "-w540-h540")
+            }
+            if (u.contains("i.ytimg.com") && u.endsWith("/default.jpg")) u = u.replace("/default.jpg", "/hqdefault.jpg")
+            if (u.contains("i.ytimg.com") && u.endsWith("/mqdefault.jpg")) u = u.replace("/mqdefault.jpg", "/hqdefault.jpg")
+            u
+        } catch (_: Exception) { url }
+    }
     // Thumbnails: NewPipe lists smallest-first — firstOrNull() gave blurry cards.
     // Pick max known area; unknown sizes (-1) fall back to the last entry (usually largest).
     fun bestThumb(list: List<org.schabi.newpipe.extractor.Image>): String? {
@@ -101,8 +119,8 @@ object YouTubeRepo {
             val best = list.maxByOrNull { it.height.coerceAtLeast(0).toLong() * it.width.coerceAtLeast(0).toLong() }
             val url = best?.url
             val area = (best?.height ?: -1).coerceAtLeast(0).toLong() * (best?.width ?: -1).coerceAtLeast(0).toLong()
-            (if (area > 0) url else null) ?: list.lastOrNull()?.url
-        } catch (_: Exception) { try { list.lastOrNull()?.url } catch (_: Exception) { null } }
+            upgradeThumb((if (area > 0) url else null) ?: list.lastOrNull()?.url)
+        } catch (_: Exception) { try { upgradeThumb(list.lastOrNull()?.url) } catch (_: Exception) { null } }
     }
 
     suspend fun suggestions(query: String): List<String> = withContext(Dispatchers.IO) {
