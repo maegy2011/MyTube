@@ -3425,7 +3425,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             dropRecents = if (scQuery.isBlank()) recentMusicSearches else recentMusicSearches.filter { r -> r.contains(scQuery, ignoreCase = true) },
                             onPickSuggestion = { picked -> doScSearch(picked) },
                             onClearRecents = { recentMusicSearches = emptyList(); try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { } },
-                            onVoice = { startVoiceSearch() }
+                            onVoice = { startVoiceSearch() },
+                            fillMax = false
                         )
                         androidx.compose.foundation.layout.Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),

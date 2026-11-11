@@ -53,9 +53,12 @@ fun SearchScreen(
     suggestions: List<String> = emptyList(),
     onPickSuggestion: (String) -> Unit = {},
     onClearRecents: () -> Unit = {},
-    onVoice: () -> Unit = {}
+    onVoice: () -> Unit = {},
+    // embedded header (music tab): wrap content so the source chips + results below stay visible.
+    // Standalone (main search): fill the whole screen as before.
+    fillMax: Boolean = true
 ) {
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(modifier = (if (fillMax) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
