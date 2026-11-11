@@ -154,9 +154,9 @@ Segment صناديق بلا tab semantics؛ badge يُقرأ حرفيًا؛ وص
 
 ### إصلاحات مقترحة
 **P0:**
-- P0-L1 `ConfirmDeleteDialog` مشترك لكل تدمير (favorites/history/clear-items/clear-pins/bulk/row-delete) — الملفات أعلاه + تمرير counts في `MainActivity.kt`.
-- P0-L2 تفعيل `onMoveItem/onDeleteItem` أو حذف params + تحديث callers (`:4199–4212`).
-- P0-L3 empty-state للـ Downloads (أيقونة + hint + زر "كيف تثبّت").
+- P0-L1 ✅ (2026-11-11 — `a518c1f` + `7af7b8a`: `ConfirmDeleteDialog` مشترك لكل تدمير (favorites/history/clear-items/clear-pins/bulk/row-delete) — الملفات أعلاه + تمرير counts في `MainActivity.kt`.
+- P0-L2 ✅ (2026-11-11 — `7af7b8a`: حُذفت params الميتة + حُدّث callers `:4199–4212`).
+- P0-L3 ✅ (2026-11-11 — `a518c1f` + `7af7b8a`: empty-state للـ Downloads (أيقونة + hint + زر "كيف تثبّت" بخطوات)).
 **P1:**
 - P1-L4 **CSV import** (`importPlaylistCsv` بجانب export + launcher + `videoId` في التصدير أولًا).
 - P1-L5 **Remote → local save** (Save-as-playlist + Pin-all في `RemotePlaylistView`).
@@ -228,13 +228,13 @@ Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/
 
 | # | الإصلاح | الملفات | الأثر |
 |---|---|---|---|
-| P0-1 | تأكيد كل تدمير في Library | `PlaylistsScreen` + `FavoritesScreen:58` + `HistoryScreen:71` + `DownloadsScreen:89` | منع فقدان بيانات |
+| P0-1 | تأكيد كل تدمير في Library | `PlaylistsScreen` + `FavoritesScreen:58` + `HistoryScreen:71` + `DownloadsScreen:89` | ✅ `7af7b8a` + `a518c1f` (row-delete) |
 | P0-2 | ترتيب Feed + مفاتيح مستقرة | `MainActivity.kt:2812` + `FeedScreen.kt:138` + `MainActivity.kt:4398` | timeline صح + سكرول/صور |
 | P0-3 | حالة خطأ trending مع retry | `YouTubeRepo.trending` + `HomeResults.kt:92–109` | offline قابل للفهم |
 | P0-4 | guards الراديو (SC + محلي) | `MainActivity.kt:1805,1892,4553` | إيقاف فشل صامت |
 | P0-5 | توحيد/حذف `MusicTasteSection.kt` | ملف يتيم + `:4013–4061` | إيقاف تضليل المحررين |
 | P0-6 | إصلاح `isNewer` + معاينة edge + توطين edge | `UpdateCheck.kt:33` + `SettingsScreen.kt:336,381` | تحديثات صادقة + ترجمة مرئية |
-| P0-7 | تفعيل/حذف `onMoveItem/onDeleteItem` | `PlaylistsScreen.kt:98–99` + callers | إيقاف API ميت |
+| P0-7 | تفعيل/حذف `onMoveItem/onDeleteItem` | `PlaylistsScreen.kt:98–99` + callers | ✅ `7af7b8a` (حذف + تحديث callers) |
 | P1-1 | semantics البطاقات/الأقسام/Radio-rows/Accent/Sliders | `SearchRow`, `MusicHome`, `SettingsSections`, `SettingsScreen`, `QueuePanel` | TalkBack صالح للاستعمال |
 | P1-2 | خنق suggestions + TTL للـ taste | `MainActivity.kt:1339,2635,2696` | شبكة/battery |
 | P1-3 | CSV import + Remote→local save + بحث Favorites | `MainActivity.kt:1171` + `RemotePlaylistView` + DAO | parity الت portable |
