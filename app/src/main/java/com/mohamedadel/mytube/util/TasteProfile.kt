@@ -18,9 +18,12 @@ private val STOP = setOf(
     "the", "and", "for", "with", "from", "that", "this", "you", "your", "official",
     "video", "audio", "full", "live", "music", "song", "songs", "lyrics", "lyric",
     "cover", "remix", "version", "original", "feat", "ft", "vol", "part", "episode",
+    // screens-fix Music P2-M12: extra music-metadata noise tokens.
+    "clip", "single", "deluxe", "remaster", "reverb", "slowed", "sped", "nightcore",
     // Arabic
     "من", "في", "على", "إلى", "عن", "مع", "هذا", "هذه", "التي", "الذي",
-    "كلمات", "اغنية", "أغنية", "فيديو", "مباشر", "رسمي", "رسمية", "كامل", "كاملة", "جديد", "جديدة"
+    "كلمات", "اغنية", "أغنية", "فيديو", "مباشر", "رسمي", "رسمية", "كامل", "كاملة", "جديد", "جديدة",
+    "مقطع", "نسخة", "مترجمة", "مترجم", "حصري", "حصريا"
 )
 
 private val TOKEN = Regex("[\\p{L}\\p{Nd}]+")

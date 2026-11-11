@@ -58,7 +58,10 @@ fun LocalAudioScreen(
     onPlay: (VideoItem) -> Unit,
     isFav: (VideoItem) -> Boolean,
     onFav: (VideoItem) -> Unit,
-    onLongClick: (VideoItem) -> Unit = {}
+    onLongClick: (VideoItem) -> Unit = {},
+    // screens-fix Music P1-M8: highlight the currently playing track.
+    playingUrl: String? = null,
+    isPlaying: Boolean = false
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
@@ -104,6 +107,13 @@ fun LocalAudioScreen(
                 )
             }
         }
+        // screens-fix Music P1-M9: the long-press exclude gesture is undiscoverable — label it.
+        Text(
+            stringResource(R.string.local_exclude_hint),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+        )
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -139,10 +149,11 @@ fun LocalAudioScreen(
             LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 itemsIndexed(items = tracks, key = { _, t -> t.uri }) { _, t ->
                     val v = t.let { it.toVideoItem() }
+                    val cur = playingUrl != null && (v.url == playingUrl || v.id == playingUrl)
                     SearchRow(
                         v = v,
-                        isCurrent = false,
-                        isPlaying = false,
+                        isCurrent = cur,
+                        isPlaying = cur && isPlaying,
                         onClick = { onPlay(v) },
                         onLongClick = { onLongClick(v) },
                         isFav = isFav(v),
@@ -175,7 +186,10 @@ fun LocalAudioRoute(
     onPlay: (VideoItem) -> Unit,
     isFav: (VideoItem) -> Boolean,
     onFav: (VideoItem) -> Unit,
-    onLongClick: (VideoItem) -> Unit = {}
+    onLongClick: (VideoItem) -> Unit = {},
+    // screens-fix Music P1-M8: highlight the currently playing track (was hardcoded false).
+    playingUrl: String? = null,
+    isPlaying: Boolean = false
 ) {
     val folders = androidx.compose.runtime.remember(tracks) { tracks.mapNotNull { it.folder }.distinct().sorted() }
     val shown = androidx.compose.runtime.remember(tracks, folderFilter) {
@@ -198,6 +212,8 @@ fun LocalAudioRoute(
         onPlay = onPlay,
         isFav = isFav,
         onFav = onFav,
-        onLongClick = onLongClick
+        onLongClick = onLongClick,
+        playingUrl = playingUrl,
+        isPlaying = isPlaying
     )
 }

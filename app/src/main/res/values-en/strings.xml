@@ -471,6 +471,13 @@
     <string name="start_radio">Radio</string>
     <string name="toast_radio_started">Radio started — an endless queue of suggestions</string>
     <string name="toast_radio_fail">Could not start radio for this item</string>
+    <!-- screens-fix Music P1-M4 -->
+    <string name="radio_on_badge">Radio is on — auto-refilling</string>
+    <string name="radio_stop">Stop radio</string>
+    <!-- screens-fix Music P1-M9: folder-exclude hint -->
+    <string name="local_exclude_hint">Long-press a folder to exclude it from scanning</string>
+    <!-- screens-fix Music P2-M12: albums tab note -->
+    <string name="sc_albums_note">The Albums tab shows cards only — open a card to see tracks.</string>
     <string name="select_items">Select items</string>
     <string name="sort_songs">Sort songs</string>
     <string name="sort_playlists">Sort playlists</string>

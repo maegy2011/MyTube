@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube.ui.queue
 
 import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.data.local.favKey
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -60,7 +61,10 @@ fun QueuePanel(
     onPlayFrom: (Int) -> Unit,
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
-    onOptions: (VideoItem) -> Unit = {}
+    onOptions: (VideoItem) -> Unit = {},
+    // screens-fix Music P1-M4: radio state badge + stop.
+    radioOn: Boolean = false,
+    onStopRadio: () -> Unit = {}
 ) {
     var nameDraft by remember { mutableStateOf("") }
     Surface(
@@ -74,12 +78,24 @@ fun QueuePanel(
                 Text(stringResource(R.string.queue_title_fmt, items.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                 androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
             }
+            if (radioOn) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.radio_on_badge),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    androidx.compose.material3.TextButton(onClick = onStopRadio) { Text(stringResource(R.string.radio_stop)) }
+                }
+            }
             Spacer(Modifier.height(4.dp))
             if (items.isEmpty()) {
                 Text(stringResource(R.string.queue_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    itemsIndexed(items, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { idx, v ->
+                    // screens-fix appendix-4: stable keys (no index prefix).
+                    itemsIndexed(items, key = { _, v -> v.favKey() }) { idx, v ->
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
                             Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })

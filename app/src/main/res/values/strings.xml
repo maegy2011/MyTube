@@ -471,6 +471,13 @@
     <string name="start_radio">راديو</string>
     <string name="toast_radio_started">بدأ الراديو — قائمة لا تنتهي من المقترحات</string>
     <string name="toast_radio_fail">تعذّر بدء الراديو لهذا العنصر</string>
+    <!-- screens-fix Music P1-M4 -->
+    <string name="radio_on_badge">الراديو يعمل — يُعاد الملء تلقائيًا</string>
+    <string name="radio_stop">إيقاف الراديو</string>
+    <!-- screens-fix Music P1-M9: folder-exclude hint -->
+    <string name="local_exclude_hint">اضغط مطولًا على مجلد لاستبعاده من الفحص</string>
+    <!-- screens-fix Music P2-M12: albums tab note -->
+    <string name="sc_albums_note">تبويب الألبومات يعرض بطاقات فقط — افتح بطاقة لعرض المسارات.</string>
     <string name="select_items">تحديد عناصر</string>
     <string name="sort_songs">فرز الأغاني</string>
     <string name="sort_playlists">فرز القوائم</string>

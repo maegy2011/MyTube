@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -32,11 +33,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.ui.theme.ScrimSoft
+import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.VideoItem
 
 // Segmented SoundCloud | YouTube Music switch: one pill, two halves, no chip sprawl.
@@ -61,6 +65,8 @@ fun MusicSourceSegment(
                         .background(if (sel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
                         .clickable { if (!sel) onSelect(i) }
                         .padding(vertical = 8.dp)
+                        // screens-fix Music P2-M10: tab semantics (explicit receiver: param shadows name).
+                        .semantics { this.selected = sel },
                 ) {
                     Text(
                         label,
@@ -85,9 +91,10 @@ fun MusicCard(
     onLongClick: () -> Unit
 ) {
     Column(
+        // screens-fix Music P2-M10: card semantics for TalkBack.
         modifier = Modifier.width(140.dp)
             .clip(RoundedCornerShape(12.dp))
-            .combinedClickable(onClick = onPlay, onLongClick = onLongClick)
+            .combinedClickable(onClick = onPlay, onLongClick = onLongClick, onClickLabel = v.title ?: "")
     ) {
         Box(
             modifier = Modifier.size(140.dp)
@@ -101,8 +108,10 @@ fun MusicCard(
                 Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
             }
             if (isPlaying) {
+                // screens-fix Music P2-M10: Icon instead of literal "▶" (was read aloud).
                 Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f), shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.TopStart).padding(6.dp)) {
-                    Text("▶", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    // Decorative: the card already carries onClickLabel=title, so the badge stays silent.
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp).size(16.dp))
                 }
             }
             val dur = v.durationSec ?: 0L
@@ -146,7 +155,8 @@ fun MusicShelf(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(items = items, key = { v -> (v.url ?: v.id ?: v.title ?: "?") + "@" + title.hashCode() }) { v ->
+        // screens-fix Music P1-M6: stable canonical key (was title-hash-suffixed per shelf).
+        items(items = items, key = { v -> v.favKey() }) { v ->
             MusicCard(v = v, isPlaying = isPlaying && playingUrl == v.url, onPlay = { onPlay(v) }, onLongClick = { onLongClick(v) })
         }
     }

@@ -516,13 +516,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var openRemoteLoading by remember { mutableStateOf(false) }
 
     // Music-tab source: 0 = SoundCloud, 1 = YouTube Music (native music_songs filter).
-    var scSource by remember { mutableIntStateOf(0) }
+    // screens-fix Music P1-M5: survive rotation (was remember).
+    var scSource by rememberSaveable { mutableIntStateOf(0) }
     // Music-tab YTM kind filter (SoundCloud source stays unfiltered — its extractor has one list).
-    var scKind by remember { mutableStateOf("songs") } // songs | albums | artists | playlists
+    var scKind by rememberSaveable { mutableStateOf("songs") } // songs | albums | artists | playlists
     // YTM tabs paging mirrors the main search list (auto-append near the end); history in prefs (on-device only).
     var scNextPage by remember { mutableStateOf<org.schabi.newpipe.extractor.Page?>(null) }
     var scHasMore by remember { mutableStateOf(false) }
     var scLoadingMore by remember { mutableStateOf(false) }
+    // screens-fix Music P1-M7: search-correction mirror of the main search screen.
+    var scSuggestion by remember { mutableStateOf<String?>(null) }
+    var scCorrected by remember { mutableStateOf(false) }
+    // screens-fix Music P1-M5: taste TTL (5 min) — refreshTaste skips network while fresh.
+    var tasteFetchedAt by remember { mutableStateOf(0L) }
     val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var recentMusicSearches by remember { mutableStateOf(listOf<String>()) }
     // Local-profile recommendations (no account): quick picks + one YTM mix shelf.
@@ -1815,6 +1821,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun startRadio(v: VideoItem) {
         scope.launch {
             try {
+                // screens-fix Music P0-M2: local audio has no related list — refuse early.
+                if (v.isLocal()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
                 val sdNow = streamData
                 val seed: List<VideoItem> = if (playing?.favKey() == v.favKey() && !sdNow?.related.isNullOrEmpty()) {
                     // T5: local val instead of !! (race-safe snapshot).
@@ -1822,7 +1830,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 } else {
                     val url = v.url
                     if (url.isNullOrBlank()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
-                    try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(url)?.related ?: emptyList() } catch (_: Exception) { emptyList() }
+                    try {
+                        // screens-fix Music P0-M1: SoundCloud streams carry no related list
+                        // (scStream returns bare StreamData) — seed from a title search instead.
+                        if (url.contains("soundcloud.com")) {
+                            val q = v.title?.takeIf { it.isNotBlank() }
+                                ?: run { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
+                            try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, null).items } catch (_: Exception) { emptyList() }
+                        } else {
+                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(url)?.related ?: emptyList()
+                        }
+                    } catch (_: Exception) { emptyList() }
                 }
                 val fresh = seed.filter { it.url?.isNotBlank() == true }.distinctBy { it.favKey() }.take(15)
                 if (fresh.isEmpty()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
@@ -1900,6 +1918,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (next != null) { playVideo(next, inQueue = true, expand = playerExpanded); return }
         // queue exhausted: radio refills from the just-played track's related list (endless)
         if (radioOn) {
+            // screens-fix Music P0-M2: never refill for local tracks (no related list) — stop cleanly.
+            if (playing?.isLocal() == true) { radioOn = false; autoAdvance = false; return }
             // F11: one canonical key for refill too (dedupe seeds, not just the queue).
             val fresh = (streamData?.related ?: emptyList())
                 .filter { r -> (r.url?.isNotBlank() == true) && queue.none { it.favKey() == r.favKey() } }
@@ -2613,10 +2633,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     scError = try { ctx.getString(R.string.err_search_detail_fmt, page.error) } catch (_: Exception) { page.error }
                     scResults = emptyList()
                     remotePlaylists = emptyList()
+                    scSuggestion = null
+                    scCorrected = false
                 } else {
                     scResults = page.items
                     scNextPage = page.nextPage
                     scHasMore = page.hasNext && page.nextPage != null
+                    // screens-fix Music P1-M7: mirror main-search correction row.
+                    scSuggestion = page.suggestion
+                    scCorrected = page.corrected
                     if (!recentMusicSearches.contains(q)) {
                         recentMusicSearches = (listOf(q) + recentMusicSearches).take(6)
                         try { prefs.edit().putString("recent_music_searches", recentMusicSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
@@ -2643,11 +2668,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     fun refreshTaste() {
+        // screens-fix Music P1-M5: TTL 5 min + only when the music tab is actually open.
+        val now = System.currentTimeMillis()
+        if (tasteProfile != null && now - tasteFetchedAt < 5 * 60 * 1000L) return
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val top = try { dao.topPlayed(20) } catch (_: Exception) { emptyList() }
                 val prof = com.mohamedadel.mytube.util.buildTasteProfile(top, favorites, recentMusicSearches, recentSearches)
                 tasteProfile = prof
+                tasteFetchedAt = System.currentTimeMillis()
                 // one network enrichment: YTM songs for the top term (silent fail, tab-local)
                 val term = prof.terms.firstOrNull()
                 if (!term.isNullOrBlank() && term != tasteMixTerm && !tasteMixLoading) {
@@ -3888,6 +3917,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             }
                         },
                         onDismiss = { showQueue = false }
+                        ,
+                        // screens-fix Music P1-M4: visible radio state + stop.
+                        radioOn = radioOn,
+                        onStopRadio = { radioOn = false }
                     )
                 }
                 showLibrary -> {
@@ -3946,7 +3979,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { v -> showLocal = false; fromLibrary = false; playVideo(v) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
-                        onLongClick = { optionsFor = it }
+                        onLongClick = { optionsFor = it },
+                        // screens-fix Music P1-M8: highlight the playing track.
+                        playingUrl = playing?.url,
+                        isPlaying = isPlaying
                     )
                 }
                 showGroups -> {
@@ -4015,9 +4051,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         )
                         com.mohamedadel.mytube.ui.library.MusicSourceSegment(
                             selected = scSource,
-                            onSelect = { src -> scSource = src; scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, src) }
+                            // screens-fix Music P2-M11: scroll to top on source change.
+                            onSelect = { src -> scSource = src; scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, src) }
                         )
                         if (scSource == 1) {
+                            // screens-fix Music P2-M12: albums tab shows cards only by design.
+                            if (scKind == "albums") {
+                                Text(
+                                    stringResource(R.string.sc_albums_note),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
                             androidx.compose.foundation.layout.Row(
                                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
                                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
@@ -4025,7 +4071,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 listOf("songs", "albums", "artists", "playlists").forEach { k ->
                                     androidx.compose.material3.FilterChip(
                                         selected = scKind == k,
-                                        onClick = { if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
+                                        // screens-fix Music P2-M11: scroll to top on kind change.
+                                        onClick = { if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
                                         label = { Text(stringResource(when (k) { "songs" -> R.string.filter_songs; "albums" -> R.string.filter_albums; "artists" -> R.string.filter_artists; else -> R.string.filter_playlists })) }
                                     )
                                 }
@@ -4057,7 +4104,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                     item(key = "sc-picks") {
                                         com.mohamedadel.mytube.ui.library.MusicShelf(
                                             title = stringResource(R.string.quick_picks),
-                                            items = (tasteProfile?.picks ?: emptyList()).take(8),
+                                            // screens-fix Music P1-M6: dedupe by canonical key.
+                                            items = (tasteProfile?.picks ?: emptyList()).distinctBy { it.favKey() }.take(8),
                                             playingUrl = playing?.url,
                                             isPlaying = isPlaying,
                                             onPlay = { v -> playVideo(v) },
@@ -4092,6 +4140,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         color = MaterialTheme.colorScheme.error,
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                     )
+                                }
+                            }
+                            // screens-fix Music P1-M7: correction row (mirrors main search).
+                            val scSugg = scSuggestion
+                            if (scSugg != null) {
+                                item(key = "sc-corr") {
+                                    androidx.compose.foundation.layout.Row(
+                                        modifier = Modifier.fillMaxWidth().clickable { doScSearch(scSugg) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            if (scCorrected) stringResource(R.string.did_you_mean_showing_fmt, scSugg) else stringResource(R.string.did_you_mean_fmt, scSugg),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
+                                    }
                                 }
                             }
                             if (remotePlaylists.isNotEmpty()) {
