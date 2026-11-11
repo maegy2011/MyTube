@@ -1,314 +1,256 @@
-# MyTube — خطة إصلاح 4 شاشات (دراسة فقط، بلا كود) — 2026-11-11
+# MyTube — خطة إصلاح الشاشات الأربع (دراسة فقط، بلا كود) — 2026-11-11
 
-> النطاق: `projects/MyTube` — الحزمة `com.mohamedadel.mytube`
-> المنهج: قراءة فعلية لملفات `.kt` (مع أدلة `file:line`) وفق مهارتي **`android`** (`skills/android/SKILL.md` — طبقات build/install/runtime/store، القواعد 1-9، Compose/state/R8) و**`code-reviewer`** (`skills/code-reviewer/SKILL.md` — المراحل الأربع: النطاق → تحليل آلي/يدوي → سياق → تقرير مصنّف بالخطورة).
-> ممنوع في هذه الخطة: أي تعديل كود، أي بناء APK، أي push. ملف واحد فقط + commit محلي.
-
----
-
-## 1) الشاشة الرئيسية Home / Feed
-
-### 1-1. البنية الحالية (files + responsibilities)
-
-| الملف | الدور | دوال/رموز مفتاحية |
-|---|---|---|
-| `MainActivity.kt` (4564 سطر) — المنسّق الأوحد `MyTubeApp()` ‏(:301) | كل التوجيه flags وليس NavHost؛ حالة الهوم + الترند + البحث + الفيد | `refreshSuggestions()` ‏(:1339)، `refreshTrending()` ‏(:1356)، `LaunchedEffect(prefCountry)` ‏(:1381 + تكرار :1979)، `refreshFeed()` ‏(:2775) + `oneChannel()` ‏(:2782)، `doSearch()` ‏(:2466)، `doScSearch()` ‏(:2569)، `goHome/goLibrary/goSettings/goSC` ‏(:3147-3173)، `smartBack()` ‏(:3018)، فرع العرض ‏(:4283+)، المسار `showFeed → FeedScreen` ‏(:3956)، `showSearch → SearchScreen` ‏(:3309)، `MiniPlayer` ‏(:3178) |
-| `ui/library/FeedScreen.kt` ‏(:47) | واجهة اشتراكات RSS: فلتر + سحب مخصص + قائمة | `shown` ‏(:60)، `pullConn` عتبة 360px ‏(:66-87)، `LazyColumn` ‏(:122) |
-| `ui/results/HomeResults.kt` | تبويبات الترند + هيكل الفارغ/الهيكلي | `TREND_TABS` ‏(:42)، `HomeEmptyState()` ‏(:56)، `ScrollableTabRow` ‏(:76)، `LazyColumn` ‏(:108)، `items(trendingItems, key=…)` ‏(:144) |
-| `ui/results/SearchRow.kt` ‏(:59) | بطاقة الفيديو الموحدة + `PlaylistCard` ‏(:170) | صورة 16:9 ‏(:75-95)، أزرار fav/⋮ ‏(:150-157)، زر `onRemove` ‏(:160-164) |
-| `ui/results/VideoCardStates.kt` ‏(:38) | هيكل التحميل `VideoCardSkeleton()` | — |
-| `ui/search/SearchScreen.kt` ‏(:154) + `SearchViewModel.kt` ‏(:18) | طبقة البحث + `svm.onQueryChange` | — |
-| `ui/player/PlayerComponents.kt` ‏(:76) | `MiniPlayer` + `EqualizerBars` | — |
-| `data/youtube/YouTubeRepo.kt` | `trending(region,kiosk)` ‏(~:1375 عبر MainActivity)، `suggestions(seed)` ‏(:1345)، `search()` ‏(:171)، `feedFor/channelVideos` (عبر `oneChannel`) | — |
-
-### 1-2. نقاط القوة
-
-1. فصل حالات loading/empty/error في فرع العرض (:4283-4333) + زر Retry.
-2. `HomeResults` يعطي مفتاحًا مستقرًا للعناصر (:144) — يمنع قفز القائمة.
-3. `smartBack` (:3018) يرتب الأولويات (قناة → تعليقات → ملء شاشة → موسّع → بحث…) — سلوك متوقع.
-4. `refreshSuggestions` يبذر من `recentSearches.take(3)+trending.take(2)` — تخصيص محلي بلا شبكة إضافية.
-5. `MiniPlayer` فوق `NavigationBar` ومخفي في الحالات الصحيحة (`playerExpanded/showSearch/showSC/fullscreen/PiP`).
-
-### 1-3. مشاكل (بالخطورة + الدليل)
-
-- **🔴 حرج — `MainActivity.kt:1381 + :1979` تكرار `LaunchedEffect(prefCountry)`**: مُشغّلان مزدوجان يستدعيان `refreshTrending()` → طلبان شبكة متوازيان عند تغيير الدولة، سباق نتائج (آخر استجابة تفوز عشوائيًا). الحذف/الدمج في موضع واحد.
-- **🟠 كبير — `FeedScreen.kt:66-87` سحب مخصص بدل `PullToRefresh` الرسمي**: عتبة 360px صلبة بلا haptic ولا progress متدرج؛ يتعارض مع nested-scroll الأب ويُفشل مع TalkBack (السحب غير قابل للاكتشاف). الاستبدال بـ `PullToRefreshBox` من M3.
-- **🟠 كبير — `FeedScreen.kt:122` و`HistoryScreen.kt:109,183` و`LocalAudioScreen.kt:139` و`QueuePanel.kt:81` قوائم بلا `key`**: مقابل `HomeResults.kt:144` و`PlaylistsScreen.kt:206` اللذين يملكان مفاتيح — غياب المفتاح = قفز/وميض عند التحديث وإعادة تركيب صور Coil بلا داعٍ (قاعدة `android` للأداء: stable params + key).
-- **🟡 متوسط — `MainActivity.kt:1335` قائمة `trending` المبدئية صلبة بالإنجليزية** (`music/tech reviews/...`) وتُعرض قبل التحميل — تكسر التعريب وتوحي بمحتوى غير موجود.
-- **🟡 متوسط — `MainActivity.kt:4283` منطق العرض الثلاثي يعتمد `results.isEmpty() && query.isBlank()`**: أي خطأ شبكة مع نتائج قديمة يُظهر شاشة فارغة بدل الخطأ؛ لا يوجد تمييز no-network مقابل empty-query.
-- **🔵 صغير — `HomeResults.kt:84,104` أيقونات `contentDescription=null`**: قارئ الشاشة يتخطى سياق "الرائج الآن" (مقابل `FeedScreen.kt:118,136` و`SearchRow.kt:152,157` الجيدين).
-
-### 1-4. فجوات UX مقابل YouTube
-
-1. لا skeleton متدرج لكل تبويب — هيكل عام واحد.
-2. لا حفظ موضع التمرير لكل تبويب ترند (التبديل يعيدك للأعلى).
-3. لا "سحب للتحديث" في الرئيسية نفسها (موجود فقط في Feed المخصص).
-4. لا شارة "مباشر/جديد/شائع" على البطاقات (فقط Shorts/المدة).
-5. لا إلغاء بحث واضح + اقتراح مصحح `did-you-mean` غير بارز.
-6. لا تحميل تدريجي (paging) للترند — دفعة واحدة.
-
-### 1-5. فجوات الوصول
-
-- TalkBack: أزرار البطاقة الفرعية (`PlaylistCard` السهم :208، `MoreVert` في :182) بلا وصف؛ تبويبات `ScrollableTabRow` بلا `stateDescription`.
-- RTL: `SearchRow` يستخدم `AutoMirrored` بشكل صحيح (:208) ✅ لكن مؤشر السحب في Feed غير معكوس بصريًا.
-- أهداف اللمس: زر الإغلاق `onRemove` ‏(:160-164) بارتفاع 36dp < حد 48dp.
-
-### 1-6. خطوات الإصلاح (P0/P1/P2)
-
-- **P0-1**: دمج `LaunchedEffect(prefCountry)` في موضع واحد + `cancel` للطلب السابق (`MainActivity.kt:1381/1979`).
-- **P0-2**: إضافة `key` لكل `LazyColumn` بلا مفتاح (`FeedScreen.kt:122` → `key={it.url?:it.id}`، `HistoryScreen.kt:109`، `LocalAudioScreen.kt:139`، `QueuePanel.kt:81`).
-- **P1-1**: استبدال السحب المخصص بـ `PullToRefreshBox` مع `refreshFeed` كـ `onRefresh` (`FeedScreen.kt:66-92`).
-- **P1-2**: فصل حالة `feedError/noNetwork` عن `empty` في فرع العرض (`MainActivity.kt:4283-4330`) + رسالة مميزة لكل حالة.
-- **P1-3**: تعريب القائمة المبدئية / تحميل كسول لها من `strings.xml` (`MainActivity.kt:1335`).
-- **P2-1**: `contentDescription` للأيقونات الزخرفية مقابل الدلالية (`HomeResults.kt:84,104`، `SearchRow.kt:180,182,208`).
-- **P2-2**: رفع زر الإغلاق إلى 48dp + `ScrollableTabRow` بـ `stateDescription` للتبويب النشط.
-
-### 1-7. ما يجب أن يختبره محمد ميدانيًا (لا adb لدينا)
-
-- [ ] تغيير الدولة → طلب شبكة واحد فقط (راقب التأخير/التكرار).
-- [ ] سحب Feed للتحديث بإصبع واحد + TalkBack مفعّل (هل يُعلن "جارٍ التحديث"؟).
-- [ ] تبديل تبويبات الترند ذهابًا وإيابًا — هل يُحفظ الموضع؟
-- [ ] وضع طيران + فتح الهوم — هل الرسالة "لا اتصال" أم "لا نتائج"؟
-- [ ] Mini-player ظاهر فوق شريط التنقل في كل تبويب، ومخفي في ملء الشاشة والبحث.
+> **النطاق:** دراسة + خطة فقط — لا تغييرات كود، لا بناء، لا push.
+> **المهارات المطبقة:** `Android` (طبقة runtime، قواعد State/Recomposition/Keys/Coil/a11y) + `code-reviewer` (منهجية 4 مراحل: نطاق → تحليل → سياق → تقرير، تصنيف حرج/كبير/متوسط/صغير).
+> **الحزمة:** `com.mohamedadel.mytube` — المسارات نسبية لجذر الريبو `projects/MyTube/`.
 
 ---
 
-## 2) شاشة الموسيقى + الشاشات المتضمنة
+## 1️⃣ الشاشة الرئيسية (Home / Feed)
 
-### 2-1. البنية الحالية
+### البنية الحالية
+- Home = حالة مشتقة (query فارغ + نتائج فارغة → `HomeEmptyState`) في `MainActivity.kt:4276–4305` — ليست route مستقلة؛ `goHome()` (~:3140) يصفّر flags فقط.
+- `refreshTrending()` (`MainActivity.kt:1357–1381`): kiosk حسب `TREND_TABS`، أو region-search للأخبار، أو `refreshSuggestions()` لتبويب suggestions.
+- `refreshSuggestions()` (`:1339–1355`): seeds = آخر 3 بحوث + عنصران trending؛ chips + فيديوهات (top-6 × seedين).
+- `refreshFeed()` (`:2775–2816`): لكل قناة `oneChannel()` بـ try مستقل (RSS أولًا ثم extractor)، تقييد توازي 3، كاش Room 6 ساعات.
+- `doSearch()` (`:2466–2510`): يلغي `searchJob`، يستدعي `YouTubeRepo.search`، خطأ → `searchError` + زر retry.
+- `HomeResults.kt:56–146` (`HomeEmptyState`): تبويبات kiosk الثمانية + شارة الدولة + skeleton / empty + chips / `LazyColumn` من `SearchRow`.
+- `FeedScreen.kt:47–147`: سحب مخصص (عتبة 360px)، بانر فلتر، skeleton / empty / قائمة بمفاتيح `itemsIndexed`.
+- `SearchRow.kt:57–171`: بطاقة 16:9 + شارات + أفاتار + fav + ⋮ + `combinedClickable`.
+- `SearchScreen.kt` (154 سطر) + `SearchViewModel.kt` (debounce 300ms) + `MiniPlayer` (`PlayerComponents.kt:76–160`).
+- Coil مضبوط مركزيًا (25% ذاكرة + 100MB قرص + crossfade) في `MyTubeApp.kt:36–50`.
 
-| الملف | الدور | مفاتيح |
-|---|---|---|
-| `ui/library/MusicHome.kt` ‏(:44 `MusicSourceSegment`، ‏(:81 `MusicCard`، ‏(:130 `MusicShelf` | تبديل المصدر SC/YTM + رفوف أفقية | `LazyRow items(..., key=...)` ‏(:149) ✅ |
-| `ui/library/MusicTasteSection.kt` ‏(:29) | توصيات legacy: chips من `profile.terms` + top-5 picks + mix | 14 باراميتر — رائحة god-composable |
-| `util/TasteProfile.kt` ‏(:45 `buildTasteProfile`، ‏(:28 `tokensOf`، ‏(:38 `queryTerms` | بروفايل ذوق محلي خالص (ترجيح تاريخي) | — |
-| `util/LocalAudio.kt` ‏(:42 `scanLocalAudio`، ‏(:23 `toVideoItem` id=`local:<mediaId>`) | مسح MediaStore + هوية `isLocal()` ‏(:39) | — |
-| `ui/library/LocalAudioScreen.kt` ‏(:44 + `LocalAudioRoute` ‏(:162 wrapper لتجاوز حد 64KB) | متصفح الصوت: chips مجلدات + strict/compat + استبعاد/استعادة + بوابة إذن | `LazyColumn` ‏(:139) بلا key |
-| `data/youtube/YouTubeRepo.kt` | `search(...music_songs/albums/playlists/artists)` ‏(:171)، `scSearch` ‏(:638)، `scStream` ‏(:677)، `searchPlaylists` ‏(:704) | — |
-| `MainActivity.kt` الموسيقى | الحالة ‏(:506-552)، `doScSearch` ‏(:2569)، `refreshTaste` ‏(:2635)، `loadScMore` ‏(:2659)، `LaunchedEffect(showSC)`، الواجهة ‏(:3990-4105)، `Single scroll surface` ‏(:4008-4011) | `scTail` للإلحاق |
-| `MainActivity.kt` الراديو/القائمة | `startRadio` ‏(:1805)، `playPrev/Random/Next/First` ‏(:1849/1868/1883/1918)، `queueListener` ‏(:2024، `STATE_ENDED` ‏(:2031) | حماية إطلاق مزدوج (تعليق :2010) |
-| `ui/queue/QueuePanel.kt` ‏(:46 + `VideoOptionsDialog` ‏(:80) | لوحة القائمة + خيارات الضغط المطول | `LazyColumn` ‏(:81) بلا key |
+### نقاط القوة
+- Kiosk حقيقية لكل تصنيف + بحث region صريح للأخبار.
+- Feed مرن: try لكل قناة، RSS الرخيص أولًا، كاش Room، toggles.
+- Skeleton يطابق هندسة البطاقة (لا قفزة layout).
+- بحث نظيف: شاشة مستقلة، اقتراحات debounced، voice، استعادة سكرول.
+- Mini-player فوق nav بترتيب YouTube، swipe-dismiss + إعادة فتح مع قفزة queue.
 
-### 2-2. نقاط القوة
+### مشاكل (بالدليل)
+- 🔴 **حرج — Feed بلا ترتيب:** التعليق يقول newest-first (`:2773`) لكن `feedItems = all` (`:2812`) بلا `sortedBy` — كتل قنوات لا timeline.
+- 🔴 **حرج — فشل trending صامت:** `YouTubeRepo.trending()` يبتلع كل شيء → `emptyList()` (`YouTubeRepo.kt:68,77,98`)، والواجهة تعرض chips بلا retry (`HomeResults.kt:92–109`) — عكس مسار search-error الذي فيه retry (`MainActivity.kt:4324–4327`).
+- **كبير — مفاتيح LazyColumn غير مستقرة:** بادئة index (`FeedScreen.kt:138`، `MainActivity.kt:4398`) تُبطل diffing وتكسر السكرول وتعيد تحميل الصور. الصح في `HomeResults.kt:131`.
+- **كبير — سحب مخصص غير مكتشَف:** عتبة 360px بلا نص release، غير مرئي لـ TalkBack، ولا سحب أصلًا في Home/trending.
+- **كبير — تبويب suggestions يضرب شبكة بلا حماية** (`:1339–1355`): 3 اقتراحات + بحثان كاملان كل زيارة، بلا كاش/debounce/cancel.
+- **متوسط — قائمة trending بلا scroll state** (`HomeResults.kt:111–137`): السكرول يضيع كل تبديل/تدوير.
+- **متوسط — بطاقات بلا role/label** (`SearchRow.kt:74–76`؛ نفس الشيء `MusicCard` وصفوف الاقتراحات وبانر الفلتر).
+- **صغير — glyph `"▶"` حرفي** (`MusicHome.kt:97`) يُقرأ كنص؛ **زر onRemove 36dp** (`SearchRow.kt:160`) تحت 48dp.
 
-1. `MusicShelf` بمفتاح مركب مستقر (:149) — أفضل ممارسة في الملف.
-2. `TasteProfile` محلي خالص — خصوصية + يعمل أوفلاين.
-3. `LocalAudioRoute` wrapper ذكي لتفادي حد 64KB للميثود.
-4. `scTail` + `Single scroll surface` (:4008) يوحّد الرأس والنتائج في `LazyColumn` واحد — تمرير سلس.
-5. حماية `STATE_ENDED` المزدوج (:2010) موثقة — تمنع قفز الأغاني.
+### فجوات YouTube-parity
+لا pull في Home، لا pagination (صفحة أولى فقط)، لا Shorts shelf/أرفف أفقية، لا شارات "جديد"/فواصل unread، لا فلتر محتوى في Home، لا تمييز offline مقابل فارغ.
 
-### 2-3. مشاكل
+### فجوات وصول (a11y)
+السحب بلا semantics؛ البطاقات بلا `Role.Button`/`onClickLabel`؛ إشارات لونية فقط لبعض الحالات؛ أهداف لمس صغيرة.
 
-- **🟠 كبير — `MusicTasteSection.kt:29` تضخم الباراميترات (14)**: كل تغيير ذوق يُعيد تركيب القسم كاملًا (لا `stable params` — مخالف `android` compose). التفكيك إلى state-holder + `remember`.
-- **🟠 كبير — غياب paging حقيقي لنتائج YTM**: `loadScMore` ‏(:2659) إلحاق يدوي بـ `scTail` بلا `PagingSource` (مقابل `HistoryPaging.kt:12` الجيد) — تكرار/فقدان عند التمرير السريع.
-- **🟡 متوسط — `LocalAudioScreen.kt:139` و`QueuePanel.kt:81` بلا `key`**: إعادة ترتيب القائمة (نقل/حذف) تقفز بصريًا.
-- **🟡 متوسط — `MainActivity.kt:3990-4105` خلط SC/YTM في Scaffold واحد**: `scSource` يبدّل المصدر لكن `scKind` لا يُصفَّر — بحث "ألبومات" في SC ثم تبديل لـ YTM يعرض نوعًا غير مدعوم بصمت.
-- **🟡 متوسط — `startRadio` ‏(:1805) بلا حد أعلى**: قائمة لا نهائية تنمو بلا `cap` — خطر `TransactionTooLarge`/ذاكرة على الجلسات الطويلة (حد Binder ~1MB — قاعدة `android` #4).
-- **🔵 صغير — `MusicHome.kt:99` صورة 140dp بلا `placeholder/crossfade`**: وميض عند التمرير السريع.
-
-### 2-4. فجوات UX مقابل YouTube Music
-
-1. لا أغلفة ضبابية/متدرجة خلف `MusicCard` — بطاقة مسطحة.
-2. لا تبويبات YTM (أغاني/ألبومات/فنانين/قوائم) كـ `TabRow` — chips يدوية.
-3. لا خلط (shuffle) ولا تكرار على مستوى الرف — فقط القائمة العامة.
-4. لا "تشغيل لاحقًا/إضافة للطابور" من `MusicCard` مباشرة (موجود في `VideoOptionsDialog` فقط).
-5. لا مؤشر "يُشغَّل الآن" متحرك (Equalizer) داخل `MusicCard` — شارة ثابتة.
-6. لا بحث صوتي في تبويب الموسيقى.
-
-### 2-5. فجوات الوصول
-
-- `MusicSourceSegment` تبديل مخصص بلا `role=Tab` — TalkBack يقرأه زرين منفصلين.
-- `MusicCard` الصورة `contentDescription=v.title` مكرر مع العنوان النصي — إعلان مزدوج مزعج.
-- تباين شارة المدة على الغلاف غير مدقق (نص أبيض على صورة فاتحة).
-
-### 2-6. خطوات الإصلاح
-
-- **P0-1**: `cap` لقائمة الراديو (مثلًا 200) + تمرير نافذة منزلقة في `playNextInQueue` ‏(:1883) و`startRadio` ‏(:1805).
-- **P0-2**: تصفير `scKind` عند تبديل `scSource` + رسالة "غير مدعوم" الصريحة (`MainActivity.kt:3990+`).
-- **P1-1**: تفكيك `MusicTasteSection` إلى `TasteUiState` مستقر + `remember` للمشتقات.
-- **P1-2**: مفاتيح `LocalAudioScreen.kt:139` (`local:mediaId`) و`QueuePanel.kt:81` (`videoKey`).
-- **P1-3**: `PagingSource` لنتائج SC/YTM على غرار `HistoryPaging.kt` بدل `scTail` اليدوي.
-- **P2-1**: `crossfade(true)+placeholder` لصور `MusicCard` ‏(:99) و`PlaylistCover`.
-- **P2-2**: `role=Tab` + `stateDescription` لتبديل المصدر.
-
-### 2-7. اختبار ميداني لمحمد
-
-- [ ] شغّل راديو 30+ أغنية — هل تنمو الذاكرة/يتباطأ التمرير؟
-- [ ] بدّل SC↔YTM مع فلتر "ألبومات" — هل النتائج منطقية؟
-- [ ] رتّب/احذف من الطابور أثناء التشغيل — هل يقفز الموضع؟
-- [ ] افصل الشبكة أثناء `loadScMore` — هل رسالة خطأ أم تجمّد؟
-- [ ] TalkBack على `MusicSourceSegment` — هل يُعلن التبويب النشط؟
+### إصلاحات مقترحة
+**P0:**
+- P0-H1 ترتيب Feed (newest-first على `publishedAt` من RSS/extractor أو round-robin) — `MainActivity.kt:2812`.
+- P0-H2 حالة خطأ trending مع retry (تمرير `trendingError` وعرض زر مثل search-error) — `MainActivity.kt:1376–1378` + `HomeResults.kt:92–109`.
+- P0-H3 مفاتيح مستقرة `v.id ?: v.url ?: ...` — `FeedScreen.kt:138` + `MainActivity.kt:4398`.
+**P1:**
+- P1-H4 سحب مشترك بـ semantics + إضافة سحب لـ Home + `rememberLazyListState` (يحل فقدان السكرول).
+- P1-H5 `suggestJob` يُلغى عند تبديل التبويب + كاش chips 10 دقائق.
+- P1-H6 semantics للبطاقات (role + onClickLabel) + Icon بدل `"▶"` + رفع onRemove إلى 48dp.
+**P2:**
+- P2-H7 رؤوس قنوات/فواصل "N new" + تمييز offline في `FeedScreen`.
+- P2-H8 pagination trending (`nextPage`) + زر "عرض المزيد".
+- P2-H9 تحويل `VideoListSkeleton` إلى `Column` عند التداخل.
 
 ---
 
-## 3) شاشة المكتبة + الشاشات المتضمنة
+## 2️⃣ الموسيقى + الشاشات المتضمنة
 
-### 3-1. البنية الحالية
+### البنية الحالية
+- `ui/library/MusicHome.kt` (154): `MusicSourceSegment` (:44–69)، `MusicCard` (:73–112)، `MusicShelf` (:115–154، مفتاح `url+title hash` في :140).
+- YTM tabs + paging: حالة `scSource/scKind/scNextPage/scHasMore/scLoadingMore/scListState` (`MainActivity.kt:518–527`)؛ `doScSearch` (:2570–2633، فلتر kind→music_* في :2578–2583، retry واحد)؛ `loadScMore` (:2660–2689) + كاشف الذيل (:2692–2696)؛ chips للأنواع YTM فقط (:3996–4010).
+- بحث الموسيقى: `SearchScreen.kt` (مضمّن `fillMax=false`) + `SearchViewModel.kt` (debounce 300ms، cap 8) + `recentMusicSearches` (max 6).
+- Radio: بذرة `startRadio` (:1805–1827، take 15، radioOn) + إعادة ملء `playNextInQueue` (:1884–1918، حتى 10، trim آخر 50، التفاف repeatAll)؛ نقاط دخول: long-press (:4553) + Favorites (:4147–4150)؛ `related` حتى 20.
+- الذوق: `util/TasteProfile.kt` (76، محلي خالص، STOP ثنائي اللغة، max 8 terms/picks) + `refreshTaste` (:2635–2658، إثراء شبكي واحد لأعلى term) يُستدعى كل فتح تبويب (`LaunchedEffect` في :2696)؛ ملف يتيم `ui/library/MusicTasteSection.kt` (106 سطر، صفر call sites).
+- الصوت المحلي: `util/LocalAudio.kt` (90) + `ui/library/LocalAudioScreen.kt` (203، chips مجلدات + long-press exclude + strict/compat + `isCurrent/isPlaying=false` ثابت في :164–165).
+- المشغل: `playVideo` (:1559+، radio off للنقرة المفردة :1566–1571، `favKey` في :1575)؛ `PlayerController.kt` (رياضيات index فقط)؛ `PlayerArea.kt` (904، نفس واجهة الفيديو — بلا artwork صوتي/lyrics/related)؛ `QueuePanel.kt` (244، بلا radio badge/shuffle).
 
-| الملف | الدور | مفاتيح |
-|---|---|---|
-| `ui/library/LibraryScreen.kt:27` (`LibraryRow:158`) | محور تنقل + اشتراكات مع `feedCounts` | صفوف → history/favorites/downloads/playlists/local-audio |
-| `ui/playlists/PlaylistsScreen.kt:110` | CRUD قوائم + إدارة أغاني: `editMode/staged` ‏(:138-145)، `viewRows/tabList` ‏(:146-160)، `selecting/selected` ‏(:140-141)، `moveRow`، `PlaylistPickerDialog:380`، `PlaylistCover:442` (كولاج 2×2 من `covers`) | `LazyColumn` ‏(:141)، `items(tabList,key=id)` ‏(:206) ✅ |
-| `ui/playlists/FavoritesScreen.kt:30` | مفضلة: تشغيل/قلب/مسح/`onPlayAll/onRadio` — mutations مفوّضة للcaller ✅ | — |
-| `ui/playlists/HistoryScreen.kt:43` | تبويبات Paging-3 (all/pinned/unpinned) + بحث محلي + `sizeLabel:78` | `collectAsLazyPagingItems:91`، `items(count,key=videoKey)` ‏(:184) ✅، لكن `LazyColumn:109` (فرع البحث) بلا key |
-| `ui/library/ChannelScreen.kt:36` | قناة: رأس + 5 تبويبات، تحميل كسول `onTabSelect` | `ChannelVideoList:174` |
-| `ui/library/ChannelGroups.kt:36` | `GroupsScreen:39` (create/rename/delete) + `GroupDetailScreen:114` + `NameDialog:157` | — |
-| `ui/library/DownloadsScreen.kt:38` (`DownloadsRoute:209` wrapper) | pins + تقدم + orphans + إلغاء؛ `pending-keys-first` ‏(:115)، بانر orphans ‏(:53-68)، `PinEntity.toVideoItem:202` | — |
-| `ui/queue/QueuePanel.kt:46` | reorder/remove/play-from/save-as-playlist | — |
-| `data/local/PlaylistDb.kt` | Room v9 + DAO: `observePlaylists:96`، `savePlaylistEdits:147` (transaction ✅)، `historyPage*:215-221`، `historySearch:225`، `topPlayed:231`؛ كيانات `PlaylistEntity:22`…`PinEntity:117`؛ `favKey:283`، `escapeLike:280`، `FeedJson:311` | — |
-| `data/local/PinManager.kt:19` | محرك التحميل: `buildPlanMulti:30`، `estimateBytes:71`، `downloadPin:156` (staging+resume `.part`+verify)، `sweepOnStartup:95` | — |
-| `data/local/PinFiles.kt:12` | تخطيط `travel/<sha256>/` ‏+ `externalOrphans:79` + `cleanExternalOrphans:101` | — |
-| `data/local/HistoryPaging.kt:9` | `HistoryPaging.load:12` (short-circuit للمفاتيح الفارغة :18)، `getRefreshKey:36` | — |
-| `ui/library/PinConfirmDialog.kt:29` | خيارات التثبيت + `LaunchedEffect(selQuality,selAudio,selSubs):102` يعيد التقدير | — |
-| `ui/results/RemotePlaylistView.kt:20/60` | عارض قوائم بعيدة + play-all | — |
-| `MainActivity.kt` الربط | `exportPlaylistCsv:1171` (`q()` للتخليص :1178 ✅)، `exportFullBackup:2226`، `importFullBackup:2309` (يتجاهل `pref_pin_location` ✅)، `refreshPlCovers:1147`، `loadPlSorts:1165` | — |
+### نقاط القوة
+- Source segment صادق (SC مقابل YTM) + kind filters مطابقة للـ extractor.
+- Taste على الجهاز، ثنائي اللغة، بلا حساب — يحترم الخصوصية.
+- Radio refill آمن (trim + wrap + favKey dedupe).
+- عزل فشل playlist-cards؛ paging بذيل + زر More؛ `upgradeThumb/bestThumb` حتى w540.
 
-### 3-2. نقاط القوة
+### مشاكل (بالدليل)
+- 🔴 **حرج — راديو SoundCloud ميت:** `scStream` يُرجع `related` فارغًا (`YouTubeRepo.kt:~560–578`) → `toast_radio_fail` دائمًا (`MainActivity.kt:1818`).
+- 🔴 **حرج — راديو الصوت المحلي مسموم:** `content://` يدخل queue (`:1596–1614`) لكن refill يحتاج `related=null` (`:1601–1605`) → توقف صامت؛ لا `isLocal` guard في `startRadio` (`:1805`).
+- **كبير — `MusicTasteSection.kt` يتيم:** صفر استخدام، والمنطق مكرر inline (`:4013–4061`).
+- **كبير — refreshTaste يقصف شبكة كل فتح تبويب** (`:2696` + `:2635–2658`): DB + بحث YTM بلا TTL/debounce.
+- **كبير — مفاتيح shelf غير مستقرة** (`MusicHome.kt:140`): نفس الأغنية في picks وmix بمفتاحين.
+- **كبير — لا correction parity:** `suggestion/corrected` موجودة في `SearchPage` ولا تُعرض في الموسيقى.
+- **كبير — شاشة Local لا تُبرز المشغَّل أبدًا** (`LocalAudioScreen.kt:164–165` ثابت false).
+- **متوسط — segment بلا Role.Tab/selected** (`MusicHome.kt:57–64`)؛ **بطاقات بلا onClickLabel + وصف مكرر** (99 مقابل 106) + badge حرفي؛ **nested clickable على Folder chips** (`:111–116`)؛ **radio بلا حالة مرئية** (`radioOn` في :336 لا يظهر)؛ **لا scroll-to-top** عند تغيير source/kind؛ **تبويب albums يبدو مكسورًا** (tracks فارغة بالتصميم).
+- **صغير:** `taste_mix_fmt` داخل try-catch (:4050)؛ STOP ناقص؛ cutoff الـ 30s غير معلن.
 
-1. `savePlaylistEdits` معاملة Room — لا قوائم نصف-معدلة.
-2. `escapeLike` + `favKey` — بحث آمن ومفاتيح مفضلة مستقرة.
-3. `PinManager` staging + resume + verify — تنزيل متين.
-4. `Favorites/History` يفوّضان الطفرات للcaller — فصل نظيف قابل للاختبار.
-5. النسخ الاحتياطي JSON شامل (قوائم+مفضلة+سجل 500+اشتراكات+مجموعات+prefs) عبر FileProvider.
+### فجوات YouTube-parity
+رفّان فقط (8+6) مقابل ~10 في YTM؛ لا artist hub / album detail / lyrics / related-songs / recently-played rail / بحث أثناء الكتابة / offline-mix / إشارة dislike.
 
-### 3-3. مشاكل
+### فجوات وصول
+Segment صناديق بلا tab semantics؛ badge يُقرأ حرفيًا؛ وصف الصورة مكرر؛ exclude بالضغط المطول فقط بلا بديل؛ تباين badge في الفاتح غير مدقق؛ لا collection semantics للأرفف.
 
-- **🟠 كبير — `HistoryScreen.kt:109` فرع البحث بلا `key` ولا paging**: البحث المحلي يعرض قائمة عادية غير مفتاحية — قفز عند الكتابة السريعة؛ مقابل فرع Paging ‏(:184) الممتاز.
-- **🟠 كبير — `DownloadsScreen.kt:115` عرض "pending-keys-first" بلا `key` مستقر**: تقدم التنزيل (`progress` متغير) يُعيد تركيب الصف كاملًا بدل تحديث شريط التقدم — وميض + استهلاك.
-- **🟡 متوسط — `PinConfirmDialog.kt:102` إعادة تقدير الحجم على كل تغيير**: `onEst(-1)` ثم IO بلا `debounce` — ثلاث ضربات شبكة (جودة+صوت+ترجمة) عند فتح الديالوج.
-- **🟡 متوسط — `ChannelScreen.kt:83` حالة التبويب `remember` فقط**: تدوير الشاشة يعيدك للتبويب الأول ويفقد موضع القائمة (مخالف قاعدة `android` #4 — يلزم `rememberSaveable`/`SavedStateHandle`).
-- **🟡 متوسط — لا تأكيد حذف جماعي**: `clearFavorites` ‏(MainActivity:1239) و`clearHistory` ‏(:1245) بلا Undo/snackbar — حذف غير قابل للاسترجاع.
-- **🔵 صغير — `PlaylistCover:442` كولاج بلا `contentDescription=null` المعلن**: TalkBack يقرأ 4 صور مكررة.
-
-### 3-4. فجوات UX مقابل YouTube
-
-1. لا سحب-للإعادة-ترتيب (drag-handle) في القوائم — فقط picker `moveRow`.
-2. لا تحديد متعدد عبر long-press الممتد + شريط إجراءات سياقي موحد (موجود جزئيًا `selecting/selected` لكن بلا CAB).
-3. لا فرز مرئي محفوظ لكل قائمة (الدوال `loadPlSorts` موجودة لكن لا UI فرز واضح).
-4. لا استيراد CSV (تصدير فقط `exportPlaylistCsv:1171`) — YouTube لا يدعم CSV أصلًا لكن التطبيق يعد به في النصوص.
-5. حالات الفارغ نصية فقط — لا رسوم/CTA "اكتشف/أضف".
-6. لا "تشغيل الكل/خلط الكل" في رأس كل قائمة فرعية (موجود في المفضلة فقط).
-
-### 3-5. فجوات الوصول
-
-- صفوف `LibraryScreen` أيقونات `contentDescription=null` ‏(:74-109) — تعتمد على النص المجاور (مقبول) لكن TalkBack لا يعلن العدد (`feedCounts`) كجزء من الوصف.
-- `Checkbox` التحديد المتعدد بلا `stateDescription` (محدد/غير محدد + الموضع).
-- بانر orphans ‏(:53-68) بلا `role=Alert` — قارئ الشاشة قد يتخطاه.
-
-### 3-6. خطوات الإصلاح
-
-- **P0-1**: `key` لفرع بحث History ‏(:109) + `key` لصفوف Downloads ‏(:115) بمفتاح `pinKey` مستقر + تحديث التقدم عبر `derivedStateOf`.
-- **P1-1**: `debounce(300ms)` لتقدير الحجم في `PinConfirmDialog.kt:102`.
-- **P1-2**: `rememberSaveable` لتبويب القناة + حفظ `LazyListState` لكل تبويب (`ChannelScreen.kt:83`).
-- **P1-3**: Undo عبر snackbar لـ `clearFavorites/clearHistory` + تأكيد حذف جماعي (`MainActivity.kt:1239/1245`).
-- **P2-1**: `role=Alert` لبانر orphans + دمج `feedCounts` في الوصف الصوتي لصفوف المكتبة.
-- **P2-2**: UI فرز مرئي + "تشغيل/خلط الكل" في رأس كل قائمة + empty-state مع CTA.
-
-### 3-7. اختبار ميداني لمحمد
-
-- [ ] ابحث في السجل بسرعة (3 أحرف متتالية) — هل تقفز النتائج؟
-- [ ] ثبّت فيديو وراقب شريط التقدم — هل يومض الصف كاملًا؟
-- [ ] دوّر الهاتف في تبويب "Shorts" داخل القناة — هل يبقى التبويب؟
-- [ ] امسح المفضلة بالخطأ — هل يوجد تراجع؟
-- [ ] افصل الشبكة وافتح التنزيلات — هل تعمل الأزرار أوفلاين؟
+### إصلاحات مقترحة
+**P0:**
+- P0-M1 إخفاء Radio لعناصر SC أو بذرة من `scSearch` — guard في `MainActivity.kt:1805,4553`.
+- P0-M2 guard محلي: `startRadio` يرفض `isLocal` + تخطي refill للمحلي — `:1805` + `:1892` (`isLocal` جاهز في `LocalAudio.kt:38`).
+- P0-M3 حذف `MusicTasteSection.kt` أو توحيد الأرفف عبره — مالك واحد.
+**P1:**
+- P1-M4 شارة radioOn + زر إيقاف في `QueuePanel.kt:60–70`.
+- P1-M5 كاش taste بـ TTL 5 دقائق + debounce + `rememberSaveable`.
+- P1-M6 مفاتيح `favKey` مستقرة + dedupe picks/mix.
+- P1-M7 صف correction في نتائج الموسيقى (مرآة البحث الرئيسي).
+- P1-M8 تمرير playing-url إلى `LocalAudioScreen` وإبراز المشغَّل.
+- P1-M9 بديل قائمة ⋮ لـ folder-exclude + hint.
+**P2:**
+- P2-M10 semantics (Tab/Card/badge) + إلغاء ازدواج الوصف.
+- P2-M11 `scrollToItem(0)` بعد تغيير source/kind/query.
+- P2-M12 نص تفسيري لتبويب albums + توسيع STOP + إعلان قاعدة 30s.
 
 ---
 
-## 4) شاشة الإعدادات
+## 3️⃣ المكتبة + الشاشات المتضمنة
 
-### 4-1. البنية الحالية
-
-| الملف | الدور |
+### البنية الحالية
+| ملف | الدور |
 |---|---|
-| `ui/settings/SettingsScreen.kt` (734) | pure UI: كل الحالة params + الكتابة callbacks؛ قوائم `LANG/COUNTRY/UI_LANG/PLAYMODE/THEME/ACCENT/QUALITY`؛ `SettingsScreen()` + `AgeModeRow:714` الخاص |
-| `ui/settings/SettingsSections.kt` (165) | لبنات: `SettingsSection()` (مطوية افتراضيًا)، `DropRow()`، `SwitchRow()` |
-| `ui/player/SubtitleStyle.kt` (52) | `SubStyle` + `applySubStyle` (يفرض ستايلنا `setApplyEmbeddedStyles(false)`) + `subStyleFromPrefs` |
-| `ui/player/PlayerComponents.kt` (214) | لا علاقة — `MiniPlayer`+`EqualizerBars`+`SleepTimerDialog` فقط |
-| `data/UpdateCheck.kt` | `latestTag(owner,repo)` ‏+ `isNewer(latest,current)` |
-| `ui/theme/Color.kt` (121) + `Theme.kt` (132) | Tier0 خام + Tier1 دلالي + `MyTubeTheme(darkTheme,black,accent,rtl)` + فرض RTL/LTR |
-| `MainActivity.kt` | `SettingsPane()` ‏(~3650)، `exportFullBackup` ‏(:2226)، `importFullBackup` ‏(:2309)، `checkUpdate` ‏(:2431)، `diagnosticsReport` ‏(:2210)، `themeLive/accentLive` ‏(:182-183) + تطبيق فوري ‏(:202-209، :3750-3763) |
+| `ui/library/LibraryScreen.kt` (183) | Hub فقط: صفوف History/Favorites/Playlists/Downloads/LocalAudio/Groups/Feed/Import-subs + اشتراكات inline مع `feedCounts` |
+| `ui/playlists/PlaylistsScreen.kt` (549) | CRUD محلي كامل + محرر staged بـ txn واحد + sorts + multi-select + picker + share/export CSV |
+| `ui/playlists/HistoryScreen.kt` (216) | Paging-3 (all/pinned/unpinned) + بحث محلي + buckets زمنية + pin/replay/delete/clear |
+| `ui/playlists/FavoritesScreen.kt` (106) | قائمة `FavoriteEntity` + play/remove/clear + Radio |
+| `ui/library/DownloadsScreen.kt` (263) | مدير pins من Room (لا FS scan) + pending مع progress/cancel + orphans + `totalBytes` |
+| `ui/library/ChannelGroups.kt` (258) | Groups CRUD + تفاصيل أعضاء |
+| `ui/library/ChannelScreen.kt` (246) | هيدر + 5 تبويبات (Videos/Shorts/Live/Playlists/About مقتضب 220 حرف) |
+| `ui/library/FeedScreen.kt` (147) | فيد مدمج + فلتر + سحب مخصص |
+| `ui/library/LocalAudioScreen.kt` (203) | صوت الجهاز + chips مجلدات + strict/compat |
+| `ui/results/RemotePlaylistView.kt` (124) | عرض عن بُعد: قراءة+تشغيل فقط |
+| `ui/queue/QueuePanel.kt` (244) | reorder ±1 + remove + play-from + save-as-playlist + قائمة long-press |
+| `data/local/PlaylistDb.kt` (551) | Room v9 + `savePlaylistEdits` txn + history paging/search/trim-1000 + `topPlayed` + migrations 1→9 |
+| `data/local/HistoryPaging.kt` (41) | `PagingSource` يدوي + حماية `IN ()` |
+| `MainActivity.kt` | `exportPlaylistCsv` (:1171–1210) + clears + nav library + lambdas (:4199–4212) |
 
-**الربط الحي**: الثيم/اللكنة live حقيقي ✅؛ الترجمة تُبنى عند المشغل (:3459) + حفظ فوري (:3711-3718) + preview يعكس fg/bg/opacity/scale/bold (لكن ليس edge)؛ الصوت/السرعة حفظ فوري.
+### نقاط القوة
+- Hub-and-spoke حقيقي والرجوع دائمًا للمكتبة.
+- محرر staged بحفظ transaction واحدة.
+- History أنضج شاشة (Paging + tabs + states).
+- Downloads يفصل pending/done + إلغاء تعاوني + منظف orphans + تقدير حجم حي.
+- Covers مشتقة (`playlistThumbs`) بلا migration؛ i18n منضبط (`R.string`).
 
-### 4-2. نقاط القوة
+### مشاكل (بالدليل)
+- 🔴 **حرج — تدمير بلا تأكيد:** `onClear` favorites (`FavoritesScreen.kt:58–60`) وhistory (`HistoryScreen.kt:71–73`) و`onClearItems` (`PlaylistsScreen.kt:353`) و`onClearAll` pins (`DownloadsScreen.kt:89–93`) وbulk-remove (`:263`) — كلها فورية.
+- 🔴 **حرج — params ميتة:** `onMoveItem/onDeleteItem` (`PlaylistsScreen.kt:98–99`) صفر call sites — أي caller يمرر lambdas حقيقية يُتجاهل.
+- **كبير — لا CSV import** (export فقط `:1171–1210`)؛ **remote playlists درجة ثانية** (`RemotePlaylistView.kt:51–123` بلا save/pin-all)؛ **بحث history مقصوص 200 silently** (`PlaylistDb.kt:historySearch` بلا لافتة)؛ **favorites بلا بحث/sort** (جدار عند المئات)؛ **empty downloads عارٍ** (`:144–157` نص فقط)؛ **group feed بنسخة مضللة** (`ChannelGroups.kt:175` يعطّل الزر، وFeed يعرض `feed_empty` عامًا).
+- **متوسط:** صف orphans محشور في الهيدر (`:56–94`)؛ `Spacer` مزدوج (`:230–231`)؛ mode chips تظهر فقط والقائمة فارغة (`:282–287`)؛ multi-select يتصفّر عند التبديل وبلا select-all؛ Queue بلا empty-CTA/clear-all/swipe؛ بانر الفلتر clickable بلا affordance؛ سحب 360px غير قياسي؛ About القناة وصف فقط.
+- **صغير:** 42× `contentDescription=null` على أيقونات ذات معنى؛ tint حذف غير موحد؛ magic string `"audio-only (default)"`؛ buckets منتصف-الليل المحلي (DST)؛ CSV يُسقط `videoId` واسم القائمة.
 
-1. `SettingsScreen` بلا منطق — callbacks فقط، قابلة للمعاينة والاختبار.
-2. 7 أقسام مطوية (lang/subs/audio/player/appearance/downloads/data) — ~88 صفًا → 7 عناوين.
-3. `DropRow` وحّد ~20 قائمة راديو؛ `SwitchRow` وحّد التبديلات.
-4. `ACCENT_OPTIONS` من `AccentFills` (مصدر واحد).
-5. النسخ الاحتياطي شامل + الاستيراد يتجاهل `pref_pin_location` (صحيح).
-6. `UpdateCheck` بمهلات قصيرة (10/10/15s) لا يعلّق الإعدادات.
+### فجوات YouTube-parity
+لا Watch-later افتراضية؛ لا checkmarks "محفوظ في"؛ لا privacy/description/total-duration؛ لا recently/most-played رغم وجود `topPlayed`؛ لا bulk-subs/OPML-export؛ لا defaults لجودة/mوقع pins؛ لا مؤشر offline-first؛ queue بلا drag/swipe/persist-note.
 
-### 4-3. مشاكل
+### فجوات وصول
+أزرار أيقونية معتمدة على نص الصف؛ أزرار queue 32dp (`QueuePanel.kt:122–141`)؛ لا `stateDescription` للتحديد؛ progress بلا إعلان %؛ emoji-covers معتمة؛ pickers طويلة بلا بحث؛ long-press-exclude بلا بديل.
 
-- **🔴 حرج — `values-en/strings.xml` يفتقد كل مفاتيح `update_*` و`backup_*`** (grep = 0 مقابل 16 في `values/strings.xml`): الواجهة الإنجليزية تعرض أزرار التحديث/النسخ **بالعربية**. الأزرار `SettingsScreen.kt:648-652` عبر `onCheckUpdate/onExportFull/onImportFull`.
-- **🔴 حرج — `UpdateCheck.kt: isNewer()` مقارنة نصية ساذجة** (`trimStart('v') != ...`): أي اختلاف (حتى نسخة محلية أحدث/لاحقة مختلفة) = "يوجد تحديث" كاذب → تنزيل نسخة أقدم!
-- **🟠 كبير — `MainActivity.kt:3743` تبديل `skipSilence` يُعيد تشغيل Activity كاملة** (`stopService+delay(900ms)+recreate()`): فقدان موضع/وميض مقابل إعداد صوتي — يجب التطبيق على المسار الصوتي فقط أو التأجيل للفيديو التالي.
-- **🟡 متوسط — `MainActivity.kt:3572` تغيير لغة الواجهة `recreate()`**: مقبول لكن بلا حفظ موضع القائمة/التبويب — يعود المستخدم للأعلى.
-- **🟡 متوسط — preview الترجمة لا يعكس `edge`**: المستخدم يضبط حدًا لا يراه إلا في المشغل.
-- **🔵 صغير — `SettingsSection` الكل مطوي افتراضيًا**: القسم النشط أخيرًا لا يُحفظ — 7 نقرات كل مرة.
-
-### 4-4. فجوات UX مقابل YouTube
-
-1. لا بحث داخل الإعدادات (YouTube: شريط بحث إعدادات).
-2. لا شارة "يتطلب إعادة تشغيل" على الإعدادات المدمرة (`skipSilence`/اللغة).
-3. لا سجل إصدار/تاريخ فحص التحديث ("آخر فحص: …").
-4. لا معاينة حية للثيم/اللكنة قبل الحفظ (التطبيق فوري — جيد — لكن بلا تراجع واحد).
-5. لا تصدير/استيراد انتقائي (الكل أو لا شيء).
-6. لا `diagnosticsReport` قابل للمشاركة من الواجهة (موجود :2210 لكن مدفون).
-
-### 4-5. فجوات الوصول
-
-- `DropRow` يفتح `DropdownMenu` بلا `expanded stateDescription` — TalkBack لا يعلن مفتوح/مغلق.
-- `SwitchRow` الوصف الثانوي غير مربوط بـ `supportingText` دلاليًا.
-- تباين `subtitle preview` على خلفية فاتحة غير مضمون.
-
-### 4-6. خطوات الإصلاح
-
-- **P0-1**: استكمال `values-en/strings.xml` (كل `update_*/backup_*` + أي مفتاح عربي فقط) —diff بين الملفين.
-- **P0-2**: `isNewer()` مقارنة دلالية (split `.` + مقارنة عددية + تجاهل اللاحقات) + اختبار وحدة (`v1.2` vs `1.2.0` vs `v0.3.2`).
-- **P0-3**: إلغاء `recreate()` لـ `skipSilence` — إعادة بناء `RenderersFactory`/المسار الصوتي فقط أو `applyOnNextVideo` + شارة "يُطبق على التالي".
-- **P1-1**: حفظ/restore موضع الإعدادات عبر `rememberSaveable` + تذكّر آخر قسم مفتوح (pref).
-- **P1-2**: preview الترجمة يعكس `edge` + خلفية معاينة داكنة ثابتة.
-- **P2-1**: بحث إعدادات + "آخر فحص" + شارة إعادة التشغيل + مشاركة `diagnosticsReport`.
-
-### 4-7. اختبار ميداني لمحمد
-
-- [ ] بدّل اللغة EN — هل أي زر عربي في (التحديث/النسخ)؟
-- [ ] افحص تحديثًا بنسخة محلية أحدث من المنشورة — هل يقول "يوجد تحديث" كذبًا؟
-- [ ] بدّل `skipSilence` أثناء التشغيل — هل يُعاد فتح التطبيق/يتوقف الصوت؟
-- [ ] غيّر لون الترجمة + الحد — هل المعاينة تطابق المشغل؟
-- [ ] صدّر نسخة كاملة ثم استوردها بعد مسح البيانات — هل تعود القوائم+السجل؟
+### إصلاحات مقترحة
+**P0:**
+- P0-L1 `ConfirmDeleteDialog` مشترك لكل تدمير (favorites/history/clear-items/clear-pins/bulk/row-delete) — الملفات أعلاه + تمرير counts في `MainActivity.kt`.
+- P0-L2 تفعيل `onMoveItem/onDeleteItem` أو حذف params + تحديث callers (`:4199–4212`).
+- P0-L3 empty-state للـ Downloads (أيقونة + hint + زر "كيف تثبّت").
+**P1:**
+- P1-L4 **CSV import** (`importPlaylistCsv` بجانب export + launcher + `videoId` في التصدير أولًا).
+- P1-L5 **Remote → local save** (Save-as-playlist + Pin-all في `RemotePlaylistView`).
+- P1-L6 بحث + sort للـ Favorites (مرآة History + `favoritesSearch` DAO).
+- P1-L7 لافتة "أول 200" في بحث history.
+- P1-L8 نسخة group-feed فارغة مميزة.
+- P1-L9 إظهار mode chips في محرر Edit + subtitle بالوضع الحالي.
+**P2:**
+- P2-L10 استخراج orphan-banner + توحيد tints + ثابت للنص السحري.
+- P2-L11 ممر a11y (48dp + descriptions + state + progress + بحث pickers).
+- P2-L12 قسم "الأكثر إعادة" من `topPlayed` في `LibraryScreen`.
+- P2-L13 سحب queue + clear-all + توثيق البقاء.
 
 ---
 
-## 5) الطابور الموحد للتنفيذ (مرتب P0 → P2 عبر الشاشات الأربع)
+## 4️⃣ الإعدادات
 
-| # | الأولوية | الشاشة | الإصلاح | الملفات |
-|---|---|---|---|---|
-| 1 | P0 | الإعدادات | تكميل `values-en` (update/backup) | `values-en/strings.xml` vs `values/strings.xml`، `SettingsScreen.kt:648-652` |
-| 2 | P0 | الإعدادات | `isNewer` دلالية + اختبار وحدة | `data/UpdateCheck.kt` |
-| 3 | P0 | الإعدادات | إلغاء `recreate` لـ `skipSilence` | `MainActivity.kt:3743` |
-| 4 | P0 | الرئيسية | دمج `LaunchedEffect(prefCountry)` المزدوج | `MainActivity.kt:1381/1979` |
-| 5 | P0 | الرئيسية/مكتبة/موسيقى | مفاتيح لكل `LazyColumn` بلا key | `FeedScreen.kt:122`، `HistoryScreen.kt:109`، `LocalAudioScreen.kt:139`، `QueuePanel.kt:81`، `DownloadsScreen.kt:115` |
-| 6 | P0 | الموسيقى | cap قائمة الراديو (200) + نافذة منزلقة | `MainActivity.kt:1805/1883` |
-| 7 | P0 | الموسيقى | تصفير `scKind` عند تبديل المصدر | `MainActivity.kt:3990+` |
-| 8 | P1 | الرئيسية | `PullToRefreshBox` بدل السحب المخصص | `FeedScreen.kt:66-92` |
-| 9 | P1 | الرئيسية | فصل `error/noNetwork` عن `empty` | `MainActivity.kt:4283-4330` |
-| 10 | P1 | الموسيقى | تفكيك `MusicTasteSection` (14 param) | `MusicTasteSection.kt:29` |
-| 11 | P1 | الموسيقى/المكتبة | Paging لنتائج SC + debounce تقدير Pin | `MainActivity.kt:2659`، `PinConfirmDialog.kt:102` |
-| 12 | P1 | المكتبة | `rememberSaveable` تبويب القناة + Undo مسح | `ChannelScreen.kt:83`، `MainActivity.kt:1239/1245` |
-| 13 | P1 | الإعدادات | حفظ آخر قسم + preview الحافة | `SettingsSections.kt`، `SettingsScreen.kt:~300` |
-| 14 | P2 | الكل | وصول: أوصاف + أدوار + 48dp + تباين | `HomeResults.kt:84/104`، `SearchRow.kt:180/182/208`، `LibraryScreen.kt:74-109`، `MusicHome.kt:99` |
-| 15 | P2 | الكل | UX parity: موضع تبويب، فرز، بحث إعدادات، empty-CTA | ملفات الواجهة المعنية |
+### البنية الحالية
+- `ui/settings/SettingsSections.kt` (165): `SettingsSection` (:30–65، كلها `expandedDefault=false`) + `DropRow` (:69–121) + `SwitchRow` (:125–165).
+- `ui/settings/SettingsScreen.kt` (734): UI خالص (~60 param + ~45 callback)، 7 أقسام `LazyColumn` (:268–660): اللغة/الترجمة (مع **معاينة subtitle** :336–350)/الصوت/المشغّل/المظهر/التنزيلات (update-check + export/import :672–680)/البيانات + 4 `AlertDialog` تأكيد (:235–266).
+- `MainActivity.kt`: theme/accent live (`themeLive/accentLive` :182–183، بلا recreate)؛ region reload (:3555–3563)؛ UI-lang recreate (:3565–3571)؛ subtitle live (`subStyleFromPrefs` في :3459)؛ `checkUpdate()` (:2431–2444)؛ `exportFullBackup()` (:2226+) + `importFullBackup()` (:2309+، dedupe favorites، لاحقة `" (import)"`)؛ `copyDiagnostics()` (:2446–2463).
+- `data/UpdateCheck.kt` (41): `latestTag` + `isNewer`؛ `ui/player/SubtitleStyle.kt` (52)؛ `ui/theme/Theme.kt` (132).
 
-## 6) قائمة الاختبار الميداني الموحدة (لمحمد — بلا adb)
+### نقاط القوة
+- تدفق أحادي حقيقي (صفر state في الشاشة).
+- 7 بطاقات قابلة للطي بدل ~88 صفًا؛ `DropRow/SwitchRow` يقتلان 20+ radio lists.
+- تطبيق حي للمظهر والترجمة (معاينة WYSIWYG صادقة عدا edge).
+- كل تدمير في الإعدادات مؤكد بـ dialogs مع counts.
+- Update dormant-عند-غياب-الإعداد + timeouts قصيرة؛ backup شامل data+prefs.
 
-**الرئيسية**: دولة→طلب واحد؛ سحب Feed + TalkBack؛ تبويبات الترند (الموضع)؛ طيران (رسالة صحيحة)؛ Mini-player (ظهور/اختفاء).
-**الموسيقى**: راديو 30+ (ذاكرة)؛ SC↔YTM مع فلتر؛ حذف من الطابور أثناء التشغيل؛ فصل الشبكة أثناء `loadMore`؛ TalkBack على التبديل.
-**المكتبة**: بحث سجل سريع؛ تقدم التثبيت (وميض؟)؛ تدوير في تبويب قناة؛ مسح مفضلة (تراجع؟)؛ تنزيلات أوفلاين.
-**الإعدادات**: EN (عربي متسرب؟)؛ فحص تحديث بنسخة أحدث محليًا؛ `skipSilence` أثناء التشغيل؛ معاينة الترجمة مقابل المشغل؛ تصدير→مسح→استيراد.
+### مشاكل (بالدليل)
+- **كبير — `isNewer` مقارنة نصية لا semver** (`UpdateCheck.kt:33–37`): أي tag مختلف = "أحدث" في الاتجاهين.
+- **كبير — المعاينة تتجاهل edge** (`SettingsScreen.kt:336–350`): `subEdge/subRole` بلا انعكاس — أدق إعداد مقروئية لا يُتحقق.
+- **كبير — accent dots 40dp بلا labels** (`:596–612`): تحت 48dp + تمييز لوني فقط.
+- **كبير — `DropRow` سطر واحد ellipsis** (`SettingsSections.kt:96–104,111`): أسماء عربية طويلة تُقطع.
+- **متوسط — expand/open بـ `remember` لا `rememberSaveable`** (`SettingsSections.kt:36,81`): التدوير يطوي كل شيء.
+- **متوسط — import يبتلع أخطاء العناصر + لاحقة عمياء** (`MainActivity.kt:2309–2360`): `catch{}` لكل playlist بلا تقرير + `" (import)"` دائمًا بلا كشف مكرر.
+- **متوسط — backup في `cacheDir/shared` بلا تنظيف** + مشاركة `prefs.all` كاملة.
+- **متوسط — لغات UI ثنائية hardcoded** (`:77–80`) مقابل 5 لغات محتوى.
+- **متوسط — صفوف radio-mimic بأيقونات `contentDescription=null`** (`:526–540,627–650,700–734`) غير مرئية للقارئ.
+- **صغير:** edge codes إنجليزية خام (`:381–385`)؛ speed/pitch 6 قيم + label مشترك؛ mute label متقلب (`:474–478`)؛ cache-max بلا off؛ sliders بلا content-description.
+
+### فجوات YouTube-parity
+لا جودة per-network؛ لا master-switch ترجمة دائمة؛ سرعة 6 قيم عمومية بلا per-video؛ لا font-size/density/reset-defaults؛ pins بلا per-item quality/Wi-Fi-only/شريط تخزين؛ لا بحث داخل الإعدادات؛ update toast-only بلا changelog/زر؛ backup بلا timestamp/auto.
+
+### فجوات وصول
+Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/selectable`؛ dots لونية 40dp؛ sliders بلا semantics؛ disabled باللون فقط؛ ellipsis بلا مسار قراءة موسّع.
+
+### إصلاحات مقترحة
+**P0:**
+- P0-S1 إصلاح `isNewer` semver حقيقي + unit test — `UpdateCheck.kt:33–37`.
+- P0-S2 رسم edge في المعاينة (نفس ثوابت `SubtitleStyle.kt:40–46`) — `SettingsScreen.kt:336–350`.
+- P0-S3 توطين edge entries (`sub_edge_*` ar+en) — `:381–385`.
+**P1:**
+- P1-S4 semantics للheaders + تحويل AF/age/pin-loc إلى `RadioButton/selectable` — `SettingsSections.kt:38–58` + `:526–540,627–650,700–734`.
+- P1-S5 إعادة بناء accent (48dp + labels + selectable group) — `:593–613`.
+- P1-S6 `rememberSaveable` للطي/الفتح — `SettingsSections.kt:36,81`.
+- P1-S7 semantics للsliders + تثبيت label الـ mute.
+- P1-S8 متانة import (عدّ المتخطى + كشف مكرر + validate `v`).
+**P2:**
+- P2-S9 بحث داخل الإعدادات.
+- P2-S10 dialog تحديث مع changelog + زر تنزيل.
+- P2-S11 صف metadata للـ backup + auto-backup.
+- P2-S12 سرعات أدق + resource للغات UI + reset-per-section.
 
 ---
 
-*وُقّع: بركات ☕ — دراسة فقط، لم يُمس الكود ولم يُبنَ شيء. القادم بأمر محمد.*
+## ✅ الطابور الموحد (أولوية عبر الشاشات)
+
+| # | الإصلاح | الملفات | الأثر |
+|---|---|---|---|
+| P0-1 | تأكيد كل تدمير في Library | `PlaylistsScreen` + `FavoritesScreen:58` + `HistoryScreen:71` + `DownloadsScreen:89` | منع فقدان بيانات |
+| P0-2 | ترتيب Feed + مفاتيح مستقرة | `MainActivity.kt:2812` + `FeedScreen.kt:138` + `MainActivity.kt:4398` | timeline صح + سكرول/صور |
+| P0-3 | حالة خطأ trending مع retry | `YouTubeRepo.trending` + `HomeResults.kt:92–109` | offline قابل للفهم |
+| P0-4 | guards الراديو (SC + محلي) | `MainActivity.kt:1805,1892,4553` | إيقاف فشل صامت |
+| P0-5 | توحيد/حذف `MusicTasteSection.kt` | ملف يتيم + `:4013–4061` | إيقاف تضليل المحررين |
+| P0-6 | إصلاح `isNewer` + معاينة edge + توطين edge | `UpdateCheck.kt:33` + `SettingsScreen.kt:336,381` | تحديثات صادقة + ترجمة مرئية |
+| P0-7 | تفعيل/حذف `onMoveItem/onDeleteItem` | `PlaylistsScreen.kt:98–99` + callers | إيقاف API ميت |
+| P1-1 | semantics البطاقات/الأقسام/Radio-rows/Accent/Sliders | `SearchRow`, `MusicHome`, `SettingsSections`, `SettingsScreen`, `QueuePanel` | TalkBack صالح للاستعمال |
+| P1-2 | خنق suggestions + TTL للـ taste | `MainActivity.kt:1339,2635,2696` | شبكة/battery |
+| P1-3 | CSV import + Remote→local save + بحث Favorites | `MainActivity.kt:1171` + `RemotePlaylistView` + DAO | parity الت portable |
+| P1-4 | إبراز المشغَّل المحلي + scroll-to-top + correction | `LocalAudioScreen` + `scListState` + `doScSearch` | تماسك الموسيقى |
+| P1-5 | متانة backup/import + `rememberSaveable` للطي | `MainActivity.kt:2309` + `SettingsSections.kt:36,81` | ثقة + حالة |
+| P2 | بحث إعدادات + dialog تحديث + shelves/filters polish + a11y targets + queue drag | متفرقة أعلاه | تلميع |
+
+---
+
+## 🧪 قائمة الفحص الميداني لمحمد (بلا adb — جهاز حقيقي، واجهة عربية)
+
+**Home:** اشترك 3+ قنوات وتحقق newest-first عبر القنوات (مكسور الآن)؛ وضع طائرة → افتح Home (منتظر: نسخة خطأ + retry)؛ اسحب feed (يُطلق مرة)؛ تنقّل سريع بين 8 trend tabs على بيانات (لا spinners متراكمة)؛ سكرول عميق + تدوير + رجوع (يضيع الآن)؛ TalkBack لبطاقة (فعل "play {title}")؛ RTL البطاقات والشارات؛ fling على جهاز ضعيف قبل/بعد المفاتيح؛ قناة ميتة واحدة لا تكسر Feed؛ mini-player فوق nav + إعادة فتح على الصف الصحيح.
+**Music (12):** رفوف فارغة بلا history ثم بعد 3 فيديوهات (picks ≤8 + mix ≤6)؛ SC→YTM والأنواع (albums بطاقات فقط، artists تفتح قناة)؛ paging للذيل (auto-append + More، عدّ المكرر)؛ radio YT حتى النهاية 3 مرات (refill ≤10)؛ radio SC = `radio_fail` (سجّل)؛ radio محلي = توقف صامت (سجّل)؛ فتح Music 5 مرات بطائرة ON (لا ANR)؛ صوت محلي strict/compat + exclude/restore + غياب highlight (سجّل)؛ TalkBack للsegment/البطاقات/badge؛ queue (PlayNext×2 + End×1 + save-as-playlist + Play-All يطفي radio)؛ RTL؛ thumbs w540 مقابل t500.
+**Library (11):** مسح تدميري (favorites/history/clear-items/clear-pins/bulk — كلها بلا تأكيد الآن)؛ CSV export (عربي/اقتباس/فواصل، لاحظ غياب `videoId`)؛ تأكيد غياب import؛ remote playlist بلا Save/Pin-all؛ history 50+ فيديو + بحث عربي + `%`/`_` + سلوك cap-200؛ pins (صوت+فيديو+multi-sub، إلغاء، kill أثناء pin→orphan→clean)؛ groups (create/rename/delete + flag unsubscribed + نسخة group-feed)؛ queue (أسهم الأطراف، play-from-middle، اسم مكرر، تدوير)؛ local-audio permission-denied + exclude + rescan؛ TalkBack للمكتبة + أزرار 32dp؛ RTL headers.
+**Settings (10):** كل البطاقات مطوية أولًا ثم التدوير يطوي (سجّل)؛ edge shadow/raised/none لا يغير المعاينة لكن يغير المشغل (وثّق)؛ edge إنجليزية في عربي (screenshot)؛ dots صعبة + بلا labels + ثيمات فورية مع بقاء queue؛ update بلا Wi-Fi (toast ≤15s) وtoast-only؛ export→import مرتين (تكرار `" (import)"`) + JSON فاسد يدويًا؛ TalkBack للheaders/radio/sliders/dots؛ أسماء دول طويلة + mute/slider؛ EQ (مدعوم/غير مدعوم)؛ kill بعد تغيير prefs → الثبات.
+
+---
+
+*وُضع savepoint git سابق لهذه الدراسة؟ يُنشأ commit واحد لهذا الملف فقط (بلا push) بعد الكتابة.*
