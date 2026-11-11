@@ -4045,6 +4045,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 queue = queue.toMutableList().also { it.removeAt(idx) }
                             }
                         },
+                        // Deferred item 3: swipe-to-remove Undo re-inserts at the original index.
+                        onInsert = { idx, v ->
+                            val at = idx.coerceIn(0, queue.size)
+                            queue = queue.toMutableList().also { it.add(at, v) }
+                        },
                         onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
                         onOptions = { optionsFor = it },
                         onSave = { name ->

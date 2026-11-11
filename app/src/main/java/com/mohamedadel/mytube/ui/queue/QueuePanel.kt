@@ -2,11 +2,14 @@ package com.mohamedadel.mytube.ui.queue
 
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.local.favKey
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -33,13 +36,22 @@ import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +68,7 @@ import com.mohamedadel.mytube.data.youtube.VideoItem
 // Current-queue manager: reorder / remove / play-from / save-as-playlist.
 // Inline queue panel: rendered IN PLACE of the suggestions/results below the video
 // (no popup dialog). Same powers: reorder, remove, play-from, save as playlist, close.
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QueuePanel(
     items: List<VideoItem>,
@@ -70,9 +83,14 @@ fun QueuePanel(
     onStopRadio: () -> Unit = {}
     ,
     // screens-fix Library P2-L13: clear-all (swipe gestures skipped — needs gesture design).
-    onClearAll: (() -> Unit)? = null
+    onClearAll: (() -> Unit)? = null,
+    // Deferred item 3 (2026-11-11): swipe-to-remove re-inserts here for Undo.
+    onInsert: ((Int, VideoItem) -> Unit)? = null
 ) {
     var nameDraft by remember { mutableStateOf("") }
+    val snack = remember { SnackbarHostState() }
+    val qscope = rememberCoroutineScope()
+    val undoLabel = stringResource(R.string.undo)
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         shape = RoundedCornerShape(16.dp),
@@ -106,8 +124,42 @@ fun QueuePanel(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     // screens-fix appendix-4: stable keys (no index prefix).
+                    // Deferred item 3: swipe-to-remove with Undo (Material3 SwipeToDismissBox).
                     itemsIndexed(items, key = { _, v -> v.favKey() }) { idx, v ->
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        // Composable context: pre-format the undo message (closures below are not composable).
+                        val removedMsg = stringResource(R.string.queue_removed_fmt, v.title ?: "")
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { target ->
+                                if (target != SwipeToDismissBoxValue.Settled) {
+                                    val at = idx
+                                    val item = v
+                                    onRemove(at)
+                                    qscope.launch {
+                                        val r = snack.showSnackbar(
+                                            message = removedMsg,
+                                            actionLabel = undoLabel,
+                                            withDismissAction = true
+                                        )
+                                        if (r == SnackbarResult.ActionPerformed) onInsert?.invoke(at, item)
+                                    }
+                                    true
+                                } else false
+                            }
+                        )
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            enableDismissFromStartToEnd = true,
+                            enableDismissFromEndToStart = true,
+                            backgroundContent = {
+                                Box(
+                                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 16.dp),
+                                    contentAlignment = if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd
+                                ) {
+                                    Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                                }
+                            }
+                        ) {
+                        Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant), verticalAlignment = Alignment.CenterVertically) {
                             Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
                             Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
                             // explicit "play from here": sequential playback starts ONLY from this button
@@ -127,9 +179,12 @@ fun QueuePanel(
                                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
                         }
+                        }
                     }
                 }
             }
+            // Deferred item 3: undo snackbar host for swipe-to-remove.
+            SnackbarHost(hostState = snack, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it }, placeholder = { Text(stringResource(R.string.queue_save_hint)) }, singleLine = true, modifier = Modifier.weight(1f))
