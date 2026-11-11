@@ -14,8 +14,14 @@ object PinFiles {
     // Download location pref ("internal" | "external"). External = app-specific dir
     // (no storage permission needed). New pins go to the current loc; old pins keep
     // working via existingDir()/isPinned() fallback to the legacy internal dir.
+    // pin-runtime 2026-11-11: SD-first default centralized here (was duplicated in
+    // MainActivity.requestPin without persisting, so the dialog showed "external"
+    // while PinFiles.loc() still resolved "internal" on fresh installs).
     fun loc(context: Context): String {
-        return try { context.getSharedPreferences("mytube_prefs", Context.MODE_PRIVATE).getString("pref_pin_location", "internal") ?: "internal" } catch (_: Exception) { "internal" }
+        return try {
+            val stored = context.getSharedPreferences("mytube_prefs", Context.MODE_PRIVATE).getString("pref_pin_location", null)
+            stored ?: if (isExternalAvailable(context)) "external" else "internal"
+        } catch (_: Exception) { "internal" }
     }
 
     fun baseDir(context: Context, location: String = loc(context)): File {

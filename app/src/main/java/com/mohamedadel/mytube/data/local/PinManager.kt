@@ -80,6 +80,13 @@ object PinManager {
             .build()
     }
 
+    // pin-runtime 2026-11-11: browser UA on every pin request. Playback streams via
+    // ExoPlayer (browser UA + full header set) while these bare OkHttp calls used to send
+    // the default "okhttp/…" UA — hardened videoplayback/cf-media hosts answer that
+    // with 403, so EVERY pin failed at estimate/download while playback kept working.
+    // Same "Mozilla/5.0" the extractor/search paths already send (YouTubeRepo).
+    private const val PIN_UA = "Mozilla/5.0"
+
     // Approximate total via HEAD content-length, falling back to a 0-byte Range GET
     // (some hosts reject HEAD); -1 when a URL hides its size either way.
     fun estimateBytes(urls: List<String?>): Long {
@@ -88,13 +95,13 @@ object PinManager {
             if (u.isNullOrBlank()) continue
             var len: Long? = null
             try {
-                http.newCall(Request.Builder().url(u).head().build()).execute().use { resp ->
+                http.newCall(Request.Builder().url(u).header("User-Agent", PIN_UA).head().build()).execute().use { resp ->
                     len = resp.header("Content-Length")?.toLongOrNull()
                 }
             } catch (_: Exception) { }
             if (len == null) {
                 try {
-                    http.newCall(Request.Builder().url(u).header("Range", "bytes=0-0").build()).execute().use { resp ->
+                    http.newCall(Request.Builder().url(u).header("User-Agent", PIN_UA).header("Range", "bytes=0-0").build()).execute().use { resp ->
                         val cr = resp.header("Content-Range") // "bytes 0-0/12345"
                         len = cr?.substringAfterLast("/")?.toLongOrNull()
                             ?: resp.header("Content-Length")?.toLongOrNull()
@@ -144,7 +151,7 @@ object PinManager {
             // F5 (audit P1 2026-11-11): resume from a previous partial chunk when the host honors Range.
             var done = try { if (tmp.exists()) tmp.length() else 0L } catch (_: Exception) { 0L }
             var respTotal = -1L
-            val req = Request.Builder().url(url)
+            val req = Request.Builder().url(url).header("User-Agent", PIN_UA)
             if (done > 0) req.header("Range", "bytes=$done-")
             http.newCall(req.build()).execute().use { resp ->
                 if (done > 0 && resp.code != 206) {

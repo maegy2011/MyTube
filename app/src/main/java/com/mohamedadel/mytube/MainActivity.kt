@@ -3130,13 +3130,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // pin-deepfix: a null URL used to exit silently (no toast at all).
+                // pin-runtime 2026-11-11: uiToast (main Looper) — Toast.show() from this
+                // IO thread throws and the catch drops it, so every failure was invisible.
                 val u = v.url
-                if (sd == null && u.isNullOrBlank()) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val s = sd ?: YouTubeRepo.streamRouted(u ?: return@launch) ?: run { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                if (sd == null && u.isNullOrBlank()) { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                val s = sd ?: YouTubeRepo.streamRouted(u ?: return@launch) ?: run { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 // pin-deepfix: streaming-only (HLS) audio cannot be pinned as bytes — say so clearly.
-                if (s.audioHlsOnly) { toast(ctx.getString(R.string.pin_err_stream)); return@launch }
+                if (s.audioHlsOnly) { uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
-                    toast(ctx.getString(R.string.toast_pin_fail)); return@launch
+                    uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
                 val kbps = ctx.estimatedDownstreamKbps()
                 // Audio-only sources (e.g. SoundCloud) have no video map: pin the audio directly.
@@ -3144,20 +3146,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val ai = aIdx ?: pickAudioIdxFor(s)
                 val si = sIdxs ?: matchSubIdxsFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
-                if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                if (plan == null) { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 val est = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
-                pinSd = s
-                pinSelQuality = qq
-                pinSelAudio = ai
-                pinSelSubs = si
-                try {
-                    val stored = ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE).getString("pref_pin_location", null)
-                    // SD-first: no stored choice yet + external root mounted -> default to external
-                    pinSelLoc = stored ?: if (com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext)) "external" else "internal"
-                } catch (_: Exception) { }
-                pinEst = est
-                pinConfirm = com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est)
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+                // pin-runtime 2026-11-11: dialog state on Main (writes from IO are
+                // silently late/lost on some skins) + loc from the centralized default.
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    pinSd = s
+                    pinSelQuality = qq
+                    pinSelAudio = ai
+                    pinSelSubs = si
+                    try {
+                        pinSelLoc = com.mohamedadel.mytube.data.local.PinFiles.loc(ctx.applicationContext)
+                    } catch (_: Exception) { }
+                    pinEst = est
+                    pinConfirm = com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est)
+                }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
             finally { pinningKeys = pinningKeys - key }
         }
     }
@@ -3177,13 +3181,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     val pf = com.mohamedadel.mytube.data.local.PinFiles
                     if (pf.isCurrentLocBroken(ctx.applicationContext)) {
                         try { prefs.edit().putString("pref_pin_location", "internal").apply() } catch (_: Exception) { }
-                        toast(ctx.getString(R.string.pin_ext_fallback))
+                        uiToast(ctx.getString(R.string.pin_ext_fallback))
                     }
                     // Free-space guard: refuse early with a clear message instead of a mid-write fail.
                     val need = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl) + plan.subs.drop(1).map { it.url })
                     val free = pf.freeBytes(ctx.applicationContext)
                     if (need > 0 && free >= 0 && need > free) {
-                        toast(ctx.getString(R.string.pin_no_space)); return@launch
+                        uiToast(ctx.getString(R.string.pin_no_space)); return@launch
                     }
                 } catch (_: Exception) { }
                 val app = ctx.applicationContext
@@ -3233,14 +3237,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 if (com.mohamedadel.mytube.data.local.PinManager.isCancelRequested(key)) {
                     try { com.mohamedadel.mytube.data.local.PinManager.consumeCancel(key) } catch (_: Exception) { }
                 }
-                else if (size >= 0) toast(ctx.getString(R.string.toast_pin_done))
-                else toast(ctx.getString(R.string.toast_pin_fail))
+                else if (size >= 0) uiToast(ctx.getString(R.string.toast_pin_done))
+                else uiToast(ctx.getString(R.string.toast_pin_fail))
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 // pin-deepfix: job-cancel path of cancelPinDownload — silent, then propagate.
                 try { pinProgress = pinProgress - key } catch (_: Exception) { }
                 try { com.mohamedadel.mytube.data.local.PinManager.consumeCancel(key) } catch (_: Exception) { }
                 throw ce
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
             finally { pinningKeys = pinningKeys - key; try { val j = dlJobBox[0]; if (j != null) pinJobs.remove(key, j) } catch (_: Exception) { } }
         }
         try { dlJobBox[0]?.let { pinJobs[key] = it } } catch (_: Exception) { }
@@ -3279,13 +3283,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // pin-deepfix: a null URL used to exit silently (no toast at all).
+                // pin-runtime 2026-11-11: uiToast (main Looper) + key ownership: the F6
+                // optimistic add stays until runPinDownload's inner job finishes — the old
+                // outer-finally removal ran the moment the inner job was LAUNCHED, hiding
+                // in-flight pins from Downloads/cancel and reopening the double-tap race.
+                // Early exits below remove the key explicitly; the success path is owned
+                // by runPinDownload(alreadyAdded=true) which removes it when done.
                 val u = v.url
-                if (sd == null && u.isNullOrBlank()) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val s = sd ?: YouTubeRepo.streamRouted(u ?: return@launch) ?: run { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                if (sd == null && u.isNullOrBlank()) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                val s = sd ?: YouTubeRepo.streamRouted(u ?: run { pinningKeys = pinningKeys - key; return@launch }) ?: run { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 // pin-deepfix: streaming-only (HLS) audio cannot be pinned as bytes — say so clearly.
-                if (s.audioHlsOnly) { toast(ctx.getString(R.string.pin_err_stream)); return@launch }
+                if (s.audioHlsOnly) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
-                    toast(ctx.getString(R.string.toast_pin_fail)); return@launch
+                    pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
                 val kbps = ctx.estimatedDownstreamKbps()
                 val lastQ = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
@@ -3296,10 +3306,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val lastSubs = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.filter { s.subtitles.getOrNull(it) != null }.toSet() } catch (_: Exception) { emptySet() }
                 val si = if (lastSubs.isNotEmpty()) lastSubs else matchSubIdxsFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
-                if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                if (plan == null) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 runPinDownload(v, plan, key, alreadyAdded = true, retry = PinRetry(qq, ai, si))
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
-            finally { pinningKeys = pinningKeys - key }
+            } catch (_: Exception) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)) }
         }
     }
     // external orphan pins (left after switching location to internal)
@@ -3316,8 +3325,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try {
                 val n = com.mohamedadel.mytube.data.local.PinFiles.cleanExternalOrphans(ctx.applicationContext, pinKeys.toList())
                 refreshOrphans()
-                toast(ctx.getString(R.string.pin_orphans_cleaned_fmt, n))
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+                uiToast(ctx.getString(R.string.pin_orphans_cleaned_fmt, n))
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
         }
     }
     androidx.compose.runtime.LaunchedEffect(showDownloads, pinKeys) { if (showDownloads) refreshOrphans() }
@@ -3331,8 +3340,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 com.mohamedadel.mytube.data.local.PinFiles.clearAll(ctx.applicationContext)
                 try { dao.clearPins() } catch (_: Exception) { }
                 refreshPinsLabel()
-                toast(ctx.getString(R.string.toast_pins_cleared))
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+                uiToast(ctx.getString(R.string.toast_pins_cleared))
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
         }
     }
     fun doUnpin(key: String) {
@@ -3342,8 +3351,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 com.mohamedadel.mytube.data.local.PinManager.unpin(ctx.applicationContext, dao, key)
-                toast(ctx.getString(R.string.toast_unpinned))
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+                uiToast(ctx.getString(R.string.toast_unpinned))
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
         }
     }
     fun smartBack(): Boolean {
