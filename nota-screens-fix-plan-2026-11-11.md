@@ -254,3 +254,22 @@ Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/
 ---
 
 *وُضع savepoint git سابق لهذه الدراسة؟ يُنشأ commit واحد لهذا الملف فقط (بلا push) بعد الكتابة.*
+
+---
+
+## ملحق (أ): نتائج دراسة موازية — لم تُدمج في المتن لتعارض المصادر، تُتحقق قبل التنفيذ
+
+> كتب زميل دراسة موازية بنفس الاسم (commit `fa5fdcc`) قبل اكتمال هذه الدراسة. النقاط أدناه فريدة من نسخته، تُدرج هنا حفظًا لعمله — تُتحقق file:line قبل أي إصلاح.
+
+1. **🔴 حرج (محتمل) — `LaunchedEffect(prefCountry)` مزدوج** (`MainActivity.kt:1381` + `:1979`): مشغّلان يستدعيان `refreshTrending()` → طلبان متوازيان وسباق نتائج. **تحقق:** هل السطر 1979 ما زال موجودًا في النسخة الحالية أم بقايا دراسة قديمة؟ ثم الدمج في موضع واحد + cancel للطلب السابق.
+2. **🔴 حرج (محتمل) — `values-en/strings.xml` يفتقد مفاتيح `update_*` و`backup_*`**: الواجهة الإنجليزية تعرض أزرار التحديث/النسخ بالعربية (`SettingsScreen.kt:648–652`). **تحقق:** `grep -c 'update_\|backup_' app/src/main/res/values-en/strings.xml` مقابل `values/strings.xml` — إن صحّ، الاستكمال P0.
+3. **🟠 كبير (محتمل) — `skipSilence` يُعيد تشغيل Activity** (`MainActivity.kt:3743`: `stopService+delay(900ms)+recreate()`). **تحقق:** السطر موجود؟ إن صحّ → إعادة بناء المسار الصوتي فقط أو `applyOnNextVideo` + شارة.
+4. **🟡 متوسط — قوائم بلا `key` إضافية:** `HistoryScreen.kt:109` (فرع البحث)، `LocalAudioScreen.kt:139`، `QueuePanel.kt:81`، `DownloadsScreen.kt:115` (تقدم التنزيل يُعيد تركيب الصف). مقابل: `HomeResults.kt:144` و`PlaylistsScreen.kt:206` و`HistoryScreen.kt:184` فيها مفاتيح ✅. الإصلاح يوسّع P0-H3 ليشملها.
+5. **🟡 متوسط — `trending` المبدئية إنجليزية صلبة** (`MainActivity.kt:1335`): تُعرض قبل التحميل وتكسر التعريب → تعريب/تحميل كسول من `strings.xml`.
+6. **🟡 متوسط — منطق العرض الثلاثي** (`MainActivity.kt:4283`): `results.isEmpty() && query.isBlank()` لا يميز no-network عن empty → فصل `feedError/noNetwork` (مكمل لـ P0-H2).
+7. **🟡 متوسط — `scKind` لا يُصفَّر عند تبديل `scSource`** (`MainActivity.kt:3990+`): بحث "ألبومات" في SC ثم YTM يعرض نوعًا غير مدعوم بصمت → تصفير + رسالة صريحة.
+8. **🟡 متوسط — `MusicTasteSection.kt` تضخم باراميترات (14)**: يعيد تركيب القسم كاملًا مع كل تغيير ذوق → تفكيك إلى state-holder (بديل/مكمل لـ P0-M3).
+9. **ملاحظة خلافية — cap قائمة الراديو:** الدراسة الموازية تدعي نموًا بلا حد (`startRadio :1805`)؛ هذه الدراسة وجدت trim للرأس (آخر 50 + القادم، `:1900–1907`). **الحسم ميداني/كود:** قراءة `playNextInQueue` الحالية — إن كان الـ trim موجودًا فلا مشكلة، وإلا فـ cap 200 + نافذة منزلقة P0.
+10. **صغير — `MusicHome.kt:99` صورة 140dp بلا placeholder/crossfade** → وميض عند التمرير (Coil مركزي فيه crossfade — تحقق هل يسري على `MusicCard`).
+
+*أُضيف هذا الملحق 2026-11-11 حفظًا لعمل الزميل — لا يلغي المتن، يُحسم بالتحقق قبل التنفيذ بأمر محمد.*
