@@ -61,6 +61,8 @@ fun HistoryScreen(
     onSearchQuery: (String) -> Unit = {},
     searchResults: List<HistoryEntity> = emptyList()
 ) {
+    // screens-fix Library P0-L1: destructive clear needs explicit confirmation.
+    var confirmClear by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val lctx = androidx.compose.ui.platform.LocalContext.current
     var tab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
     fun sizeLabel(bytes: Long): String = try {
@@ -82,10 +84,18 @@ fun HistoryScreen(
                 modifier = Modifier.weight(1f)
             )
             if (totalCount > 0) {
-                IconButton(onClick = onClear) {
+                IconButton(onClick = { confirmClear = true }) {
                     Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.clear_history), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
+        if (confirmClear) {
+            ConfirmDeleteDialog(
+                title = stringResource(R.string.clear_history_title),
+                message = stringResource(R.string.del_hist_confirm_fmt, totalCount),
+                onConfirm = { confirmClear = false; onClear() },
+                onDismiss = { confirmClear = false }
+            )
         }
         Spacer(Modifier.height(8.dp))
         // local search field (title/channel)
@@ -106,6 +116,15 @@ fun HistoryScreen(
             val day = 24 * 3600 * 1000L
             val startToday = now - (now % day)
             var lastBucket = -1
+            // screens-fix Library P1-L7: the Room query caps at 200 — say so.
+            if (searchResults.size >= 200) {
+                Text(
+                    stringResource(R.string.hist_search_cap_fmt, 200),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 searchResults.forEach { h ->
                     val bucket = when {

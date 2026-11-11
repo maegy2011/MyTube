@@ -19,10 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,6 +45,102 @@ import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.ui.theme.ScrimSoft
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.VideoItem
+
+// screens-fix Music P1-M7/P2-M12 (2026-11-11): extracted from MyTubeApp to keep the
+// giant when-branch under the 64KB method limit — correction row + albums note.
+@Composable
+fun ScCorrectionRow(sugg: String, corrected: Boolean, onPick: (String) -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier.fillMaxWidth().clickable { onPick(sugg) }.padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            if (corrected) stringResource(R.string.did_you_mean_showing_fmt, sugg) else stringResource(R.string.did_you_mean_fmt, sugg),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.tertiary
+        )
+    }
+}
+
+@Composable
+fun ScAlbumsNote() {
+    Text(
+        stringResource(R.string.sc_albums_note),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+    )
+}
+
+// screens-fix Library P2 (method-size, 2026-11-11): the music home shelves lived inline
+// in MyTubeApp's giant when-branch — moved here as a LazyListScope extension.
+// NOTE: intentionally NOT @Composable — LazyColumn content scope is a plain DSL
+// (only item{} bodies are composable). The annotation broke the call site.
+fun androidx.compose.foundation.lazy.LazyListScope.MusicHomeShelves(
+    profile: com.mohamedadel.mytube.util.TasteProfile?,
+    mix: List<VideoItem>,
+    mixTerm: String?,
+    mixLoading: Boolean,
+    playingUrl: String?,
+    isPlaying: Boolean,
+    onTerm: (String) -> Unit,
+    onPlay: (VideoItem) -> Unit,
+    onPlayMix: (VideoItem) -> Unit,
+    onLongClick: (VideoItem) -> Unit,
+    onLongClickMix: (VideoItem) -> Unit
+) {
+    if (profile?.terms?.isNotEmpty() == true) {
+        item(key = "sc-terms") {
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                profile.terms.forEach { t ->
+                    androidx.compose.material3.FilterChip(
+                        selected = false,
+                        onClick = { onTerm(t) },
+                        label = { Text(t) }
+                    )
+                }
+            }
+        }
+    }
+    if (profile?.picks?.isNotEmpty() == true) {
+        item(key = "sc-picks") {
+            MusicShelf(
+                title = stringResource(R.string.quick_picks),
+                // screens-fix Music P1-M6: dedupe by canonical key.
+                items = (profile.picks).distinctBy { it.favKey() }.take(8),
+                playingUrl = playingUrl,
+                isPlaying = isPlaying,
+                onPlay = onPlay,
+                onLongClick = onLongClick
+            )
+        }
+    }
+    if (mixLoading || mix.isNotEmpty()) {
+        item(key = "sc-mix") {
+            if (mixLoading && mix.isEmpty()) {
+                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                }
+            } else {
+                val lctx = androidx.compose.ui.platform.LocalContext.current
+                val mixTitle = try {
+                    lctx.getString(R.string.taste_mix_fmt, mixTerm ?: "")
+                } catch (_: Exception) { mixTerm ?: "" }
+                MusicShelf(
+                    title = mixTitle,
+                    items = mix,
+                    playingUrl = playingUrl,
+                    isPlaying = isPlaying,
+                    onPlay = onPlayMix,
+                    onLongClick = onLongClickMix
+                )
+            }
+        }
+    }
+}
 
 // Segmented SoundCloud | YouTube Music switch: one pill, two halves, no chip sprawl.
 @Composable

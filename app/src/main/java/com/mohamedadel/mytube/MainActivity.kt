@@ -119,6 +119,7 @@ import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.library.FeedScreen
 import com.mohamedadel.mytube.ui.library.ChannelScreen
+import com.mohamedadel.mytube.ui.library.MusicHomeShelves
 import com.mohamedadel.mytube.ui.queue.QueuePanel
 import com.mohamedadel.mytube.ui.results.HomeEmptyState
 import com.mohamedadel.mytube.ui.results.SearchRow
@@ -296,6 +297,9 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() { player = null; try { PlaybackService.onCustomAction = null } catch (_: Exception) { }; super.onDestroy() }
 }
 
+// screens-fix Library P2-L10: single const for the default quality key (was a magic string ×5).
+private const val QUALITY_AUDIO_ONLY = "audio-only (default)"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, pipMode: androidx.compose.runtime.MutableState<Boolean> = androidx.compose.runtime.mutableStateOf(false)) {
@@ -321,8 +325,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // F8 (audit P1 2026-11-11): which video the explicit pick belongs to — guards the
     // TrackSelectionOverride against stale currentTracks right after a video change.
     var subTrackFor by remember { mutableStateOf<String?>(null) }
-    var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
-    var quality by remember { mutableStateOf("audio-only (default)") }
+    var qualityList by remember { mutableStateOf(listOf(QUALITY_AUDIO_ONLY)) }
+    var quality by remember { mutableStateOf(QUALITY_AUDIO_ONLY) }
     var playerLoading by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
     var playerPositionMs by remember { mutableStateOf(0L) }
@@ -437,7 +441,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // Download manager: the sd behind the current pinConfirm + live quick-pick selection.
     var pinSd by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.StreamData?>(null) }
-    var pinSelQuality by remember { mutableStateOf("audio-only (default)") }
+    var pinSelQuality by remember { mutableStateOf(QUALITY_AUDIO_ONLY) }
     var pinSelAudio by remember { mutableStateOf(0) }
     var pinSelSubs by remember { mutableStateOf(emptySet<Int>()) } // empty = none
     var pinSelLoc by remember { mutableStateOf("internal") }
@@ -529,6 +533,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var scCorrected by remember { mutableStateOf(false) }
     // screens-fix Music P1-M5: taste TTL (5 min) — refreshTaste skips network while fresh.
     var tasteFetchedAt by remember { mutableStateOf(0L) }
+    // screens-fix Library P2-L12: most-replayed rail data (loaded when the hub opens).
+    var topPlayedHome by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.local.PlayedStat>()) }
     val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var recentMusicSearches by remember { mutableStateOf(listOf<String>()) }
     // Local-profile recommendations (no account): quick picks + one YTM mix shelf.
@@ -1183,10 +1189,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try {
                 val rows = dao.itemsOnce(pid)
                 if (rows.isEmpty()) { uiToast(ctx.getString(R.string.toast_csv_empty)); return@launch }
-                val sb = StringBuilder("title,channel,url,duration_sec\n")
+                // screens-fix Library P1-L4: video_id column first (round-trips through import).
+                val sb = StringBuilder("video_id,title,channel,url,duration_sec\n")
                 for (r in rows) {
                     fun q(v: String?): String = "\"" + (v ?: "").replace("\"", "\"\"") + "\""
-                    sb.append(q(r.title)).append(',').append(q(r.channel)).append(',')
+                    sb.append(q(r.videoId)).append(',').append(q(r.title)).append(',').append(q(r.channel)).append(',')
                         .append(q(r.url)).append(',').append(r.durationSec ?: "").append('\n')
                 }
                 val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
@@ -1219,6 +1226,87 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     androidx.compose.runtime.LaunchedEffect(showPlaylists, openPlaylistId) { if (showPlaylists) loadPlSorts(openPlaylistId) }
+    // screens-fix Library P1-L5: remote playlist -> local copy (local fun keeps the when-branch small).
+    fun saveRemoteList(list: List<VideoItem>) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val rpTitle = try { openRemote?.title } catch (_: Exception) { null }
+                val name = ((rpTitle ?: "Remote").take(80) + " (import)")
+                val pid = dao.insertPlaylist(com.mohamedadel.mytube.data.local.PlaylistEntity(name = name, emoji = "\uD83C\uDFB5", mode = "music"))
+                val rows = list.mapIndexed { i, v ->
+                    com.mohamedadel.mytube.data.local.PlaylistItemEntity(
+                        playlistId = pid, videoId = v.id, title = v.title, channel = v.channel,
+                        thumbnail = v.thumbnail, url = v.url, durationSec = v.durationSec,
+                        viewCount = v.viewCount, position = i)
+                }
+                if (rows.isNotEmpty()) dao.insertItems(rows)
+                uiToast(ctx.getString(R.string.toast_csv_imported_fmt, rows.size))
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_playlist_save_fail)) }
+        }
+    }
+    // screens-fix Library P1-L4: CSV import (round-trips our own export; header-aware).
+    fun importPlaylistCsv(uri: android.net.Uri) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val text = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return@launch
+                val lines = text.lines().filter { it.isNotBlank() }
+                if (lines.size < 2) { uiToast(ctx.getString(R.string.import_invalid)); return@launch }
+                fun splitCsv(line: String): List<String> {
+                    val out = mutableListOf<String>()
+                    val cur = StringBuilder()
+                    var inQ = false
+                    var i = 0
+                    while (i < line.length) {
+                        val c = line[i]
+                        if (inQ) {
+                            if (c == '"') {
+                                if (i + 1 < line.length && line[i + 1] == '"') { cur.append('"'); i++ } else inQ = false
+                            } else cur.append(c)
+                        } else {
+                            if (c == '"') inQ = true else if (c == ',') { out.add(cur.toString()); cur.clear() } else cur.append(c)
+                        }
+                        i++
+                    }
+                    out.add(cur.toString())
+                    return out
+                }
+                val header = splitCsv(lines[0]).map { it.trim().lowercase() }
+                val hasId = header.getOrNull(0) == "video_id"
+                val pid = dao.insertPlaylist(
+                    com.mohamedadel.mytube.data.local.PlaylistEntity(
+                        name = ("CSV " + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())).take(80),
+                        emoji = "\uD83C\uDFB5", mode = "music")
+                )
+                var n = 0
+                val rows = lines.drop(1).mapNotNull { ln ->
+                    try {
+                        val c = splitCsv(ln)
+                        if (c.all { it.isBlank() }) return@mapNotNull null
+                        val (vid, title, channel, url, dur) = if (hasId) {
+                            listOf(c.getOrNull(0), c.getOrNull(1), c.getOrNull(2), c.getOrNull(3), c.getOrNull(4))
+                        } else {
+                            listOf(null, c.getOrNull(0), c.getOrNull(1), c.getOrNull(2), c.getOrNull(3))
+                        }
+                        if (title.isNullOrBlank() && url.isNullOrBlank()) return@mapNotNull null
+                        n++
+                        com.mohamedadel.mytube.data.local.PlaylistItemEntity(
+                            playlistId = pid, videoId = vid?.ifBlank { null },
+                            title = title?.ifBlank { null }, channel = channel?.ifBlank { null },
+                            thumbnail = null, url = url?.ifBlank { null },
+                            durationSec = dur?.trim()?.toLongOrNull(), viewCount = null, position = n)
+                    } catch (_: Exception) { null }
+                }
+                if (rows.isNotEmpty()) dao.insertItems(rows)
+                uiToast(ctx.getString(R.string.toast_csv_imported_fmt, rows.size))
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.backup_import_fail)) }
+        }
+    }
+    val csvImportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        importPlaylistCsv(uri)
+    }
     val subsImportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri ->
@@ -1407,7 +1495,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val maxH = if (prefAllow4k) Int.MAX_VALUE else 1080
         val capped = if (maxH == Int.MAX_VALUE) s else try { s.copy(videoUrlByQuality = s.videoUrlByQuality.filterKeys { (qualityHeight(it) ?: 0) <= maxH }) } catch (_: Exception) { s }
         val url = when {
-            q == "audio-only (default)" -> selAudio
+            q == QUALITY_AUDIO_ONLY -> selAudio
             q.startsWith("auto") -> autoUrl(capped, ctx.estimatedDownstreamKbps())
             else -> capped.videoUrlByQuality[q]
         } ?: return null
@@ -1444,8 +1532,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         p.playWhenReady = false
         // Fix: muxed files bake their own audio, so a picked track was silently ignored there.
         // Merged rebuild (muxed video + picked audio) + one-shot disable of the baked audio group.
-        val needExternalAudio = isMuxed && selAudio != null && audioTrackIdx != 0 && q != "audio-only (default)"
-        if (q == "audio-only (default)" || selAudio == null || (isMuxed && !needExternalAudio)) {
+        val needExternalAudio = isMuxed && selAudio != null && audioTrackIdx != 0 && q != QUALITY_AUDIO_ONLY
+        if (q == QUALITY_AUDIO_ONLY || selAudio == null || (isMuxed && !needExternalAudio)) {
             p.setMediaItem(mediaItem)
             p.prepare()
         } else {
@@ -1522,7 +1610,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val sd = cap4k(sd0)
         val autoKey = autoKeyFor(sd, kbps)
         val sorted = sd.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
-        return mutableListOf("audio-only (default)", autoKey).also { it.addAll(sorted) }
+        return mutableListOf(QUALITY_AUDIO_ONLY, autoKey).also { it.addAll(sorted) }
     }
     // default quality preference (applies to every new video AND to list-context pins)
     fun pickStartQuality(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
@@ -1531,9 +1619,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val sorted = sd.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
         return when (prefQuality) {
             "auto" -> autoKey
-            "saver" -> sorted.lastOrNull() ?: "audio-only (default)"
+            "saver" -> sorted.lastOrNull() ?: QUALITY_AUDIO_ONLY
             "high" -> sorted.firstOrNull() ?: autoKey
-            else -> "audio-only (default)"
+            else -> QUALITY_AUDIO_ONLY
         }
     }
     // Chromecast: guess the receiver content type from the resolved stream URL.
@@ -1555,7 +1643,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val s = cap4k(s0)
             val triple = try { resolvePlaybackUrl(quality, s) } catch (_: Exception) { null } ?: return
             val url = triple.first
-            val mime = castMimeFor(url, quality == "audio-only (default)")
+            val mime = castMimeFor(url, quality == QUALITY_AUDIO_ONLY)
             val pos = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }
             val ok = CastManager.load(url, playing?.title ?: s.title, playing?.thumbnail, mime, pos, autoplay)
             if (ok) {
@@ -1621,9 +1709,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         subtitles = emptyList()
                     )
                     streamData = s
-                    qualityList = listOf("audio-only (default)")
-                    quality = "audio-only (default)"
-                    applyQuality("audio-only (default)", s, player, autoplay = wasPlayingQueue, local = true)
+                    qualityList = listOf(QUALITY_AUDIO_ONLY)
+                    quality = QUALITY_AUDIO_ONLY
+                    applyQuality(QUALITY_AUDIO_ONLY, s, player, autoplay = wasPlayingQueue, local = true)
                     if (CastManager.connected.value) castCurrent(autoplay = true)
                     return@launch
                 } catch (_: Exception) {
@@ -1673,7 +1761,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             return@launch
                         }
                     }
-                    val label = meta.optString("quality", "audio-only (default)").takeIf { it.isNotBlank() } ?: "audio-only (default)"
+                    val label = meta.optString("quality", QUALITY_AUDIO_ONLY).takeIf { it.isNotBlank() } ?: QUALITY_AUDIO_ONLY
                     val hasAudio = aFile?.exists() == true
                     val hasSub = sFile?.exists() == true
                     val vUri = android.net.Uri.fromFile(vFile).toString()
@@ -1787,10 +1875,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // label the auto entry with the speed-based target so the user sees what auto will pick
             val kbps = ctx.estimatedDownstreamKbps()
             qualityList = qualityEntriesFor(s, kbps)
-            val startQ = if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
+            val startQ = if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY else pickStartQuality(s, kbps)
             // video-mode playlist: never start audio-only (keeps videos out of the music flow)
-            quality = if (videoModeQueue && startQ == "audio-only (default)" && s.videoUrlByQuality.isNotEmpty()) {
-                qualityList.firstOrNull { it != "audio-only (default)" } ?: startQ
+            quality = if (videoModeQueue && startQ == QUALITY_AUDIO_ONLY && s.videoUrlByQuality.isNotEmpty()) {
+                qualityList.firstOrNull { it != QUALITY_AUDIO_ONLY } ?: startQ
             } else startQ
             applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
             if (CastManager.connected.value) castCurrent(autoplay = true)
@@ -2895,7 +2983,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
                 val kbps = ctx.estimatedDownstreamKbps()
                 // Audio-only sources (e.g. SoundCloud) have no video map: pin the audio directly.
-                val qq = q ?: if (s.videoUrlByQuality.isEmpty()) "audio-only (default)" else pickStartQuality(s, kbps)
+                val qq = q ?: if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY else pickStartQuality(s, kbps)
                 val ai = aIdx ?: pickAudioIdxFor(s)
                 val si = sIdxs ?: matchSubIdxsFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
@@ -3013,8 +3101,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
                 val kbps = ctx.estimatedDownstreamKbps()
                 val lastQ = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
-                val qq = if (s.videoUrlByQuality.isEmpty()) "audio-only (default)"
-                    else if (!lastQ.isNullOrBlank() && (lastQ == "audio-only (default)" || s.videoUrlByQuality.containsKey(lastQ) || lastQ.startsWith("auto"))) lastQ
+                val qq = if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY
+                    else if (!lastQ.isNullOrBlank() && (lastQ == QUALITY_AUDIO_ONLY || s.videoUrlByQuality.containsKey(lastQ) || lastQ.startsWith("auto"))) lastQ
                     else pickStartQuality(s, kbps)
                 val ai = pickAudioIdxFor(s)
                 val lastSubs = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.filter { s.subtitles.getOrNull(it) != null }.toSet() } catch (_: Exception) { emptySet() }
@@ -3292,7 +3380,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (isInPip) {
             Box(Modifier.padding(pad).fillMaxSize()) {
                 val cur = playing
-                if (cur != null && quality != "audio-only (default)" && player != null) {
+                if (cur != null && quality != QUALITY_AUDIO_ONLY && player != null) {
                     AndroidView(
                         factory = { c ->
                             PlayerView(c).apply {
@@ -3384,6 +3472,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
             val cur = playing
             if (cur != null && (playerExpanded || isFullscreen)) {
+    // screens-fix queue (method-size, 2026-11-11): the 130-line PlayerArea call lived inline
+    // in MyTubeApp.invoke and helped breach the 64KB limit — same local-fun trick as SettingsPane.
+    @Composable
+    fun PlayerPane() {
                 PlayerArea(
                     video = cur,
                     player = player,
@@ -3520,6 +3612,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onRelatedOptions = { optionsFor = it },
                     storyboards = streamData?.storyboards ?: emptyList()
                 )
+    }
+                PlayerPane()
                 // comments sheet (real CommentsExtractor, pageless first 30)
                 if (showComments) {
                     androidx.compose.material3.AlertDialog(
@@ -3921,9 +4015,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         // screens-fix Music P1-M4: visible radio state + stop.
                         radioOn = radioOn,
                         onStopRadio = { radioOn = false }
+                        ,
+                        // screens-fix Library P2-L13: clear-all (queue itself is session-only by design).
+                        onClearAll = { queue = emptyList(); queueIndex = 0 }
                     )
                 }
                 showLibrary -> {
+                    // screens-fix Library P2-L12: load most-replayed when the hub opens (IO, silent fail).
+                    LaunchedEffect(showLibrary) {
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            try { topPlayedHome = dao.topPlayed(6) } catch (_: Exception) { }
+                        }
+                    }
                     LibraryScreen(
                         onHistory = { showLibrary = false; fromLibrary = true; showHistory = true },
                         onDownloads = { showLibrary = false; fromLibrary = true; showDownloads = true },
@@ -3938,7 +4041,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onUnsubscribe = { url -> scope.launch { try { dao.deleteSubscription(url) } catch (_: Exception) { } } },
                         onImportSubs = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } },
                         feedCounts = feedCounts,
-                        onOpenChannel = { url -> openChannel(url) }
+                        onOpenChannel = { url -> openChannel(url) },
+                        topPlayed = topPlayedHome,
+                        onPlayTop = { v -> playVideo(v) }
                     )
                 }
                 showDownloads -> {
@@ -4034,168 +4139,47 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     )
                 }
                 showSC -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        SearchScreen(
-                            query = scQuery,
-                            loading = scLoading,
-                            onQueryChange = { scQuery = it },
-                            onSearch = { q -> doScSearch(q) },
-                            onClose = { goHome() },
-                            onClear = { scQuery = ""; scResults = emptyList(); scError = null },
-                            showDropdown = true,
-                            dropRecents = if (scQuery.isBlank()) recentMusicSearches else recentMusicSearches.filter { r -> r.contains(scQuery, ignoreCase = true) },
-                            onPickSuggestion = { picked -> doScSearch(picked) },
-                            onClearRecents = { recentMusicSearches = emptyList(); try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { } },
-                            onVoice = { startVoiceSearch() },
-                            fillMax = false
-                        )
-                        com.mohamedadel.mytube.ui.library.MusicSourceSegment(
-                            selected = scSource,
-                            // screens-fix Music P2-M11: scroll to top on source change.
-                            onSelect = { src -> scSource = src; scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, src) }
-                        )
-                        if (scSource == 1) {
-                            // screens-fix Music P2-M12: albums tab shows cards only by design.
-                            if (scKind == "albums") {
-                                Text(
-                                    stringResource(R.string.sc_albums_note),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                )
-                            }
-                            androidx.compose.foundation.layout.Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
-                            ) {
-                                listOf("songs", "albums", "artists", "playlists").forEach { k ->
-                                    androidx.compose.material3.FilterChip(
-                                        selected = scKind == k,
-                                        // screens-fix Music P2-M11: scroll to top on kind change.
-                                        onClick = { if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
-                                        label = { Text(stringResource(when (k) { "songs" -> R.string.filter_songs; "albums" -> R.string.filter_albums; "artists" -> R.string.filter_artists; else -> R.string.filter_playlists })) }
-                                    )
-                                }
-                            }
-                        }
-                        // Single scroll surface: header rows + results share one LazyColumn with the
-                        // leftover height (weight). Siblings in a plain Column squeezed the list to ~0
-                        // height — the More button sat off-screen and scrolling died.
-                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f), state = scListState) {
-                            // Music home: term chips + horizontal shelves (redesigned — shelves, not a flat list).
-                            if (scQuery.isBlank() && scResults.isEmpty() && scError == null && (tasteProfile?.terms?.isNotEmpty() == true || tasteProfile?.picks?.isNotEmpty() == true)) {
-                                if (tasteProfile?.terms?.isNotEmpty() == true) {
-                                    item(key = "sc-terms") {
-                                        androidx.compose.foundation.layout.Row(
-                                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-                                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            tasteProfile!!.terms.forEach { t ->
-                                                androidx.compose.material3.FilterChip(
-                                                    selected = false,
-                                                    onClick = { scQuery = t; doScSearch(t) },
-                                                    label = { Text(t) }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                if (tasteProfile?.picks?.isNotEmpty() == true) {
-                                    item(key = "sc-picks") {
-                                        com.mohamedadel.mytube.ui.library.MusicShelf(
-                                            title = stringResource(R.string.quick_picks),
-                                            // screens-fix Music P1-M6: dedupe by canonical key.
-                                            items = (tasteProfile?.picks ?: emptyList()).distinctBy { it.favKey() }.take(8),
-                                            playingUrl = playing?.url,
-                                            isPlaying = isPlaying,
-                                            onPlay = { v -> playVideo(v) },
-                                            onLongClick = { optionsFor = it }
-                                        )
-                                    }
-                                }
-                                if (tasteMixLoading || tasteMix.isNotEmpty()) {
-                                    item(key = "sc-mix") {
-                                        if (tasteMixLoading && tasteMix.isEmpty()) {
-                                            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                                            }
-                                        } else {
-                                            com.mohamedadel.mytube.ui.library.MusicShelf(
-                                                title = try { ctx.getString(R.string.taste_mix_fmt, tasteMixTerm ?: "") } catch (_: Exception) { tasteMixTerm ?: "" },
-                                                items = tasteMix,
-                                                playingUrl = playing?.url,
-                                                isPlaying = isPlaying,
-                                                onPlay = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
-                                                onLongClick = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else { optionsFor = v } }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            if (scError != null) {
-                                item(key = "sc-err") {
-                                    Text(
-                                        scError ?: "",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                    )
-                                }
-                            }
-                            // screens-fix Music P1-M7: correction row (mirrors main search).
-                            val scSugg = scSuggestion
-                            if (scSugg != null) {
-                                item(key = "sc-corr") {
-                                    androidx.compose.foundation.layout.Row(
-                                        modifier = Modifier.fillMaxWidth().clickable { doScSearch(scSugg) }.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            if (scCorrected) stringResource(R.string.did_you_mean_showing_fmt, scSugg) else stringResource(R.string.did_you_mean_fmt, scSugg),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.tertiary
-                                        )
-                                    }
-                                }
-                            }
-                            if (remotePlaylists.isNotEmpty()) {
-                                item(key = "sc-pl-title") {
-                                    Text(
-                                        stringResource(R.string.remote_playlists_title),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                    )
-                                }
-                                // screens-fix Home P0-H3: stable keys (no index prefix).
-                                itemsIndexed(items = remotePlaylists, key = { _, p -> "pl|" + (p.url ?: p.title ?: p.hashCode().toString()) }) { _, p ->
-                                    com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
-                                }
-                            }
-                            itemsIndexed(items = scResults, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
-                                SearchRow(
-                                    v = v,
-                                    isCurrent = playing?.url == v.url,
-                                    isPlaying = isPlaying && playing?.url == v.url,
-                                    isFav = v.favKey() in favoriteSet,
-                                    // channel/artist rows open the channel screen — never the player
-                                    onClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
-                                    onLongClick = { if (v.isChannel) openChannel(v.channelUrl ?: v.url) else { optionsFor = it } },
-                                    onFav = { toggleFavorite(it) },
-                                    pinBadge = pinBadges[v.favKey()],
-                                    pinning = pinningKeys.contains(v.favKey())
-                                )
-                            }
-                            if (scHasMore || scLoadingMore) {
-                                item(key = "sc-more") {
-                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                                        if (scLoadingMore) CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                                        else androidx.compose.material3.TextButton(onClick = { loadScMore() }) { Text(stringResource(R.string.load_more)) }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    com.mohamedadel.mytube.ui.library.MusicTab(
+                        scQuery = scQuery,
+                        scLoading = scLoading,
+                        recentMusicSearches = recentMusicSearches,
+                        scSource = scSource,
+                        scKind = scKind,
+                        scResults = scResults,
+                        scError = scError,
+                        scSuggestion = scSuggestion,
+                        scCorrected = scCorrected,
+                        remotePlaylists = remotePlaylists,
+                        scHasMore = scHasMore,
+                        scLoadingMore = scLoadingMore,
+                        tasteProfile = tasteProfile,
+                        tasteMix = tasteMix,
+                        tasteMixTerm = tasteMixTerm,
+                        tasteMixLoading = tasteMixLoading,
+                        playingUrl = playing?.url,
+                        isPlaying = isPlaying,
+                        favoriteSet = favoriteSet,
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys,
+                        scListState = scListState,
+                        onQueryChange = { scQuery = it },
+                        onSearch = { q -> doScSearch(q) },
+                        onClose = { goHome() },
+                        onClear = { scQuery = ""; scResults = emptyList(); scError = null },
+                        onPickSuggestion = { picked -> doScSearch(picked) },
+                        onClearRecents = { recentMusicSearches = emptyList(); try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { } },
+                        onVoice = { startVoiceSearch() },
+                        onSourceSelect = { src -> scSource = src; scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, src) },
+                        onKindSelect = { k -> if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
+                        onTerm = { t -> scQuery = t; doScSearch(t) },
+                        onPlayVideo = { v -> playVideo(v) },
+                        onPlayMix = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
+                        onOpenChannel = { url -> openChannel(url) },
+                        onOptions = { optionsFor = it },
+                        onToggleFav = { toggleFavorite(it) },
+                        onOpenRemotePlaylist = { p -> openRemotePlaylist(p) },
+                        onLoadMore = { loadScMore() }
+                    )
                 }
                 showSettings -> { SettingsPane() }
                 showHistory -> {
@@ -4288,18 +4272,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             }
                         },
                         onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
-                        onMoveItem = { pid, iid, dir ->
-                            scope.launch {
-                                val rows = dao.itemsOnce(pid).toMutableList()
-                                val i = rows.indexOfFirst { it.id == iid }
-                                val j = i + dir
-                                if (i >= 0 && j in rows.indices) {
-                                    val tmp = rows[i]; rows[i] = rows[j]; rows[j] = tmp
-                                    dao.updateItems(rows.mapIndexed { k, r -> r.copy(position = k) })
-                                }
-                            }
-                        },
-                        onDeleteItem = { pid, iid -> scope.launch { dao.deleteItem(pid, iid) } },
                         onClearItems = { pid -> scope.launch { dao.clearPlaylist(pid) } },
                         onMoveToPlaylist = { pid, iid, targetPid ->
                             scope.launch {
@@ -4334,6 +4306,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPinItems = { vs -> scope.launch { for (v in vs) { try { quickPin(v, null) } catch (_: Exception) { } } } },
                         onRemoveItems = { pid, ids -> scope.launch { try { dao.deleteItems(pid, ids) } catch (_: Exception) { } } },
                         onExport = { pid -> exportPlaylistCsv(pid) },
+                        // screens-fix Library P1-L4: CSV import entry.
+                        onImport = { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } },
                         tabSort = plTabSort,
                         onTabSort = { v -> plTabSort = v; try { prefs.edit().putString("pl_tab_sort", v).apply() } catch (_: Exception) { } },
                         songSort = plSongSort,
@@ -4366,6 +4340,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         onLongClick = { optionsFor = it },
                         onFav = { toggleFavorite(it) },
+                        // screens-fix Library P1-L5: remote -> local save + pin-all.
+                        // screens-fix Library P2 (method-size): body lives in a local fun, not inline.
+                        onSave = { list -> saveRemoteList(list) },
+                        onPinAll = { list -> scope.launch { for (v in list) { try { quickPin(v, null) } catch (_: Exception) { } } } },
                     ) else { openRemote = null }
                 }
                 loading -> {

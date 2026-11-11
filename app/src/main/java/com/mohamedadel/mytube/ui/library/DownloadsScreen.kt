@@ -27,6 +27,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +60,8 @@ fun DownloadsScreen(
     orphanBytes: Long = 0L,
     onCleanOrphans: () -> Unit = {}
 ) {
+    // screens-fix Library P0-L1: destructive clear-all needs explicit confirmation.
+    var confirmClearAll by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -87,10 +91,18 @@ fun DownloadsScreen(
                 modifier = Modifier.weight(1f)
             )
             if (pins.isNotEmpty()) {
-                androidx.compose.material3.TextButton(onClick = onClearAll) {
+                androidx.compose.material3.TextButton(onClick = { confirmClearAll = true }) {
                     Text(stringResource(R.string.dl_clear_all))
                 }
             }
+        }
+        if (confirmClearAll) {
+            com.mohamedadel.mytube.ui.playlists.ConfirmDeleteDialog(
+                title = stringResource(R.string.dl_clear_all_title),
+                message = stringResource(R.string.dl_clear_all_fmt, pins.size),
+                onConfirm = { confirmClearAll = false; onClearAll() },
+                onDismiss = { confirmClearAll = false }
+            )
         }
         Text(
             stringResource(R.string.dl_total_fmt, totalBytes / 1048576.0),
@@ -100,14 +112,25 @@ fun DownloadsScreen(
         )
         Spacer(Modifier.height(4.dp))
         if (pins.isEmpty() && pinningKeys.isEmpty()) {
-            androidx.compose.foundation.layout.Box(
+            // screens-fix Library P0-L3: real empty-state (icon + hint + how-to) instead of bare text.
+            androidx.compose.foundation.layout.Column(
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Spacer(modifier = Modifier.height(48.dp))
+                Icon(Icons.Rounded.DownloadDone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     stringResource(R.string.dl_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.dl_empty_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 32.dp)
                 )
             }
         } else {

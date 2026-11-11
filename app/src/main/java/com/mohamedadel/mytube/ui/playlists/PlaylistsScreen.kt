@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -91,12 +92,12 @@ fun PlaylistsScreen(
     onPinItems: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = {},
     onRemoveItems: (Long, List<Long>) -> Unit = { _, _ -> },
     onExport: (Long) -> Unit = {},
+    // screens-fix Library P1-L4: CSV import entry point.
+    onImport: (() -> Unit)? = null,
     tabSort: String = "custom",
     onTabSort: (String) -> Unit = {},
     songSort: String = "added",
     onSongSort: (String) -> Unit = {},
-    onMoveItem: (Long, Long, Int) -> Unit,
-    onDeleteItem: (Long, Long) -> Unit,
     onClearItems: (Long) -> Unit,
     onMoveToPlaylist: (Long, Long, Long) -> Unit = { _, _, _ -> },
     onBack: () -> Unit,
@@ -108,6 +109,10 @@ fun PlaylistsScreen(
     var showCreate by remember { mutableStateOf(false) }
     var createEmoji by remember { mutableStateOf("🎵") }
     var deleteTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    // screens-fix Library P0-L1: bulk remove is destructive too.
+    var confirmBulk by remember { mutableStateOf(false) }
+    // screens-fix Library P0-L1: confirm state for the destructive clear-items action.
+    var confirmClearItems by remember { mutableStateOf(false) }
     // move-item target picker: which item, from the open playlist, goes where
     var moveRow by remember(openId) { mutableStateOf<PlaylistItemEntity?>(null) }
     val openPl = playlists.firstOrNull { it.id == openId }
@@ -157,6 +162,12 @@ fun PlaylistsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 if (openId == null) {
+                    // screens-fix Library P1-L4: CSV import next to create (hub level).
+                    if (onImport != null) {
+                        IconButton(onClick = { onImport() }) {
+                            Icon(Icons.Rounded.Upload, contentDescription = stringResource(R.string.import_csv), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     IconButton(onClick = { showSortTabs = true }) {
                         Icon(Icons.Rounded.Sort, contentDescription = stringResource(R.string.sort_playlists), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -245,6 +256,13 @@ fun PlaylistsScreen(
                         }
                     }
                 }
+                // screens-fix Library P1-L9: mode chips live in the editor (were orphaned in view-empty).
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(selected = editMode2 == "music", onClick = { editMode2 = "music" }, label = { Text(stringResource(R.string.pl_mode_music)) })
+                        FilterChip(selected = editMode2 == "video", onClick = { editMode2 = "video" }, label = { Text(stringResource(R.string.pl_mode_video)) })
+                    }
+                }
             }
             if (openId != null && selecting && !editMode) {
                 item {
@@ -257,7 +275,7 @@ fun PlaylistsScreen(
                         IconButton(onClick = { onPinItems(sel.map { it.toVideoItem() }) }, enabled = sel.isNotEmpty()) {
                             Icon(Icons.Rounded.Download, contentDescription = stringResource(R.string.download), tint = MaterialTheme.colorScheme.primary)
                         }
-                        IconButton(onClick = { openId?.let { onRemoveItems(it, sel.map { r -> r.id }) }; selected = emptySet() }, enabled = sel.isNotEmpty()) {
+                        IconButton(onClick = { confirmBulk = true }, enabled = sel.isNotEmpty()) {
                             Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete_item), tint = MaterialTheme.colorScheme.error)
                         }
                         IconButton(onClick = { selecting = false; selected = emptySet() }) {
@@ -272,10 +290,14 @@ fun PlaylistsScreen(
                         Text(stringResource(R.string.playlist_empty_items), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                // screens-fix Library P1-L9: view-mode subtitle names the current mode (chips moved to editor).
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        FilterChip(selected = editMode2 == "music", onClick = { editMode2 = "music" }, label = { Text(stringResource(R.string.pl_mode_music)) })
-                        FilterChip(selected = editMode2 == "video", onClick = { editMode2 = "video" }, label = { Text(stringResource(R.string.pl_mode_video)) })
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(if ((openPl?.mode ?: "music") == "video") R.string.pl_mode_video else R.string.pl_mode_music),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -350,11 +372,31 @@ fun PlaylistsScreen(
                         Text(stringResource(R.string.rows_count_fmt, rows.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.weight(1f))
                         androidx.compose.material3.TextButton(onClick = { openId?.let { onPlayAll(it) } }) { Text(stringResource(R.string.play_all)) }
-                        androidx.compose.material3.TextButton(onClick = { openId?.let { onClearItems(it) } }) { Text(stringResource(R.string.clear_items)) }
+                        // screens-fix Library P0-L1: confirm before emptying the playlist.
+                        androidx.compose.material3.TextButton(onClick = { confirmClearItems = true }) { Text(stringResource(R.string.clear_items)) }
                     }
                 }
             }
         }
+    }
+    if (confirmClearItems) {
+        val pid = openId
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.clear_items_title),
+            message = stringResource(R.string.del_items_confirm_fmt, rows.size),
+            onConfirm = { confirmClearItems = false; pid?.let { onClearItems(it) } },
+            onDismiss = { confirmClearItems = false }
+        )
+    }
+    if (confirmBulk) {
+        val pid = openId
+        val sel = rows.filter { it.id in selected }
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.delete),
+            message = stringResource(R.string.del_sel_confirm_fmt, sel.size),
+            onConfirm = { confirmBulk = false; pid?.let { onRemoveItems(it, sel.map { r -> r.id }) }; selected = emptySet() },
+            onDismiss = { confirmBulk = false }
+        )
     }
     // create dialog (name + cover emoji)
     if (showCreate) {

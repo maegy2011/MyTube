@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -65,6 +66,9 @@ fun QueuePanel(
     // screens-fix Music P1-M4: radio state badge + stop.
     radioOn: Boolean = false,
     onStopRadio: () -> Unit = {}
+    ,
+    // screens-fix Library P2-L13: clear-all (swipe gestures skipped — needs gesture design).
+    onClearAll: (() -> Unit)? = null
 ) {
     var nameDraft by remember { mutableStateOf("") }
     Surface(
@@ -76,6 +80,10 @@ fun QueuePanel(
         Column(modifier = Modifier.padding(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.queue_title_fmt, items.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                // screens-fix Library P2-L13: clear-all next to dismiss.
+                if (onClearAll != null && items.isNotEmpty()) {
+                    androidx.compose.material3.TextButton(onClick = onClearAll) { Text(stringResource(R.string.clear)) }
+                }
                 androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
             }
             if (radioOn) {
@@ -100,19 +108,19 @@ fun QueuePanel(
                             Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
                             Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
                             // explicit "play from here": sequential playback starts ONLY from this button
-                            IconButton(onClick = { onPlayFrom(idx) }, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onPlayFrom(idx) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                 Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play_from_here), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { onMove(idx, -1) }, enabled = idx > 0, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onMove(idx, -1) }, enabled = idx > 0, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                 Icon(Icons.Rounded.ArrowUpward, contentDescription = stringResource(R.string.move_up_short), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
-                            IconButton(onClick = { onMove(idx, 1) }, enabled = idx < items.size - 1, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onMove(idx, 1) }, enabled = idx < items.size - 1, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                 Icon(Icons.Rounded.ArrowDownward, contentDescription = stringResource(R.string.move_down_short), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
-                            IconButton(onClick = { onRemove(idx) }, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onRemove(idx) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                 Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
-                            IconButton(onClick = { onOptions(v) }, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onOptions(v) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
                         }

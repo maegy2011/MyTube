@@ -42,6 +42,9 @@ fun RemoteRoute(
     onPlay: (VideoItem) -> Unit,
     onLongClick: (VideoItem) -> Unit,
     onFav: (VideoItem) -> Unit,
+    // screens-fix Library P1-L5: remote playlists were read-only — save + pin-all entry points.
+    onSave: ((List<VideoItem>) -> Unit)? = null,
+    onPinAll: ((List<VideoItem>) -> Unit)? = null,
 ) {
     RemotePlaylistView(
         rp = rp,
@@ -56,7 +59,9 @@ fun RemoteRoute(
         onLongClick = onLongClick,
         onFav = onFav,
         pinBadgeOf = { v -> pinBadges[v.favKey()] },
-        pinningOf = { v -> pinningKeys.contains(v.favKey()) }
+        pinningOf = { v -> pinningKeys.contains(v.favKey()) },
+        onSave = onSave,
+        onPinAll = onPinAll
     )
 }
 
@@ -78,7 +83,9 @@ fun RemotePlaylistView(
     onLongClick: (VideoItem) -> Unit,
     onFav: (VideoItem) -> Unit,
     pinBadgeOf: (VideoItem) -> String?,
-    pinningOf: (VideoItem) -> Boolean
+    pinningOf: (VideoItem) -> Boolean,
+    onSave: ((List<VideoItem>) -> Unit)? = null,
+    onPinAll: ((List<VideoItem>) -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
@@ -95,6 +102,12 @@ fun RemotePlaylistView(
             )
             if (items.isNotEmpty()) {
                 TextButton(onClick = { onPlayAll(items) }) { Text(stringResource(R.string.remote_play_all)) }
+                if (onSave != null) {
+                    TextButton(onClick = { onSave(items) }) { Text(stringResource(R.string.remote_save)) }
+                }
+                if (onPinAll != null) {
+                    TextButton(onClick = { onPinAll(items) }) { Text(stringResource(R.string.remote_pin_all)) }
+                }
             }
         }
         if (loading) {
@@ -105,7 +118,8 @@ fun RemotePlaylistView(
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                itemsIndexed(items = items, key = { idx, v -> "$idx|${v.url ?: v.title ?: "n/a"}" }) { _, v ->
+                // screens-fix appendix-4: stable keys (no index prefix).
+                itemsIndexed(items = items, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
                     SearchRow(
                         v = v,
                         isCurrent = playingUrl == v.url,

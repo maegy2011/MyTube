@@ -112,7 +112,12 @@ fun FeedScreen(
                 loading -> com.mohamedadel.mytube.ui.results.VideoListSkeleton(count = 4)
                 shown.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                        Text(stringResource(R.string.feed_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // screens-fix Library P1-L8: group feeds get their own empty copy (was generic).
+                        Text(
+                            if (filterLabel != null) stringResource(R.string.feed_empty_group_fmt, filterLabel) else stringResource(R.string.feed_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Spacer(Modifier.height(12.dp))
                         IconButton(onClick = onRefresh) {
                             Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.feed_refresh), tint = MaterialTheme.colorScheme.primary)

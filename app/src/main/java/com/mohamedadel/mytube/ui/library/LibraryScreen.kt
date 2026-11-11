@@ -54,7 +54,10 @@ fun LibraryScreen(
     onImportSubs: () -> Unit = {},
     // R3: per-channel counts from the live in-memory feed (zero DB/network) + tap-to-filter.
     feedCounts: Map<String, Int> = emptyMap(),
-    onOpenChannel: (String) -> Unit = {}
+    onOpenChannel: (String) -> Unit = {},
+    // screens-fix Library P2-L12: most-replayed rail (Room topPlayed, already exists for taste).
+    topPlayed: List<com.mohamedadel.mytube.data.local.PlayedStat> = emptyList(),
+    onPlayTop: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -158,6 +161,42 @@ fun LibraryScreen(
                     )
                 }
                 androidx.compose.material3.TextButton(onClick = { onUnsubscribe(sub.channelUrl) }) { Text(stringResource(R.string.unsubscribe)) }
+            }
+        }
+        // screens-fix Library P2-L12: most-replayed rail from Room topPlayed.
+        if (topPlayed.isNotEmpty()) {
+            item {
+                Text(
+                    stringResource(R.string.lib_most_replayed),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+            items(topPlayed.take(6), key = { it.videoKey }) { p ->
+                val v = com.mohamedadel.mytube.data.youtube.VideoItem(
+                    id = p.videoId, title = p.title, channel = p.channel,
+                    thumbnail = p.thumbnail, url = p.url
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { onPlayTop(v) }.padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(R.string.lib_plays_fmt, p.plays),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.width(48.dp)
+                    )
+                    Text(
+                        p.title ?: "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
