@@ -280,6 +280,7 @@
     <string name="picker_search_hint">بحث…</string>
     <string name="queue_removed_fmt">أُزيل “%1$s” من القائمة</string>
     <string name="undo">تراجع</string>
+    <string name="settings_search_hint">بحث في الإعدادات…</string>
     <string name="feed_refresh">تحديث</string>
     <string name="feed_empty">لا اشتراكات بعد — اشترك من صفحة قناة أو استورد ملفًا.</string>
     <!-- screens-fix Library P1-L8: distinct group-feed empty copy -->

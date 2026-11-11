@@ -26,7 +26,9 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -275,14 +277,37 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { confirmCache = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
+    // Deferred item 4 (2026-11-11): settings search — one field filters all 7 sections/rows;
+    // matching sections auto-expand via forceExpand so results are visible immediately.
+    var sQuery by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+    val sQ = sQuery.trim()
+    fun sHit(vararg t: String) = sQ.isEmpty() || t.any { it.contains(sQ, ignoreCase = true) }
+    val sLangT = stringResource(R.string.settings_sec_lang)
+    val sSubsT = stringResource(R.string.settings_sec_subs)
+    val sAudioT = stringResource(R.string.settings_sec_audio)
+    val sPlayerT = stringResource(R.string.settings_sec_player)
+    val sAppearT = stringResource(R.string.settings_sec_appearance)
+    val sDlT = stringResource(R.string.settings_sec_downloads)
+    val sDataT = stringResource(R.string.settings_sec_data)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface) }
         item {
-            SettingsSection(title = stringResource(R.string.settings_sec_lang)) {
+            Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = sQuery,
+                onValueChange = { sQuery = it },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                placeholder = { Text(stringResource(R.string.settings_search_hint)) },
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = stringResource(R.string.settings_search_hint) }
+            )
+        }
+        if (sHit(sLangT, stringResource(R.string.ui_lang_title), stringResource(R.string.country_title), stringResource(R.string.title_translate))) item {
+            SettingsSection(title = sLangT, forceExpand = sQ.isNotEmpty()) {
                 Text(
                     stringResource(R.string.device_line_fmt, deviceLang?.displayLanguage ?: deviceTag, deviceTag),
                     style = MaterialTheme.typography.bodySmall,
@@ -308,8 +333,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(title = stringResource(R.string.settings_sec_subs)) {
+        if (sHit(sSubsT, stringResource(R.string.sub_primary_title), stringResource(R.string.sub_fallback_title), stringResource(R.string.sub_hide_auto), stringResource(R.string.sub_size_title), stringResource(R.string.sub_fg_title), stringResource(R.string.sub_bg_title), stringResource(R.string.sub_edge_title), stringResource(R.string.sub_bold), stringResource(R.string.sub_role_title))) item {
+            SettingsSection(title = sSubsT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.sub_primary_title),
                     entries = listOf("auto" to langText("auto", deviceTag), "off" to langText("off", deviceTag)) + LANG_OPTIONS.map { it.first to langText(it.first, deviceTag) },
@@ -405,8 +430,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(title = stringResource(R.string.settings_sec_audio)) {
+        if (sHit(sAudioT, stringResource(R.string.audio_primary_title), stringResource(R.string.audio_fallback_title), stringResource(R.string.prefer_original), stringResource(R.string.audio_role_title), stringResource(R.string.skip_silence), stringResource(R.string.speed_title), stringResource(R.string.pitch_title), stringResource(R.string.volume_title), stringResource(R.string.eq_title))) item {
+            SettingsSection(title = sAudioT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.audio_primary_title),
                     entries = listOf("auto" to langText("auto", deviceTag)) + LANG_OPTIONS.map { it.first to langText(it.first, deviceTag) },
@@ -489,8 +514,8 @@ fun SettingsScreen(
                 }
             }
         }
-        item {
-            SettingsSection(title = stringResource(R.string.settings_sec_player)) {
+        if (sHit(sPlayerT, stringResource(R.string.quality_title), stringResource(R.string.playmode_title), stringResource(R.string.af_all), stringResource(R.string.sb_title), stringResource(R.string.pip_auto), stringResource(R.string.vis_comments), stringResource(R.string.vis_related), stringResource(R.string.vis_info), stringResource(R.string.vis_subs), stringResource(R.string.vis_4k), stringResource(R.string.keepalive_setting), stringResource(R.string.age_title))) item {
+            SettingsSection(title = sPlayerT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.quality_title),
                     entries = QUALITY_OPTIONS.map { it.first to stringResource(it.second) },
@@ -567,8 +592,8 @@ fun SettingsScreen(
                 AgeModeRow(mode = "allow", sel = ageMode, onPick = onAgeMode)
             }
         }
-        item {
-            SettingsSection(title = stringResource(R.string.settings_sec_appearance)) {
+        if (sHit(sAppearT, stringResource(R.string.theme_title), stringResource(R.string.accent_title))) item {
+            SettingsSection(title = sAppearT, forceExpand = sQ.isNotEmpty()) {
                 DropRow(
                     label = stringResource(R.string.theme_title),
                     entries = THEME_OPTIONS.map { it.first to stringResource(it.second) },
@@ -598,8 +623,8 @@ fun SettingsScreen(
                 Text(stringResource(R.string.accent_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        item {
-            SettingsSection(title = stringResource(R.string.settings_sec_downloads)) {
+        if (sHit(sDlT, stringResource(R.string.update_check), stringResource(R.string.backup_export), stringResource(R.string.backup_import), stringResource(R.string.offline_mode), stringResource(R.string.perf_parallel), stringResource(R.string.perf_feedcache), stringResource(R.string.perf_preload), stringResource(R.string.clear_pins), stringResource(R.string.clear_cache), stringResource(R.string.diag_copy), stringResource(R.string.cache_title), stringResource(R.string.pin_loc_title))) item {
+            SettingsSection(title = sDlT, forceExpand = sQ.isNotEmpty()) {
                 Text(
                     stringResource(R.string.pins_line_fmt, pinsCount, pinsSize),
                     style = MaterialTheme.typography.bodyMedium,
@@ -713,8 +738,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(title = stringResource(R.string.settings_sec_data)) {
+        if (sHit(sDataT, stringResource(R.string.clear_favorites), stringResource(R.string.clear_history))) item {
+            SettingsSection(title = sDataT, forceExpand = sQ.isNotEmpty()) {
                 Text(
                     stringResource(R.string.settings_data_line, favCount, histCount, plCount, dbSize),
                     style = MaterialTheme.typography.bodyMedium,
