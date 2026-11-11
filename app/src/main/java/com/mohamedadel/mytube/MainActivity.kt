@@ -1415,7 +1415,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try { toast(ctx.getString(R.string.toast_cast_ended)) } catch (_: Exception) { }
         }
     }
-    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = true, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null) {
+    // Single taps never expand: the mini player appears (SoundCloud/YTM-phone behavior);
+    // tap the mini player to expand. Explicit actions (play-now, queue-when-idle) pass
+    // expand = true; queue advances preserve the current state.
+    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null) {
         playing = v
         recordHistory(v)
         if (expand) playerExpanded = true
