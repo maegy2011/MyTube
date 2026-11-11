@@ -1,0 +1,90 @@
+name: Release APK
+
+# Builds a signed release APK and publishes it to GitHub Releases.
+# Trigger: push a tag like v0.3.3, or manual dispatch with a tag input.
+# Signing uses the same debug keystore as local builds (stored as repo secrets)
+# so the certificate stays identical across local and CI releases (updates keep working).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and release (e.g. v0.3.3)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APK_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.APK_TAG }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;36.0.0"
+
+      - name: Restore signing keystore
+        run: echo "${{ secrets.DEBUG_KEYSTORE_B64 }}" | base64 -d > /tmp/debug.keystore
+
+      - name: Build release APK
+        run: chmod +x gradlew && ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Zipalign + sign + verify
+        run: |
+          BT=$ANDROID_HOME/build-tools/36.0.0
+          UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
+          OUT="mytube-${{ env.APK_TAG }}.apk"
+          test -f "$UNSIGNED" || { echo "unsigned APK missing"; exit 1; }
+          $BT/zipalign -f 4 "$UNSIGNED" /tmp/aligned.apk
+          $BT/apksigner sign --ks /tmp/debug.keystore \
+            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --out "$OUT" /tmp/aligned.apk
+          $BT/apksigner verify --print-certs "$OUT"
+          ls -la "$OUT"
+          rm -f /tmp/debug.keystore /tmp/aligned.apk
+
+      - name: Build changelog
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "${{ env.APK_TAG }}^" 2>/dev/null || echo "")
+          {
+            echo "MyTube ${{ env.APK_TAG }} (side-loaded, debug-signed — same certificate as previous releases, in-place updates keep working)."
+            echo ""
+            echo "Commits in this release:"
+            echo '```'
+            if [ -n "$PREV" ]; then
+              git log "$PREV..${{ env.APK_TAG }}" --oneline | head -30
+            else
+              git log "${{ env.APK_TAG }}" --oneline | head -30
+            fi
+            echo '```'
+          } > /tmp/release-body.md
+          cat /tmp/release-body.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.APK_TAG }}
+          files: mytube-*.apk
+          body_path: /tmp/release-body.md
+          generate_release_notes: false
