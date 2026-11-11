@@ -85,7 +85,8 @@ fun MiniPlayer(
     onPrev: (() -> Unit)? = null,
     titleOverride: String? = null,
     hasNext: Boolean = false,
-    hasPrev: Boolean = false
+    hasPrev: Boolean = false,
+    castAvailable: Boolean = false
 ) {
     val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState()
     val dismissed = dismissState.currentValue != androidx.compose.material3.SwipeToDismissBoxValue.Settled
@@ -134,6 +135,16 @@ fun MiniPlayer(
                     IconButton(onClick = onNext, enabled = hasNext) {
                         Icon(Icons.Rounded.SkipNext, contentDescription = stringResource(R.string.next), tint = if (hasNext) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), modifier = Modifier.size(22.dp))
                     }
+                }
+                if (castAvailable) {
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { c ->
+                            androidx.mediarouter.app.MediaRouteButton(c).apply {
+                                try { com.mohamedadel.mytube.playback.CastManager.selector()?.let { routeSelector = it } } catch (_: Exception) { }
+                            }
+                        },
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
                 IconButton(onClick = onClose) {
                     Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.cd_close_player), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))

@@ -826,7 +826,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     LaunchedEffect(Unit) { ensurePermissions(); ensureBatteryExemption() }
     LaunchedEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption() }
+            if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption(); if (!com.mohamedadel.mytube.playback.CastManager.available.value) { try { com.mohamedadel.mytube.playback.CastManager.init(ctx.applicationContext) } catch (_: Exception) { } } }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         // no remove needed for composition lifetime
@@ -1972,6 +1972,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 appendLine("playing=" + (playing?.id ?: "none"))
                 appendLine("quality=" + quality)
                 appendLine("offline=" + prefOffline + " country=" + prefCountry)
+                appendLine("castAvailable=" + com.mohamedadel.mytube.playback.CastManager.available.value + " castConnected=" + com.mohamedadel.mytube.playback.CastManager.connected.value + " castErr=" + (com.mohamedadel.mytube.playback.CastManager.lastError ?: "none"))
             }
         } catch (_: Exception) { "MyTube diagnostics unavailable" }
     }
@@ -2652,6 +2653,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onPrev = { playPrevInQueue() },
                     hasNext = queueIndex >= 0 && queueIndex < queue.size - 1,
                     hasPrev = queueIndex > 0,
+                    castAvailable = CastManager.available.value,
                     onTap = {
                         // reopen the full player + jump the queue to the currently playing row
                         playerExpanded = true

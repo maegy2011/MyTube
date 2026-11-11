@@ -21,6 +21,9 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 object CastManager {
     val available = mutableStateOf(false)
     val connected = mutableStateOf(false)
+    /** Last init failure reason (for user-triggered diagnostics, never uploaded). */
+    var lastError: String? = null
+        private set
 
     /** Fired on the main thread when a Cast session starts/ends. Set by MainActivity. */
     var onSessionStarted: (() -> Unit)? = null
@@ -50,19 +53,21 @@ object CastManager {
         override fun onSessionResuming(session: CastSession, sessionId: String) { }
     }
 
-    /** Call once from Application.onCreate. Returns false when GMS/Cast is absent. */
+    /** Call from Application.onCreate + retried on every resume (GMS may update). */
     fun init(app: Context): Boolean {
         return try {
             val cc = CastContext.getSharedInstance(app.applicationContext)
             appCtx = app.applicationContext
-            cc.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
+            try { cc.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java) } catch (_: Exception) { }
             connected.value = try {
                 cc.sessionManager.currentCastSession?.isConnected == true
             } catch (_: Exception) { false }
             available.value = true
+            lastError = null
             true
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             available.value = false
+            lastError = try { e.javaClass.simpleName + ": " + (e.message ?: "") } catch (_: Exception) { "unknown" }
             false
         }
     }
