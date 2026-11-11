@@ -33,9 +33,30 @@ object UpdateCheck {
         } catch (_: Exception) { null }
     }
 
+    // screens-fix Settings P0-S1: real numeric semver compare (was: any different tag = newer,
+    // which also flagged older tags as "updates"). Numeric tie with differing text falls back
+    // to a pre-release rule: bare release > suffixed pre-release, anything else = not newer.
     fun isNewer(latest: String, current: String): Boolean {
         return try {
-            latest.trimStart('v', 'V') != current.trimStart('v', 'V')
+            val l = latest.trim().trimStart('v', 'V')
+            val c = current.trim().trimStart('v', 'V')
+            if (l.isBlank() || c.isBlank() || l == c) return false
+            fun nums(s: String): List<Int> {
+                val core = Regex("^\\d+(\\.\\d+)*").find(s)?.value ?: return listOf(0)
+                return core.split('.').map { it.toIntOrNull() ?: 0 }
+            }
+            val lp = nums(l)
+            val cp = nums(c)
+            for (i in 0 until maxOf(lp.size, cp.size)) {
+                val a = lp.getOrElse(i) { 0 }
+                val b = cp.getOrElse(i) { 0 }
+                if (a != b) return a > b
+            }
+            fun tail(s: String): String {
+                val core = Regex("^\\d+(\\.\\d+)*").find(s)?.value ?: ""
+                return s.removePrefix(core)
+            }
+            tail(c).isNotEmpty() && tail(l).isEmpty()
         } catch (_: Exception) { false }
     }
 }

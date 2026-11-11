@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,7 +46,8 @@ fun SettingsSection(
     expandedDefault: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(expandedDefault) }
+    // screens-fix Settings P1-S6: survive rotation (was remember).
+    var expanded by rememberSaveable { mutableStateOf(expandedDefault) }
     Card(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -90,7 +92,7 @@ fun DropRow(
     onPick: (String) -> Unit,
     enabled: Boolean = true
 ) {
-    var open by remember { mutableStateOf(false) }
+    var open by rememberSaveable { mutableStateOf(false) }
     val cur = entries.firstOrNull { it.first == selected }?.second ?: selected
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),

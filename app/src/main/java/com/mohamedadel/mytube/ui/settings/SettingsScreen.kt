@@ -4,6 +4,8 @@ import com.mohamedadel.mytube.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +39,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import com.mohamedadel.mytube.ui.theme.AccentFills
 import com.mohamedadel.mytube.ui.theme.AccentNames
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
@@ -321,6 +326,15 @@ fun SettingsScreen(
                     onToggle = { onSubHideAuto(!subHideAuto) }
                 )
                 Box(modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp), contentAlignment = Alignment.Center) {
+                    // screens-fix Settings P0-S2: preview now reflects subEdge (same constants as
+                    // subStyleFromPrefs: outline/shadow/raised/none). Outline is approximated with a hard
+                    // dark edge — true stroked glyphs need a custom text draw, out of scope here.
+                    val pvShadow = when (subEdge) {
+                        "none" -> null
+                        "shadow" -> Shadow(color = Color.Black.copy(alpha = 0.9f), offset = Offset(2f, 2f), blurRadius = 4f)
+                        "raised" -> Shadow(color = Color.White.copy(alpha = 0.7f), offset = Offset(-1f, -1f), blurRadius = 1f)
+                        else -> Shadow(color = Color.Black, offset = Offset(1f, 1f), blurRadius = 0f)
+                    }
                     val pvFg = when (subFg) { "yellow" -> Color.Yellow; "black" -> Color.Black; "cyan" -> Color.Cyan; else -> Color.White }
                     val pvBgBase = when (subBg) { "black" -> Color.Black; "white" -> Color.White; else -> Color.Transparent }
                     val pvBg = if (subBg == "transparent") Color.Transparent else pvBgBase.copy(alpha = subBgOpacity.coerceIn(0, 100) / 100f)
@@ -329,6 +343,7 @@ fun SettingsScreen(
                         color = pvFg,
                         fontSize = (16f * subScale.coerceIn(0.5f, 2.0f)).sp,
                         fontWeight = if (subBold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                        style = TextStyle(shadow = pvShadow ?: Shadow(color = Color.Transparent, offset = Offset.Zero, blurRadius = 0f)),
                         modifier = Modifier.background(pvBg).padding(horizontal = 4.dp)
                     )
                 }
@@ -360,7 +375,7 @@ fun SettingsScreen(
                 }
                 DropRow(
                     label = stringResource(R.string.sub_edge_title),
-                    entries = listOf("outline", "none", "shadow", "raised").map { it to it },
+                    entries = listOf("outline", "none", "shadow", "raised").map { it to stringResource(when (it) { "outline" -> R.string.sub_edge_outline; "none" -> R.string.sub_edge_none; "shadow" -> R.string.sub_edge_shadow; else -> R.string.sub_edge_raised }) },
                     selected = subEdge,
                     onPick = onSubEdge
                 )
@@ -436,8 +451,10 @@ fun SettingsScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("${(if (muted) 0f else volume * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
+                // screens-fix Settings P1-S7: stable label (was flipping mute/unmute with state).
                 SwitchRow(
-                    label = stringResource(if (muted) R.string.cd_unmute else R.string.cd_mute),
+                    label = stringResource(R.string.cd_mute),
+                    desc = stringResource(if (muted) R.string.state_on else R.string.state_off),
                     checked = muted,
                     onToggle = { onMuted(!muted) }
                 )
@@ -483,7 +500,8 @@ fun SettingsScreen(
                     onPick = onPlayMode
                 )
                 listOf("all", "calls").forEach { code ->
-                    Row(modifier = Modifier.fillMaxWidth().clickable { onAf(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // screens-fix Settings P1-S4: selectable radio rows (were clickable + icon-mimic).
+                    Row(modifier = Modifier.fillMaxWidth().selectable(selected = afMode == code, onClick = { onAf(code) }, role = Role.RadioButton).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (afMode == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (afMode == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -554,19 +572,22 @@ fun SettingsScreen(
                     onPick = onTheme
                 )
                 Text(stringResource(R.string.accent_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                // screens-fix Settings P1-S5: 48dp targets + visible labels + radio group (were 40dp color-only).
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                     ACCENT_OPTIONS.forEach { (code, pair) ->
                         val (fill, label) = pair
                         val selected = accent == code
-                        Box(
-                            modifier = Modifier.size(40.dp)
-                                .clip(CircleShape)
-                                .background(fill)
-                                .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, CircleShape)
-                                .clickable(onClickLabel = stringResource(label)) { onAccent(code) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = stringResource(label), tint = Color.White, modifier = Modifier.size(22.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f).selectable(selected = selected, onClick = { onAccent(code) }, role = Role.RadioButton)) {
+                            Box(
+                                modifier = Modifier.size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(fill)
+                                    .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                            }
+                            Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
                     }
                 }
@@ -583,8 +604,9 @@ fun SettingsScreen(
                 Text(stringResource(R.string.pin_loc_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 listOf("internal", "external").forEach { loc ->
                     val enabled = loc == "internal" || extAvailable
+                    // screens-fix Settings P1-S4: selectable radio rows (were clickable + icon-mimic).
                     Row(
-                        modifier = Modifier.fillMaxWidth().let { m -> if (enabled) m.clickable { onPinLoc(loc) } else m }.padding(vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().let { m -> if (enabled) m.selectable(selected = pinLoc == loc, onClick = { onPinLoc(loc) }, role = Role.RadioButton) else m }.padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -722,7 +744,8 @@ private fun AgeModeRow(mode: String, sel: String, onPick: (String) -> Unit) {
         "warn" -> stringResource(R.string.age_warn_desc)
         else -> stringResource(R.string.age_allow_desc)
     }
-    Row(modifier = Modifier.fillMaxWidth().clickable { onPick(mode) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    // screens-fix Settings P1-S4: selectable radio row (was clickable + icon-mimic).
+    Row(modifier = Modifier.fillMaxWidth().selectable(selected = sel == mode, onClick = { onPick(mode) }, role = Role.RadioButton).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(if (sel == mode) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (sel == mode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

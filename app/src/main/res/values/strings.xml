@@ -162,6 +162,14 @@
     <string name="auto_device_fmt">تلقائي (لغة الجهاز: %1$s)</string>
     <string name="del_hist_confirm_fmt">سيتم حذف كل عناصر السجل (%1$d) نهائيًا.</string>
     <string name="del_fav_confirm_fmt">سيتم حذف كل عناصر المفضلة (%1$d) نهائيًا.</string>
+    <!-- screens-fix Library P0-L1 -->
+    <string name="clear_items_title">إفراغ القائمة؟</string>
+    <string name="del_items_confirm_fmt">سيتم حذف كل عناصر هذه القائمة (%1$d) نهائيًا.</string>
+    <string name="del_sel_confirm_fmt">سيتم حذف العناصر المحددة (%1$d) نهائيًا.</string>
+    <string name="dl_clear_all_title">مسح كل المثبتات؟</string>
+    <string name="dl_clear_all_fmt">سيتم حذف كل المقاطع المثبتة (%1$d) نهائيًا.</string>
+    <!-- screens-fix Library P1-L7: history search cap banner -->
+    <string name="hist_search_cap_fmt">تُعرض أول %1$d نتيجة فقط — ضيّق البحث لرؤية المزيد.</string>
     <string name="sub_toast_fmt">لغة الترجمة: %1$s</string>
     <string name="device_line_fmt">لغة الجهاز الحالية: %1$s (%2$s) — تُستخدم تلقائيًا ما لم تختر غيرها. اختياراتك تُحفظ دائمًا وتُطبق على كل فيديو.</string>
     <string name="sleep_running_fmt">مؤقت النوم يعمل (%1$s)</string>
@@ -266,6 +274,8 @@
     <string name="feed_title">خلاصة الاشتراكات</string>
     <string name="feed_refresh">تحديث</string>
     <string name="feed_empty">لا اشتراكات بعد — اشترك من صفحة قناة أو استورد ملفًا.</string>
+    <!-- screens-fix Library P1-L8: distinct group-feed empty copy -->
+    <string name="feed_empty_group_fmt">لا فيديوهات من مجموعة “%1$s” بعد — اسحب أو حدّث.</string>
     <string name="skip_silence">تخطي الصمت (يعيد بناء التشغيل)</string>
     <string name="toast_skip_restart">يعاد التشغيل بالإعداد الجديد</string>
     <string name="cache_title">كاش الوسائط</string>
@@ -404,6 +414,8 @@
     <string name="dl_title">التنزيلات</string>
     <string name="dl_empty">لا توجد مقاطع مثبتة بعد — ثبّت أي مقطع بالضغط المطوّل ثم التثبيت</string>
     <string name="dl_clear_all">مسح الكل</string>
+    <!-- screens-fix Library P0-L3 -->
+    <string name="dl_empty_hint">المقاطع المثبتة تُحفظ على جهازك وتُشغَّل دون إنترنت.</string>
     <string name="dl_total_fmt">الإجمالي: %.1f ميجابايت</string>
     <string name="dl_channel">تقدّم التنزيل</string>
     <string name="dl_progress_fmt">%d٪</string>
@@ -482,9 +494,22 @@
     <string name="sort_songs">فرز الأغاني</string>
     <string name="sort_playlists">فرز القوائم</string>
     <string name="export_csv">تصدير CSV</string>
+    <!-- screens-fix Library P1-L4: CSV import -->
+    <string name="import_csv">استيراد CSV</string>
+    <string name="toast_csv_imported_fmt">تم استيراد %1$d عنصرًا كقائمة جديدة</string>
+    <!-- screens-fix Library P1-L5: remote save + pin-all -->
+    <string name="remote_save">حفظ</string>
+    <string name="remote_pin_all">تثبيت الكل</string>
+    <!-- screens-fix Library P2-L12: most-replayed rail -->
+    <string name="lib_most_replayed">الأكثر إعادة</string>
+    <string name="lib_plays_fmt">%1$d ▶</string>
     <string name="sort_title">العنوان</string>
     <string name="sort_artist">الفنان</string>
     <string name="sort_duration">المدة</string>
+    <!-- screens-fix Library P1-L6: favorites search + sort -->
+    <string name="fav_search_hint">ابحث في المفضلة</string>
+    <string name="sort_newest">الأحدث</string>
+    <string name="sort_oldest">الأقدم</string>
     <string name="sort_added">تاريخ الإضافة</string>
     <string name="sort_tab_name">بالاسم</string>
     <string name="sort_tab_size">بالحجم</string>
@@ -523,6 +548,12 @@
     <string name="sub_fg_title">لون الخط</string>
     <string name="sub_bg_title">لون الخلفية</string>
     <string name="sub_edge_title">نمط الحدود</string>
+    <string name="sub_edge_outline">تحديد</string>
+    <string name="sub_edge_none">بدون</string>
+    <string name="sub_edge_shadow">ظل</string>
+    <string name="sub_edge_raised">بارز</string>
+    <string name="state_on">مفعّل</string>
+    <string name="state_off">غير مفعّل</string>
     <string name="sub_role_title">نوع الترجمة</string>
     <string name="audio_role_title">نوع الصوت</string>
     <string name="speed_title">السرعة</string>

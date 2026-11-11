@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube
 
+import com.mohamedadel.mytube.data.UpdateCheck
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.playback.nextSequentialIndex
@@ -52,5 +53,27 @@ class AuditP2UnitTest {
         val order = shuffledFavKeys(listOf("a", "b", "c"), "b", seed = 1L)
         assertFalse(order.contains("b"))
         assertEquals(setOf("a", "c"), order.toSet())
+    }
+
+    // screens-fix Settings P0-S1: semver update check (was plain string inequality).
+    @Test fun update_newerPatch() {
+        assertTrue(UpdateCheck.isNewer("v0.3.3", "v0.3.2"))
+    }
+    @Test fun update_sameTagNotNewer() {
+        assertFalse(UpdateCheck.isNewer("v0.3.2", "v0.3.2"))
+    }
+    @Test fun update_olderTagNotNewer() {
+        assertFalse(UpdateCheck.isNewer("v0.3.1", "v0.3.2"))
+    }
+    @Test fun update_numericNotLexicographic() {
+        assertTrue(UpdateCheck.isNewer("v0.10.0", "v0.9.9"))
+    }
+    @Test fun update_releaseBeatsPrerelease() {
+        assertTrue(UpdateCheck.isNewer("1.2.3", "1.2.3-beta"))
+        assertFalse(UpdateCheck.isNewer("1.2.3-beta", "1.2.3"))
+    }
+    @Test fun update_garbageNotNewer() {
+        assertFalse(UpdateCheck.isNewer("", "v0.3.2"))
+        assertFalse(UpdateCheck.isNewer("abc", "xyz"))
     }
 }

@@ -162,6 +162,14 @@
     <string name="auto_device_fmt">Auto (device language: %1$s)</string>
     <string name="del_hist_confirm_fmt">All history items (%1$d) will be permanently deleted.</string>
     <string name="del_fav_confirm_fmt">All favorite items (%1$d) will be permanently deleted.</string>
+    <!-- screens-fix Library P0-L1 -->
+    <string name="clear_items_title">Empty this playlist?</string>
+    <string name="del_items_confirm_fmt">All items in this playlist (%1$d) will be permanently deleted.</string>
+    <string name="del_sel_confirm_fmt">The selected items (%1$d) will be permanently deleted.</string>
+    <string name="dl_clear_all_title">Remove all pins?</string>
+    <string name="dl_clear_all_fmt">All pinned videos (%1$d) will be permanently deleted.</string>
+    <!-- screens-fix Library P1-L7: history search cap banner -->
+    <string name="hist_search_cap_fmt">Showing the first %1$d results only — narrow your search to see more.</string>
     <string name="sub_toast_fmt">Subtitle language: %1$s</string>
     <string name="device_line_fmt">Current device language: %1$s (%2$s) — used automatically unless you choose otherwise. Your choices are always saved and applied to every video.</string>
     <string name="sleep_running_fmt">Sleep timer active (%1$s)</string>
@@ -266,6 +274,8 @@
     <string name="feed_title">Subscription feed</string>
     <string name="feed_refresh">Refresh</string>
     <string name="feed_empty">No subscriptions yet — subscribe from a channel page or import a file.</string>
+    <!-- screens-fix Library P1-L8: distinct group-feed empty copy -->
+    <string name="feed_empty_group_fmt">No videos from group “%1$s” yet — pull or refresh.</string>
     <string name="skip_silence">Skip silence (rebuilds playback)</string>
     <string name="toast_skip_restart">Playback restarts with the new setting</string>
     <string name="cache_title">Media cache</string>
@@ -404,6 +414,8 @@
     <string name="dl_title">Downloads</string>
     <string name="dl_empty">No pinned clips yet — long-press any video then Pin</string>
     <string name="dl_clear_all">Clear all</string>
+    <!-- screens-fix Library P0-L3 -->
+    <string name="dl_empty_hint">Pinned clips are stored on your device and play offline.</string>
     <string name="dl_total_fmt">Total: %.1f MB</string>
     <string name="dl_channel">Download progress</string>
     <string name="dl_progress_fmt">%d%%</string>
@@ -482,9 +494,22 @@
     <string name="sort_songs">Sort songs</string>
     <string name="sort_playlists">Sort playlists</string>
     <string name="export_csv">Export CSV</string>
+    <!-- screens-fix Library P1-L4: CSV import -->
+    <string name="import_csv">Import CSV</string>
+    <string name="toast_csv_imported_fmt">Imported %1$d items as a new playlist</string>
+    <!-- screens-fix Library P1-L5: remote save + pin-all -->
+    <string name="remote_save">Save</string>
+    <string name="remote_pin_all">Pin all</string>
+    <!-- screens-fix Library P2-L12: most-replayed rail -->
+    <string name="lib_most_replayed">Most replayed</string>
+    <string name="lib_plays_fmt">%1$d ▶</string>
     <string name="sort_title">Title</string>
     <string name="sort_artist">Artist</string>
     <string name="sort_duration">Length</string>
+    <!-- screens-fix Library P1-L6: favorites search + sort -->
+    <string name="fav_search_hint">Search favorites</string>
+    <string name="sort_newest">Newest</string>
+    <string name="sort_oldest">Oldest</string>
     <string name="sort_added">Date added</string>
     <string name="sort_tab_name">Name</string>
     <string name="sort_tab_size">Size</string>
@@ -523,8 +548,29 @@
     <string name="sub_fg_title">Font color</string>
     <string name="sub_bg_title">Background color</string>
     <string name="sub_edge_title">Edge style</string>
+    <string name="sub_edge_outline">Outline</string>
+    <string name="sub_edge_none">None</string>
+    <string name="sub_edge_shadow">Shadow</string>
+    <string name="sub_edge_raised">Raised</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
     <string name="sub_role_title">Subtitle type</string>
     <string name="audio_role_title">Audio type</string>
     <string name="speed_title">Speed</string>
     <string name="pins_warn_title">Fullness warning</string>
+    <!-- screens-fix appendix-2 (2026-11-11): EN was missing every update_/backup_ key -->
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_latest">You are on the latest version</string>
+    <string name="update_available_fmt">New version available: %1$s (current %2$s)</string>
+    <string name="update_not_configured">Auto-update is not configured yet — follow releases manually</string>
+    <string name="update_fail">Could not check for updates</string>
+    <string name="backup_export">Export backup (JSON)</string>
+    <string name="backup_import">Import backup</string>
+    <string name="backup_export_ok">Backup saved — share it somewhere safe</string>
+    <string name="backup_export_fail">Could not create backup</string>
+    <string name="backup_import_ok_fmt">Imported: %1$d playlists, %2$d favorites, %3$d history</string>
+    <string name="backup_import_fail">Invalid backup file</string>
+    <string name="backup_desc">All playlists, favorites, history, subscriptions and settings in one file</string>
+    <string name="update_desc">Compares your build against the latest GitHub Release</string>
 </resources>
