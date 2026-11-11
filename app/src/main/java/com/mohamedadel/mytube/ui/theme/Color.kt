@@ -75,6 +75,12 @@ val BlackBackground = Color(0xFF000000)
 val BlackSurface = Color(0xFF000000)
 val BlackSurfaceVariant = Color(0xFF1E1E1E)
 val BlackOutline = Color(0xFF2C2C2C)
+// D6 (audit P1 2026-11-11): explicit container ramp for the true-black scheme.
+val BlackContainerLowest = Color(0xFF000000)
+val BlackContainerLow = Color(0xFF0A0A0C)
+val BlackContainer = Color(0xFF111114)
+val BlackContainerHigh = Color(0xFF1A1A1E)
+val BlackContainerHighest = Color(0xFF232328)
 
 // Dark scheme
 val DarkBackground = Neutral950
@@ -83,6 +89,12 @@ val DarkSurfaceVariant = Neutral800
 val DarkOnSurface = InkOnDark
 val DarkOnSurfaceVariant = InkMetaOnDark
 val DarkOutline = Neutral700
+// D6 (audit P1 2026-11-11): explicit container ramp (was: M3 defaults).
+val DarkContainerLowest = Color(0xFF0B0B0E)
+val DarkContainerLow = Color(0xFF141419)
+val DarkContainer = Color(0xFF1E1E24)
+val DarkContainerHigh = Color(0xFF26262D)
+val DarkContainerHighest = Color(0xFF2F2F37)
 
 // Light scheme
 val LightBackground = Neutral50
@@ -91,3 +103,13 @@ val LightSurfaceVariant = Neutral100
 val LightOnSurface = InkOnLight
 val LightOnSurfaceVariant = InkMetaOnLight
 val LightOutline = Color(0xFFD6D6DE)
+// D6 (audit P1 2026-11-11): explicit container ramp (was: M3 defaults).
+val LightContainerLowest = Color(0xFFFFFFFF)
+val LightContainerLow = Color(0xFFF4F4F8)
+val LightContainer = Color(0xFFEDEDF2)
+val LightContainerHigh = Color(0xFFE6E6EC)
+val LightContainerHighest = Color(0xFFDFDFE6)
+
+// D3 (audit P1 2026-11-11): single LIVE-badge source (was: raw 0xFFB71C1C in 2 files).
+val LiveBadge = Color(0xFFB71C1C)
+val OnLiveBadge = Color(0xFFFFFFFF)

@@ -84,12 +84,12 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 }
             }
             if (v.isShort) {
-                Surface(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.8f)) {
+                Surface(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), shape = MaterialTheme.shapes.extraSmall, color = Color.Black.copy(alpha = 0.8f)) {
                     Text(text = "Shorts", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
             }
             v.durationSec?.takeIf { it > 0 }?.let { dur ->
-                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.8f)) {
+                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = MaterialTheme.shapes.extraSmall, color = Color.Black.copy(alpha = 0.8f)) {
                     Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
             }
@@ -179,7 +179,7 @@ fun PlaylistCard(p: com.mohamedadel.mytube.data.youtube.RemotePlaylist, onClick:
             }
             // count badge (bottom-end): N tracks
             if (p.count > 0) {
-                Surface(color = Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp), modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
+                Surface(color = Color.Black.copy(alpha = 0.75f), shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
                     Text(
                         text = stringResource(R.string.playlist_count_fmt, p.count),
                         style = MaterialTheme.typography.labelSmall,

@@ -7,6 +7,7 @@
     <string name="toast_fav_added">Added to favorites ♡</string>
     <string name="toast_playlist_created">Playlist created and video added</string>
     <string name="toast_sub_off">Subtitles off</string>
+    <string name="sess_restored">Session restored — tap play to resume</string>
     <string name="cd_manage_queue">Manage current queue</string>
     <string name="cd_fav_remove">Remove from favorites</string>
     <string name="picker_title">Add to playlist</string>

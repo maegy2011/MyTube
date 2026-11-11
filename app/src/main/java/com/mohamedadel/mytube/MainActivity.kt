@@ -38,7 +38,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import android.widget.Toast
@@ -76,7 +75,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -285,6 +284,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val externalAudioHook = remember { arrayOfNulls<Player.Listener>(1) }
     // selected subtitle track: -1 = off (real disable), else index into streamData.subtitles (auto-matched to sub prefs)
     var subTrackIdx by remember { mutableStateOf(-1) }
+    // F8 (audit P1 2026-11-11): which video the explicit pick belongs to — guards the
+    // TrackSelectionOverride against stale currentTracks right after a video change.
+    var subTrackFor by remember { mutableStateOf<String?>(null) }
     var qualityList by remember { mutableStateOf(listOf("audio-only (default)")) }
     var quality by remember { mutableStateOf("audio-only (default)") }
     var playerLoading by remember { mutableStateOf(false) }
@@ -326,24 +328,26 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         builder.build()
     }
     val dao = remember { db.playlists() }
-    val playlists by dao.observePlaylists().collectAsState(initial = emptyList())
+    val playlists by dao.observePlaylists().collectAsStateWithLifecycle(initialValue = emptyList())
     var showPlaylists by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showFavorites by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
-    val history by remember { dao.observeHistory() }.collectAsState(initial = emptyList())
+    val history by remember { dao.observeHistory() }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     // Favorites (one-tap heart): keys observed live so every heart reflects instantly.
-    val favoriteKeys by remember { dao.observeFavoriteKeys() }.collectAsState(initial = emptyList())
-    val subscriptions by remember { dao.observeSubscriptions() }.collectAsState(initial = emptyList())
+    val favoriteKeys by remember { dao.observeFavoriteKeys() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val subscriptions by remember { dao.observeSubscriptions() }.collectAsStateWithLifecycle(initialValue = emptyList())
     // Channel groups (Room v8): named buckets; feed-by-group filters the subscription feed.
-    val groups by remember { dao.observeGroups() }.collectAsState(initial = emptyList())
+    val groups by remember { dao.observeGroups() }.collectAsStateWithLifecycle(initialValue = emptyList())
     var showGroups by remember { mutableStateOf(false) }
     var openGroup by remember { mutableStateOf<com.mohamedadel.mytube.data.local.ChannelGroupEntity?>(null) }
     val groupMembers by remember(openGroup) {
-        if (openGroup == null) kotlinx.coroutines.flow.flowOf(emptyList<com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity>())
-        else dao.observeGroupMembers(openGroup!!.id)
-    }.collectAsState(initial = emptyList())
+        // T5: local val instead of openGroup!!.
+        val og = openGroup
+        if (og == null) kotlinx.coroutines.flow.flowOf(emptyList<com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity>())
+        else dao.observeGroupMembers(og.id)
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     // group member counts refresh alongside pins/history labels
     var groupCounts by remember { mutableStateOf(mapOf<Long, Int>()) }
     var feedGroupUrls by remember { mutableStateOf<Set<String>?>(null) }
@@ -357,7 +361,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var channelPlsLoading by remember { mutableStateOf(false) }
     var channelTabsLoaded by remember { mutableStateOf(setOf<Int>()) }
     val favoriteSet = remember(favoriteKeys) { favoriteKeys.toSet() }
-    val favorites by remember { dao.observeFavorites() }.collectAsState(initial = emptyList())
+    val favorites by remember { dao.observeFavorites() }.collectAsStateWithLifecycle(initialValue = emptyList())
     // (toggleFavorite lives after `scope` below — Kotlin locals must precede use.)
     // language prefs: "auto" (device language), "off" (subtitles only), "original" (video's own language),
     // or a language tag (ar/en/…). Secondary = fallback when the primary is unavailable.
@@ -486,7 +490,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var openPlaylistId by remember { mutableStateOf<Long?>(null) }
     val openItems by remember(openPlaylistId) {
         openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
-    }.collectAsState(initial = emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     // Sleep timer: absolute deadline (uptime ms). The polling loop below watches it;
     // expiry pauses playback and clears itself. Survives nothing — a deliberate session choice.
     var sleepAtMs by remember { mutableStateOf<Long?>(null) }
@@ -516,7 +520,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     // Phase 3: offline pins (faithful snapshot: current quality + audio + subtitle)
-    val pins by remember { dao.observePins() }.collectAsState(initial = emptyList())
+    val pins by remember { dao.observePins() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val pinKeys = remember(pins) { pins.map { it.videoKey }.toSet() }
     // B: precomputed pin badge texts shared by every list (history builds its own in-screen)
     val pinBadges = remember(pins) {
@@ -529,6 +533,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     var pinningKeys by remember { mutableStateOf(setOf<String>()) }
+    // F5: in-flight download jobs for cancellation (Job.cancel + PinManager flag).
+    val pinJobs = remember { java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>() }
+    fun cancelPinDownload(key: String) {
+        com.mohamedadel.mytube.data.local.PinManager.requestCancel(key)
+        try { pinJobs.remove(key)?.cancel() } catch (_: Exception) { }
+        try { android.widget.Toast.makeText(ctx, ctx.getString(R.string.cancel), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+    }
     // Download-manager state: live per-pin progress + manager screen + keepalive toggle.
     var pinProgress by remember { mutableStateOf(mapOf<String, Float>()) }
     var showDownloads by remember { mutableStateOf(false) }
@@ -552,6 +563,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 2, k) }.flow
     }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
+    // L1 (audit P1 2026-11-11): session-restore targets — declared before the prefs-load
+    // effect below (Kotlin locals must precede use); saveSession itself lives near setShuffle.
+    var pendingSeekMs by remember { mutableStateOf<Long?>(null) }
+    var pendingSeekKey by remember { mutableStateOf<String?>(null) }
+    var lastSessSave by remember { mutableStateOf(0L) }
     // Simple equalizer state (framework effect; hidden on unsupported devices).
     var eqEnabled by remember { mutableStateOf(false) }
     var eqPreset by remember { mutableStateOf(0) } // index, or EqManager.CUSTOM
@@ -658,6 +674,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
             } catch (_: Exception) { }
             try { prefs.getString("recent_music_searches", "")?.let { m -> if (m.isNotBlank()) recentMusicSearches = m.split("\u001f").filter { it.isNotBlank() }.take(6) } } catch (_: Exception) { }
+            // L1 (audit P1 2026-11-11): restore last session's queue (no autoplay; position seeks on tap-play).
+            try {
+                val favs = (prefs.getString("sess_favs", "") ?: "").split("\u001f")
+                val urls = (prefs.getString("sess_urls", "") ?: "").split("\u001f")
+                val titles = (prefs.getString("sess_titles", "") ?: "").split("\u001f")
+                val ids = (prefs.getString("sess_ids", "") ?: "").split("\u001f")
+                val idx = prefs.getInt("sess_index", -1)
+                val pos = prefs.getLong("sess_pos", 0L)
+                if (favs.isNotEmpty() && favs.size == urls.size && idx in favs.indices) {
+                    queue = favs.indices.map { i -> VideoItem(id = ids.getOrNull(i)?.ifBlank { null }, title = titles.getOrNull(i), url = urls.getOrNull(i)?.ifBlank { null }) }
+                    queueIndex = idx
+                    if (pos > 5000L) { pendingSeekMs = pos; pendingSeekKey = queue[idx].favKey() }
+                    playerExpanded = false
+                    try { android.widget.Toast.makeText(ctx, ctx.getString(R.string.sess_restored), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+                }
+            } catch (_: Exception) { }
         } catch (_: Exception) { }
     }
     // playback speed/pitch (ExoPlayer PlaybackParameters): applied live, persisted
@@ -734,6 +766,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 b.setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
                 b.setMaxVideoBitrate(Int.MAX_VALUE)
                 b.setMaxAudioBitrate(Int.MAX_VALUE)
+            }
+            // F8 (audit P1 2026-11-11): the user's explicit per-video pick beats language prefs.
+            // Guarded by subTrackFor so a fresh video (auto-matched index) never inherits a stale override.
+            if (subTrackIdx >= 0 && prefSubLang != "off" && subTrackFor == playing?.favKey()) {
+                try {
+                    val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                    val flat = groups.flatMap { g -> (0 until g.length).map { idx -> g to idx } }
+                    flat.getOrNull(subTrackIdx)?.let { (g, idx) ->
+                        b.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, idx))
+                    }
+                } catch (_: Exception) { }
             }
             p.trackSelectionParameters = b.build()
         } catch (_: Exception) { }
@@ -812,6 +855,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var shuffleOn by remember { mutableStateOf(prefs.getBoolean("shuffle", false)) }
     fun setMode(m: String) { playMode = m; try { prefs.edit().putString("play_mode", m).apply() } catch (_: Exception) { } }
     fun setShuffle(b: Boolean) { shuffleOn = b; try { prefs.edit().putBoolean("shuffle", b).apply() } catch (_: Exception) { } }
+    // L1 (audit P1 2026-11-11): minimal session — queue (favKey+url+title+id) + index + position.
+    // Saved throttled while loaded; restored on launch (tap play to resume at position).
+    fun saveSession() {
+        try {
+            val q = queue.take(50)
+            if (q.isEmpty() || queueIndex !in q.indices) return
+            prefs.edit()
+                .putString("sess_favs", q.joinToString("\u001f") { it.favKey() })
+                .putString("sess_urls", q.joinToString("\u001f") { it.url ?: "" })
+                .putString("sess_titles", q.joinToString("\u001f") { (it.title ?: "").replace("\u001f", " ") })
+                .putString("sess_ids", q.joinToString("\u001f") { it.id ?: "" })
+                .putInt("sess_index", queueIndex)
+                .putLong("sess_pos", playerPositionMs)
+                .apply()
+        } catch (_: Exception) { }
+    }
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var batteryExempt by remember { mutableStateOf(true) }
     // result of battery-exemption request: re-check right after user returns
@@ -838,7 +897,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     LaunchedEffect(Unit) { ensurePermissions(); ensureBatteryExemption() }
     LaunchedEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption(); if (!com.mohamedadel.mytube.playback.CastManager.available.value) { try { com.mohamedadel.mytube.playback.CastManager.init(ctx.applicationContext) } catch (_: Exception) { } } }
+            if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption(); if (!com.mohamedadel.mytube.playback.CastManager.available.value) { try { com.mohamedadel.mytube.playback.CastManager.init(ctx.applicationContext) } catch (_: Exception) { } }
+                // L4 (audit P1 2026-11-11): ACTION_STOP writes the pref directly — re-read on resume or the toggle lies.
+                try { prefKeepalive = prefs.getBoolean("pref_keepalive", false) } catch (_: Exception) { } }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         // no remove needed for composition lifetime
@@ -1251,7 +1312,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
     val svm: SearchViewModel = viewModel()
-    val suggestions by svm.suggestions.collectAsState()
+    val suggestions by svm.suggestions.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
     // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
@@ -1454,7 +1515,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         scope.launch {
             val key = v.favKey()
             val app = ctx.applicationContext
-            val pinned = try { com.mohamedadel.mytube.data.local.PinFiles.isPinned(app, key) } catch (_: Exception) { false }
+            val pinned = try { withContext(kotlinx.coroutines.Dispatchers.IO) { com.mohamedadel.mytube.data.local.PinFiles.isPinned(app, key) } } catch (_: Exception) { false }
             if (prefOffline && !pinned) {
                 playerLoading = false
                 playerError = ctx.getString(R.string.err_pin_first)
@@ -1488,14 +1549,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             playingPinned = pinned
             if (pinned) {
                 // Phase 4: zero-network playback from the faithful snapshot
+                // T1 (audit P1 2026-11-11): disk + JSON snapshot on IO; player work stays on Main.
+                val snap = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val d = com.mohamedadel.mytube.data.local.PinFiles.existingDir(app, key)
+                    val vf = if (d != null) File(d, "video.mp4") else null
+                    val af = if (d != null) File(d, "audio.m4a") else null
+                    val sf = if (d != null) File(d, "sub.vtt") else null
+                    val m = try { if (d != null) org.json.JSONObject(File(d, "meta.json").readText()) else org.json.JSONObject() } catch (_: Exception) { org.json.JSONObject() }
+                    Triple(d, Triple(vf, af, sf), m)
+                }
                 try {
-                    val dir = com.mohamedadel.mytube.data.local.PinFiles.existingDir(app, key)
-                        ?: throw IllegalStateException("pin missing")
-                    val vFile = File(dir, "video.mp4")
-                    val aFile = File(dir, "audio.m4a")
-                    val sFile = File(dir, "sub.vtt")
+                    val dir = snap.first ?: throw IllegalStateException("pin missing")
+                    val vFile = snap.second.first ?: throw IllegalStateException("pin missing")
+                    val aFile = snap.second.second
+                    val sFile = snap.second.third
                     if (!vFile.exists()) throw IllegalStateException("pin missing")
-                    val meta = try { org.json.JSONObject(File(dir, "meta.json").readText()) } catch (_: Exception) { org.json.JSONObject() }
+                    val meta = snap.third
                     val pinAge = try { meta.optInt("age", 0) } catch (_: Exception) { 0 }
                     if (pinAge >= 18 && !ageOk) {
                         if (prefAgeMode == "block") {
@@ -1519,8 +1588,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     }
                     val label = meta.optString("quality", "audio-only (default)").takeIf { it.isNotBlank() } ?: "audio-only (default)"
-                    val hasAudio = aFile.exists()
-                    val hasSub = sFile.exists()
+                    val hasAudio = aFile?.exists() == true
+                    val hasSub = sFile?.exists() == true
                     val vUri = android.net.Uri.fromFile(vFile).toString()
                     // multi-sub meta ("subs" array); legacy pins fall back to the single sub.vtt keys
                     val subs = try {
@@ -1543,7 +1612,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     } catch (_: Exception) { null }
                         ?: if (hasSub) listOf(
                             com.mohamedadel.mytube.data.youtube.SubtitleItem(
-                                url = android.net.Uri.fromFile(sFile).toString(),
+                                url = android.net.Uri.fromFile(sFile ?: vFile).toString(),
                                 langTag = meta.optString("subLang", "und").takeIf { it.isNotBlank() } ?: "und",
                                 label = meta.optString("subTag", "").takeIf { it.isNotBlank() } ?: label,
                                 auto = false,
@@ -1551,7 +1620,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             )
                         ) else emptyList()
                     val s = com.mohamedadel.mytube.data.youtube.StreamData(
-                        audioLowestUrl = if (hasAudio) android.net.Uri.fromFile(aFile).toString() else vUri,
+                        audioLowestUrl = if (hasAudio && aFile != null) android.net.Uri.fromFile(aFile).toString() else vUri,
                         videoUrlByQuality = mapOf(label to vUri),
                         muxedQualities = if (hasAudio) emptySet() else setOf(label),
                         title = v.title,
@@ -1563,6 +1632,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     quality = label
                     audioTrackIdx = 0
                     subTrackIdx = if (hasSub) 0 else -1
+                    subTrackFor = null // F8: packaged pin track, not an explicit pick
                     applyQuality(label, s, player, autoplay = wasPlayingQueue, local = true)
                     playingPinned = true
                 } catch (_: Exception) {
@@ -1596,6 +1666,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // applyQuality and played the previous video's dub/subtitle — major #4/#5).
             audioTrackIdx = pickAudioIdxFor(s)
             subTrackIdx = matchSubIdxFor(s)
+            subTrackFor = null // F8: auto-matched, not an explicit pick
             if (s.ageLimit >= 18 && !ageOk) {
                 if (prefAgeMode == "block") {
                     playerLoading = false
@@ -1664,8 +1735,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun startRadio(v: VideoItem) {
         scope.launch {
             try {
-                val seed: List<VideoItem> = if (playing?.favKey() == v.favKey() && !streamData?.related.isNullOrEmpty()) {
-                    streamData!!.related
+                val sdNow = streamData
+                val seed: List<VideoItem> = if (playing?.favKey() == v.favKey() && !sdNow?.related.isNullOrEmpty()) {
+                    // T5: local val instead of !! (race-safe snapshot).
+                    sdNow.related
                 } else {
                     val url = v.url
                     if (url.isNullOrBlank()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
@@ -1682,12 +1755,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_radio_fail)) }
         }
     }
+    // T6 (audit P1 2026-11-11): cancellable fade — a second call cancels the first (no stuck low volume).
+    // Plain holder (no state): no composable reads this; state would recompose pointlessly.
+    val fadeJob = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
     // 5-second fade-out instead of a hard cut; volume is restored after the pause
     fun fadeOutAndPause() {
-        scope.launch {
+        try { fadeJob[0]?.cancel() } catch (_: Exception) { }
+        fadeJob[0] = scope.launch {
             try {
                 val pl = player ?: return@launch
-                val base = try { (volumeLive.value as Float).coerceIn(0f, 1f) } catch (_: Exception) { 1f }
+                // T5/T10: safe cast instead of (as Float).
+                val base = try { (volumeLive.value as? Float)?.coerceIn(0f, 1f) ?: 1f } catch (_: Exception) { 1f }
                 if (base <= 0f) { try { pl.pause() } catch (_: Exception) { }; return@launch }
                 repeat(10) { i ->
                     try { pl.volume = base * (1f - (i + 1) / 10f) } catch (_: Exception) { return@repeat }
@@ -1698,9 +1776,46 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             } catch (_: Exception) { try { player?.pause() } catch (_: Exception) { } }
         }
     }
+    fun playPrevInQueue() {
+        // T4 (audit P1): pure index math lives in PlayerController.
+        val prev = com.mohamedadel.mytube.playback.prevSequentialIndex(queueIndex)?.let { queue.getOrNull(it) }
+        if (prev != null) playVideo(prev, inQueue = true, expand = playerExpanded)
+    }
+    // F7 (audit P1 2026-11-11): shuffled play order as favKeys (head = next to play).
+    // Both auto-advance and manual Next consume it; rebuilt when empty/stale so queue
+    // changes (radio refill) can't resurrect removed items. No immediate repeat of current.
+    var shuffleOrder by remember { mutableStateOf(listOf<String>()) }
+    fun ensureShuffleOrder(): List<String> {
+        val keys = queue.map { it.favKey() }
+        val cur = playing?.favKey()
+        val valid = shuffleOrder.filter { it in keys && it != cur }
+        if (valid.isNotEmpty()) { shuffleOrder = valid; return valid }
+        val fresh = com.mohamedadel.mytube.playback.shuffledFavKeys(keys, cur)
+        shuffleOrder = fresh
+        return fresh
+    }
+    // playback modes: random pick (shuffle) + wrap-around (repeat all)
+    fun playRandomInQueue() {
+        if (queue.size < 2) { if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded); return }
+        val order = ensureShuffleOrder()
+        val nxt = order.firstNotNullOfOrNull { k -> queue.firstOrNull { it.favKey() == k } }
+        if (nxt == null) {
+            // stale order despite refresh: legacy uniform pick (never strand playback).
+            var n = queueIndex
+            var guard = 0
+            while (n == queueIndex && guard++ < 8) n = (0 until queue.size).random()
+            playVideo(queue[n], inQueue = true, expand = playerExpanded)
+            return
+        }
+        shuffleOrder = order.filter { it != nxt.favKey() }
+        playVideo(nxt, inQueue = true, expand = playerExpanded)
+    }
     fun playNextInQueue() {
-        val i = queueIndex
-        val next = if (i >= 0) queue.getOrNull(i + 1) else null
+        // F7 (audit P1 2026-11-11): manual Next honors shuffle (was: sequential always).
+        // Declared after playRandomInQueue: Kotlin locals must precede use.
+        if (shuffleOn && queue.size > 1) { playRandomInQueue(); return }
+        // T4 (audit P1): pure index math lives in PlayerController.
+        val next = com.mohamedadel.mytube.playback.nextSequentialIndex(queue.size, queueIndex)?.let { queue.getOrNull(it) }
         // expand=playerExpanded: advancing from notification/lock while browsing must not yank the full player open
         if (next != null) { playVideo(next, inQueue = true, expand = playerExpanded); return }
         // queue exhausted: radio refills from the just-played track's related list (endless)
@@ -1716,17 +1831,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             radioOn = false
         }
         autoAdvance = false
-    }
-    fun playPrevInQueue() {
-        val prev = if (queueIndex > 0) queue.getOrNull(queueIndex - 1) else null
-        if (prev != null) playVideo(prev, inQueue = true, expand = playerExpanded)
-    }
-    // playback modes: random pick (shuffle) + wrap-around (repeat all)
-    fun playRandomInQueue() {
-        if (queue.size < 2) { if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded); return }
-        var n = queueIndex
-        while (n == queueIndex) n = (0 until queue.size).random()
-        playVideo(queue[n], inQueue = true, expand = playerExpanded)
     }
     fun playFirstInQueue() {
         if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded) else autoAdvance = false
@@ -1888,6 +1992,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try { player?.removeListener(eqSessionListener) } catch (_: Exception) { }
             // T3 (audit P0 2026-11-11): release the static service callback so it never pins this composition.
             try { PlaybackService.onCustomAction = null } catch (_: Exception) { }
+            // T7 (audit P1 2026-11-11): release the native EQ effect with the composition.
+            try { com.mohamedadel.mytube.playback.EqManager.release() } catch (_: Exception) { }
         }
     }
     // SponsorBlock segments: fetch on video/toggle change (IO), clear when off.
@@ -1919,7 +2025,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             } catch (_: Exception) { }
                         }
                     }
-                    tm?.registerTelephonyCallback(ctx.mainExecutor, callback!!)
+                // T5/T10: local val instead of callback!!.
+                val cbReg = callback
+                if (cbReg != null) { try { tm?.registerTelephonyCallback(ctx.mainExecutor, cbReg) } catch (_: Exception) { } }
                 } else {
                     @Suppress("DEPRECATION")
                     listener = object : android.telephony.PhoneStateListener() {
@@ -1942,7 +2050,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { }
         onDispose {
             try {
-                if (callback != null && android.os.Build.VERSION.SDK_INT >= 31) tm?.unregisterTelephonyCallback(callback!!)
+                if (callback != null && android.os.Build.VERSION.SDK_INT >= 31) { val cb = callback; if (cb != null) try { tm?.unregisterTelephonyCallback(cb) } catch (_: Exception) { } }
                 @Suppress("DEPRECATION")
                 if (listener != null) tm?.listen(listener, android.telephony.PhoneStateListener.LISTEN_NONE)
             } catch (_: Exception) { }
@@ -1968,6 +2076,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     } catch (_: Exception) { }
                     playerDurationMs = p.duration.takeIf { it > 0 } ?: 0L
                     playerBufferedPct = p.bufferedPercentage
+                    // L1: consume a restored position once the stream reports a duration.
+                    try {
+                        val ps = pendingSeekMs
+                        if (ps != null && ps > 0 && playing?.favKey() == pendingSeekKey && playerDurationMs > 0) {
+                            p.seekTo(ps); pendingSeekMs = null; pendingSeekKey = null
+                        }
+                    } catch (_: Exception) { }
+                    // L1: throttled session save (every ~15s while something is loaded).
+                    try {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastSessSave > 15000L) { lastSessSave = now; saveSession() }
+                    } catch (_: Exception) { }
                 } catch (_: Exception) { }
                 // sleep timer watch
                 sleepAtMs?.let { deadline ->
@@ -2099,9 +2219,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, region, musicFilter)
                         else
                             com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
-                        if (last!!.error == null && last!!.items.isNotEmpty()) return last!!
+                        val l = last
+                        // T5: null-safe return instead of !! chain.
+                        if (l != null && l.error == null && l.items.isNotEmpty()) return l
                     }
-                    return last!!
+                    return last ?: com.mohamedadel.mytube.data.youtube.SearchPage()
                 }
                 val page = try { mainPage() } catch (e: Exception) {
                     com.mohamedadel.mytube.data.youtube.SearchPage(error = e.javaClass.simpleName + (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it.take(120) } ?: ""))
@@ -2368,11 +2490,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             finally { pinningKeys = pinningKeys - key }
         }
     }
-    fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String) {
-        if (pinningKeys.contains(key)) { toast(ctx.getString(R.string.pinning)); return }
+    fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String, alreadyAdded: Boolean = false) {
+        // F6: callers that added the key optimistically (quickPin) skip the re-add, not the guard.
+        if (pinningKeys.contains(key) && !alreadyAdded) { toast(ctx.getString(R.string.pinning)); return }
+        if (!alreadyAdded) pinningKeys = pinningKeys + key
         val title = v.title
-        pinningKeys = pinningKeys + key
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        // F5: track the job so DownloadsScreen can cancel it mid-flight (box: the launch
+        // body references the job itself, which a plain val cannot do in its own initializer).
+        val dlJobBox = arrayOfNulls<kotlinx.coroutines.Job>(1)
+        dlJobBox[0] = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // Storage-permission fix: app-specific dirs need NO runtime permission, but the
                 // external root can be unmounted/missing — fall back to internal LOUDLY, not silently.
@@ -2418,8 +2544,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 if (size >= 0) toast(ctx.getString(R.string.toast_pin_done))
                 else toast(ctx.getString(R.string.toast_pin_fail))
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
-            finally { pinningKeys = pinningKeys - key }
+            finally { pinningKeys = pinningKeys - key; try { val j = dlJobBox[0]; if (j != null) pinJobs.remove(key, j) } catch (_: Exception) { } }
         }
+        try { dlJobBox[0]?.let { pinJobs[key] = it } } catch (_: Exception) { }
     }
     fun confirmPin() {
         val pc = pinConfirm ?: return
@@ -2449,6 +2576,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         val key = v.favKey()
         if (pinKeys.contains(key) || pinningKeys.contains(key)) return
+        // F6: optimistic add on the UI thread (mirrors requestPin) —
+        // closes the double-tap race where two launches both passed the check before either added.
+        pinningKeys = pinningKeys + key
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val s = sd ?: YouTubeRepo.streamRouted(v.url ?: return@launch) ?: return@launch
@@ -2465,8 +2595,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val si = if (lastSubs.isNotEmpty()) lastSubs else matchSubIdxsFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                runPinDownload(v, plan, key)
+                runPinDownload(v, plan, key, alreadyAdded = true)
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
+            finally { pinningKeys = pinningKeys - key }
         }
     }
     // external orphan pins (left after switching location to internal)
@@ -2756,7 +2887,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (!isFullscreen && !batteryExempt) {
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.errorContainer
                 ) {
                     Row(
@@ -2874,6 +3005,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 prefSubLang = "off"
                                 prefs.edit().putString("pref_sub_lang", "off").apply()
                                 subTrackIdx = -1
+                                subTrackFor = null // F8: explicit off clears any override owner
                                 toast(ctx.getString(R.string.toast_sub_off))
                             } else {
                                 val t = streamData?.subtitles?.getOrNull(i)
@@ -2884,6 +3016,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 prefSubLang = code
                                 prefs.edit().putString("pref_sub_lang", code).apply()
                                 subTrackIdx = i
+                                subTrackFor = playing?.favKey() // F8: explicit pick owns the override
                                 toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
                             }
                         } catch (_: Exception) { toast(ctx.getString(R.string.toast_sub_fail)) }
@@ -3372,6 +3505,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { v -> showDownloads = false; playVideo(v) },
                         onDelete = { k -> doUnpin(k) },
                         onClearAll = { clearAllPins() },
+                        onCancel = { k -> cancelPinDownload(k) },
+                        titleLookup = { k -> try { history.firstOrNull { it.videoKey == k }?.title } catch (_: Exception) { null } },
                         orphanCount = orphanInfo.first,
                         orphanBytes = orphanInfo.second,
                         onCleanOrphans = { cleanOrphans() }
@@ -3413,8 +3548,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     )
                 }
                 openGroup != null -> {
-                    val g = openGroup!!
-                    com.mohamedadel.mytube.ui.library.GroupDetailScreen(
+                    // T5: no !! on delegated state — null falls back to list.
+                    val g = openGroup
+                    if (g != null) com.mohamedadel.mytube.ui.library.GroupDetailScreen(
                         group = g,
                         members = groupMembers,
                         subscriptions = subscriptions,
@@ -3730,8 +3866,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     )
                 }
                 openRemote != null -> {
-                    val rp = openRemote!!
-                    com.mohamedadel.mytube.ui.results.RemoteRoute(
+                    // T5: no !! on delegated state — null renders nothing.
+                    val rp = openRemote
+                    if (rp != null) com.mohamedadel.mytube.ui.results.RemoteRoute(
                         rp = rp,
                         loading = openRemoteLoading,
                         items = openRemoteItems,
@@ -3751,7 +3888,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onPlay = { playVideo(it) },
                         onLongClick = { optionsFor = it },
                         onFav = { toggleFavorite(it) },
-                    )
+                    ) else { openRemote = null }
                 }
                 loading -> {
                     com.mohamedadel.mytube.ui.results.VideoListSkeleton(count = 5)
@@ -3785,7 +3922,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                if (searchError != null) searchError!! else stringResource(R.string.no_results),
+                                run { val se = searchError; if (se != null) se else stringResource(R.string.no_results) },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -3840,14 +3977,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             }
                         }
                         // search correction (own item: never breaks the list)
-                        if (searchSuggestion != null) {
+                        // T5: local val instead of searchSuggestion!!.
+                        val ss = searchSuggestion
+                        if (ss != null) {
                             item {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().clickable { doSearch(searchSuggestion!!) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.fillMaxWidth().clickable { doSearch(ss) }.padding(horizontal = 12.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        if (searchCorrected) stringResource(R.string.did_you_mean_showing_fmt, searchSuggestion!!) else stringResource(R.string.did_you_mean_fmt, searchSuggestion!!),
+                                        if (searchCorrected) stringResource(R.string.did_you_mean_showing_fmt, ss) else stringResource(R.string.did_you_mean_fmt, ss),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.tertiary
                                     )

@@ -7,6 +7,7 @@
     <string name="toast_fav_added">أُضيف للمفضلة ♡</string>
     <string name="toast_playlist_created">أُنشئت القائمة وأُضيف الفيديو</string>
     <string name="toast_sub_off">أُوقفت الترجمة</string>
+    <string name="sess_restored">تمت استعادة الجلسة — اضغط تشغيل للمتابعة</string>
     <string name="cd_manage_queue">إدارة القائمة الحالية</string>
     <string name="cd_fav_remove">إزالة من المفضلة</string>
     <string name="picker_title">إضافة إلى قائمة تشغيل</string>

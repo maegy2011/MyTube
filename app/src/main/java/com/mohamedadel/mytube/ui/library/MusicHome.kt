@@ -46,7 +46,7 @@ fun MusicSourceSegment(
 ) {
     val labels = listOf(stringResource(R.string.sc_source_sc), stringResource(R.string.sc_source_ytm))
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
     ) {

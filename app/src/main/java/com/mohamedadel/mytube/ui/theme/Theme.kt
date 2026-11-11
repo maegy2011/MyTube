@@ -33,6 +33,12 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = DarkOnSurface,
     surfaceVariant = DarkSurfaceVariant,
     onSurfaceVariant = DarkOnSurfaceVariant,
+    // D6 (audit P1 2026-11-11): explicit ramps (were M3 defaults).
+    surfaceContainerLowest = DarkContainerLowest,
+    surfaceContainerLow = DarkContainerLow,
+    surfaceContainer = DarkContainer,
+    surfaceContainerHigh = DarkContainerHigh,
+    surfaceContainerHighest = DarkContainerHighest,
     outline = DarkOutline
 )
 
@@ -51,6 +57,12 @@ private val LightColorScheme = lightColorScheme(
     onSurface = LightOnSurface,
     surfaceVariant = LightSurfaceVariant,
     onSurfaceVariant = LightOnSurfaceVariant,
+    // D6 (audit P1 2026-11-11): explicit ramps (were M3 defaults).
+    surfaceContainerLowest = LightContainerLowest,
+    surfaceContainerLow = LightContainerLow,
+    surfaceContainer = LightContainer,
+    surfaceContainerHigh = LightContainerHigh,
+    surfaceContainerHighest = LightContainerHighest,
     outline = LightOutline
 )
 
@@ -92,6 +104,12 @@ fun MyTubeTheme(
             onSurface = DarkOnSurface,
             surfaceVariant = BlackSurfaceVariant,
             onSurfaceVariant = DarkOnSurfaceVariant,
+            // D6 (audit P1 2026-11-11): near-black ramps (pure black crushes hierarchy).
+            surfaceContainerLowest = BlackContainerLowest,
+            surfaceContainerLow = BlackContainerLow,
+            surfaceContainer = BlackContainer,
+            surfaceContainerHigh = BlackContainerHigh,
+            surfaceContainerHighest = BlackContainerHighest,
             outline = BlackOutline
         )
     } else if (accent == "red") {

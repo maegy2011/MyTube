@@ -107,23 +107,55 @@ object PinManager {
         return total
     }
 
-    private fun getTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, span: Long = 0L): Boolean {
+    // F5 (audit P1 2026-11-11): cooperative cancellation — MainActivity registers a key
+    // here and DownloadsScreen offers a cancel button per in-flight pin.
+    private val cancelKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    fun requestCancel(key: String) { try { cancelKeys.add(key) } catch (_: Exception) { } }
+    fun consumeCancel(key: String): Boolean = try { cancelKeys.remove(key) } catch (_: Exception) { false }
+
+    private fun sweepStaleStaging(root: File, maxAgeMs: Long = 24L * 3600 * 1000) {
+        // F5 companion: interrupted pins keep .part for resume; abandon them after a day.
+        try {
+            val now = System.currentTimeMillis()
+            root.listFiles()?.forEach { f ->
+                try { if (f.isDirectory && f.name.startsWith("staging_") && now - f.lastModified() > maxAgeMs) f.deleteRecursively() } catch (_: Exception) { }
+            }
+        } catch (_: Exception) { }
+    }
+
+    private fun getTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, span: Long = 0L, isCancelled: (() -> Boolean)? = null): Boolean {
         return try {
             dest.parentFile?.mkdirs()
             val tmp = File(dest.parentFile, dest.name + ".part")
-            var done = 0L
+            // F5 (audit P1 2026-11-11): resume from a previous partial chunk when the host honors Range.
+            var done = try { if (tmp.exists()) tmp.length() else 0L } catch (_: Exception) { 0L }
             var respTotal = -1L
-            http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+            val req = Request.Builder().url(url)
+            if (done > 0) req.header("Range", "bytes=$done-")
+            http.newCall(req.build()).execute().use { resp ->
+                if (done > 0 && resp.code != 206) {
+                    // Host ignored Range (200) or rejected it (416/others): restart clean.
+                    done = 0
+                    try { tmp.delete() } catch (_: Exception) { }
+                    if (resp.code != 200) return false
+                }
                 if (!resp.isSuccessful || resp.body == null) return false
                 // F2 (audit P0 2026-11-11): capture the declared size from THIS response —
                 // no extra HEAD round-trip; a short read below is rejected as truncated.
-                respTotal = resp.header("Content-Length")?.toLongOrNull() ?: -1L
+                // With 206 the Content-Range carries the FULL length ("bytes 100-199/1000").
+                respTotal = if (resp.code == 206) {
+                    resp.header("Content-Range")?.substringAfterLast("/")?.toLongOrNull()?.let { it } ?: -1L
+                } else {
+                    resp.header("Content-Length")?.toLongOrNull() ?: -1L
+                }
                 val body = resp.body!!
-                tmp.outputStream().use { out ->
+                val append = done > 0 && resp.code == 206
+                java.io.FileOutputStream(tmp, append).use { out ->
                     val buf = ByteArray(256 * 1024)
                     var lastReport = 0L
                     val input = body.byteStream()
                     while (true) {
+                        if (isCancelled?.invoke() == true) return false
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
@@ -138,7 +170,7 @@ object PinManager {
                 }
             }
             if (respTotal > 0 && done != respTotal) {
-                try { tmp.delete() } catch (_: Exception) { }
+                // keep .part on disk: a retry resumes via Range instead of restarting.
                 return false
             }
             if (dest.exists()) dest.delete()
@@ -148,9 +180,13 @@ object PinManager {
 
     // Downloads plan into travel/<sha>, writes meta.json, upserts the Room row. All-or-nothing.
     // onProgress(doneBytes, totalBytes): total may be -1 when the host hides sizes.
+    // F5 resume: .part chunks survive a failed attempt (same staging dir); retry continues via Range.
     suspend fun downloadPin(ctx: Context, dao: PlaylistDao, v: VideoItem, plan: PinPlan, onProgress: ((Long, Long) -> Unit)? = null): Long {
         val app = ctx.applicationContext
         val key = v.favKey()
+        if (consumeCancel(key)) return -1L
+        val travelRoot = try { PinFiles.pinDir(app, "__probe__").parentFile } catch (_: Exception) { null }
+        if (travelRoot != null) sweepStaleStaging(travelRoot)
         val dir = PinFiles.pinDir(app, key)
         val staging = File(PinFiles.pinDir(app, "__staging_" + PinFiles.sha(key)).let { it.parentFile }, "staging_" + PinFiles.sha(key))
         try { if (staging.exists()) staging.deleteRecursively() } catch (_: Exception) { }
@@ -163,11 +199,11 @@ object PinManager {
             // single-stream pins span the full estimate (the old /2 showed a stuck 50% bar)
             val videoSpan = if (plan.audioUrl != null) estTotal / 2 else estTotal
             if (plan.videoUrl != null) {
-                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, videoSpan)) { staging.deleteRecursively(); return -1L }
+                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, videoSpan) { cancelKeys.contains(key) }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
             }
             if (plan.audioUrl != null) {
                 val base = if (plan.videoUrl != null) videoSpan else 0L
-                if (!getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base)) { staging.deleteRecursively(); return -1L }
+                if (!getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base) { cancelKeys.contains(key) }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
             } else if (plan.videoUrl == null && plan.audioUrl == null) {
                 staging.deleteRecursively(); return -1L
             }
@@ -218,6 +254,7 @@ object PinManager {
                 } catch (_: Exception) { staging.deleteRecursively(); return -1L }
                 try { if (staging.exists()) staging.deleteRecursively() } catch (_: Exception) { }
             }
+            try { cancelKeys.remove(key) } catch (_: Exception) { }
             val size = PinFiles.dirBytes(app, key)
             // F2 (audit P0 2026-11-11): post-download length check — refuse empty/zero-byte snapshots.
             try {

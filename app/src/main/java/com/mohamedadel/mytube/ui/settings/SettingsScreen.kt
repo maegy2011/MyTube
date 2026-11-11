@@ -35,6 +35,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import com.mohamedadel.mytube.ui.theme.AccentFills
+import com.mohamedadel.mytube.ui.theme.AccentNames
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,15 +84,19 @@ val THEME_OPTIONS = listOf(
     "system" to R.string.theme_system
 )
 
-// Appearance accents: code to fill color + label. Fills mirror Color.kt AccentFills.
-val ACCENT_OPTIONS = listOf(
-    "red" to (Color(0xFFD32F2F) to R.string.accent_red),
-    "blue" to (Color(0xFF0B57D0) to R.string.accent_blue),
-    "green" to (Color(0xFF2E7D32) to R.string.accent_green),
-    "purple" to (Color(0xFF7B1FA2) to R.string.accent_purple),
-    "orange" to (Color(0xFFB45300) to R.string.accent_orange),
-    "teal" to (Color(0xFF00796B) to R.string.accent_teal)
+// Appearance accents: built from Color.kt AccentFills (single source of truth) + local labels.
+// D2 (audit P1 2026-11-11): was a hardcoded mirror of AccentFills.
+private val ACCENT_LABELS = mapOf(
+    "red" to R.string.accent_red,
+    "blue" to R.string.accent_blue,
+    "green" to R.string.accent_green,
+    "purple" to R.string.accent_purple,
+    "orange" to R.string.accent_orange,
+    "teal" to R.string.accent_teal
 )
+val ACCENT_OPTIONS = AccentNames.mapNotNull { code ->
+    AccentFills[code]?.let { code to (it to (ACCENT_LABELS[code] ?: R.string.accent_red)) }
+}
 
 val QUALITY_OPTIONS = listOf(
     "audio-only" to R.string.quality_audio,

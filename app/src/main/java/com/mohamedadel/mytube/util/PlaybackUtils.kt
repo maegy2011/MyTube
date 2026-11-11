@@ -175,6 +175,13 @@ fun Context.openInYoutubeCtx(v: VideoItem) {
             try { android.widget.Toast.makeText(this, getString(com.mohamedadel.mytube.R.string.err_no_sources), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
             return
         }
+        // S4 (audit P1 2026-11-11): feed data must never reach intent resolution
+        // with a non-web scheme (intent://, file://, custom) — http(s) only.
+        val scheme = try { Uri.parse(raw).scheme?.lowercase() } catch (_: Exception) { null }
+        if (scheme != "http" && scheme != "https") {
+            try { android.widget.Toast.makeText(this, getString(com.mohamedadel.mytube.R.string.err_no_sources), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+            return
+        }
         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(raw))) } catch (_: Exception) { }
         return
     }

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -23,7 +22,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.ui.graphics.Color
+import com.mohamedadel.mytube.ui.theme.LiveBadge
+import com.mohamedadel.mytube.ui.theme.OnLiveBadge
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -214,8 +214,9 @@ private fun ChannelVideoList(
     Column(modifier = modifier) {
         if (badge != null && !loading && videos.isNotEmpty()) {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFB71C1C)) {
-                    Text(text = badge, style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                // D3 (audit P1 2026-11-11): shared LiveBadge + theme shape (was raw 0xFFB71C1C).
+                Surface(shape = MaterialTheme.shapes.extraSmall, color = LiveBadge) {
+                    Text(text = badge, style = MaterialTheme.typography.labelSmall, color = OnLiveBadge, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
             }
         }

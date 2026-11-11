@@ -13,9 +13,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -48,9 +48,12 @@ fun DownloadsScreen(
     pinningKeys: Set<String>,
     progressOf: (String) -> Float?,
     thumbOf: (PinEntity) -> String?,
+    titleOf: (String) -> String? = { null },
     onPlay: (PinEntity) -> Unit,
     onDelete: (String) -> Unit,
     onClearAll: () -> Unit,
+    // F5 (audit P1 2026-11-11): cancel an in-flight download (cooperative; resumes on retry).
+    onCancel: (String) -> Unit = {},
     orphanCount: Int = 0,
     orphanBytes: Long = 0L,
     onCleanOrphans: () -> Unit = {}
@@ -113,12 +116,52 @@ fun DownloadsScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // F5: in-flight pins have no Room row yet — render them first so cancel is reachable.
+                val doneKeys = pins.map { it.videoKey }.toSet()
+                val pending = pinningKeys.filter { it !in doneKeys }
+                items(pending, key = { "pending:$it" }) { k ->
+                    val prog = progressOf(k)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    titleOf(k) ?: stringResource(R.string.pinning),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                if (prog != null && prog >= 0) {
+                                    LinearProgressIndicator(
+                                        progress = { prog },
+                                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.extraSmall)
+                                    )
+                                    Text(
+                                        stringResource(R.string.dl_progress_fmt, (prog * 100).toInt()),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                            IconButton(onClick = { onCancel(k) }) {
+                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cancel), tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
                 items(pins, key = { it.videoKey }) { p ->
                     val prog = progressOf(p.videoKey)
                     val inFlight = pinningKeys.contains(p.videoKey)
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -127,7 +170,7 @@ fun DownloadsScreen(
                                 AsyncImage(
                                     model = thumb,
                                     contentDescription = null,
-                                    modifier = Modifier.width(112.dp).height(63.dp).clip(RoundedCornerShape(8.dp)),
+                                    modifier = Modifier.width(112.dp).height(63.dp).clip(MaterialTheme.shapes.extraSmall),
                                     contentScale = ContentScale.Crop
                                 )
                                 Spacer(Modifier.width(10.dp))
@@ -150,7 +193,7 @@ fun DownloadsScreen(
                                     Spacer(Modifier.height(4.dp))
                                     LinearProgressIndicator(
                                         progress = { prog },
-                                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+                                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.extraSmall)
                                     )
                                     Text(
                                         stringResource(R.string.dl_progress_fmt, (prog * 100).toInt()),
@@ -161,6 +204,12 @@ fun DownloadsScreen(
                             }
                             IconButton(onClick = { onPlay(p) }, enabled = !inFlight) {
                                 Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play), tint = MaterialTheme.colorScheme.primary)
+                            }
+                            // F5: cancel replaces delete while in flight (delete is disabled then).
+                            if (inFlight) {
+                                IconButton(onClick = { onCancel(p.videoKey) }) {
+                                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cancel), tint = MaterialTheme.colorScheme.error)
+                                }
                             }
                             IconButton(onClick = { onDelete(p.videoKey) }, enabled = !inFlight) {
                                 Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error)
@@ -187,9 +236,11 @@ fun DownloadsRoute(
     pinningKeys: Set<String>,
     progressMap: Map<String, Float>,
     thumbLookup: (String) -> String?,
+    titleLookup: (String) -> String? = { null },
     onPlay: (VideoItem) -> Unit,
     onDelete: (String) -> Unit,
     onClearAll: () -> Unit,
+    onCancel: (String) -> Unit = {},
     orphanCount: Int = 0,
     orphanBytes: Long = 0L,
     onCleanOrphans: () -> Unit = {}
@@ -203,6 +254,8 @@ fun DownloadsRoute(
         onPlay = { pe -> onPlay(pe.toVideoItem()) },
         onDelete = onDelete,
         onClearAll = onClearAll,
+        onCancel = onCancel,
+        titleOf = { k -> try { titleLookup(k) } catch (_: Exception) { null } },
         orphanCount = orphanCount,
         orphanBytes = orphanBytes,
         onCleanOrphans = onCleanOrphans

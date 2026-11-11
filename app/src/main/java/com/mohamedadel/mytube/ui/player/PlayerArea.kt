@@ -88,6 +88,8 @@ import com.mohamedadel.mytube.data.youtube.AudioTrackItem
 import com.mohamedadel.mytube.data.youtube.SubtitleItem
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.util.formatDuration
+import com.mohamedadel.mytube.ui.theme.LiveBadge
+import com.mohamedadel.mytube.ui.theme.OnLiveBadge
 import com.mohamedadel.mytube.util.formatMs
 import com.mohamedadel.mytube.util.formatViews
 import com.mohamedadel.mytube.util.shortQuality
@@ -578,8 +580,9 @@ fun PlayerArea(
                 // title (16sp semi-bold, 2 lines) + views meta (12sp gray)
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (isLive) {
-                        Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFB71C1C)) {
-                            Text(text = stringResource(R.string.live_badge), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        // D3 (audit P1 2026-11-11): shared LiveBadge + theme shape (was raw 0xFFB71C1C).
+                        Surface(shape = MaterialTheme.shapes.extraSmall, color = LiveBadge) {
+                            Text(text = stringResource(R.string.live_badge), style = MaterialTheme.typography.labelSmall, color = OnLiveBadge, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                         }
                         Spacer(Modifier.width(8.dp))
                     }

@@ -236,7 +236,7 @@ fun PlaylistsScreen(
                             val sel = e == editEmoji
                             Surface(
                                 onClick = { editEmoji = e },
-                                shape = RoundedCornerShape(12.dp),
+                                shape = MaterialTheme.shapes.small,
                                 color = if (sel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
                             ) {
                                 Text(e, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(8.dp))
@@ -285,11 +285,11 @@ fun PlaylistsScreen(
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(72.dp, 42.dp).clip(RoundedCornerShape(8.dp))) {
+                        Box(modifier = Modifier.size(72.dp, 42.dp).clip(MaterialTheme.shapes.extraSmall)) {
                             AsyncImage(model = r.thumbnail, contentDescription = r.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                             if ((r.durationSec ?: 0) > 0) {
-                                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), shape = RoundedCornerShape(4.dp), color = Color.Black.copy(alpha = 0.8f)) {
-                                    Text(text = com.mohamedadel.mytube.util.formatDuration(r.durationSec!!), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 4.dp))
+                                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), shape = MaterialTheme.shapes.extraSmall, color = Color.Black.copy(alpha = 0.8f)) {
+                                    Text(text = com.mohamedadel.mytube.util.formatDuration(r.durationSec ?: 0), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 4.dp))
                                 }
                             }
                         }

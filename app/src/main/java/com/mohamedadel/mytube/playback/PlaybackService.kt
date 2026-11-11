@@ -109,6 +109,8 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
     override fun onDestroy() {
         cancelSleep()
+        // T7 (audit P1 2026-11-11): release the native EQ effect (was never freed).
+        try { EqManager.release() } catch (_: Exception) { }
         session?.let { removeSession(it) }
         session?.release()
         session = null
