@@ -373,6 +373,10 @@
     <string name="accent_orange">برتقالي</string>
     <string name="accent_teal">فيروزي</string>
     <string name="toast_theme_applied">تم تطبيق المظهر</string>
+    <string name="restart_needed_title">إعادة التشغيل مطلوبة</string>
+    <string name="restart_appearance_msg">تم حفظ المظهر. أعد تشغيل التطبيق لتطبيقه بالكامل.</string>
+    <string name="restart_now">إعادة التشغيل الآن</string>
+    <string name="later">لاحقًا</string>
     <string name="volume_title">مستوى الصوت</string>
     <string name="eq_title">المعادل الصوتي</string>
     <string name="eq_on">المعادل مفعّل</string>

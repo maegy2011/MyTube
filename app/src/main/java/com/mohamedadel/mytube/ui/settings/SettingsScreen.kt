@@ -133,6 +133,9 @@ fun SettingsScreen(
     onTheme: (String) -> Unit,
     accent: String = "red",
     onAccent: (String) -> Unit = {},
+    // Restart-prompt (11 Nov 2026 — بأمر محمد): "restart now" action of the
+    // confirm dialog shown after a theme/accent change.
+    onRestartNow: () -> Unit = {},
     volume: Float = 1f,
     muted: Boolean = false,
     onVolume: (Float) -> Unit = {},
@@ -240,6 +243,17 @@ fun SettingsScreen(
     var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var confirmHist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var confirmCache by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    // Restart-prompt (11 Nov 2026): shown after a theme/accent change — restart now or later.
+    var showRestartPrompt by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (showRestartPrompt) {
+        AlertDialog(
+            onDismissRequest = { showRestartPrompt = false },
+            title = { Text(stringResource(R.string.restart_needed_title)) },
+            text = { Text(stringResource(R.string.restart_appearance_msg)) },
+            confirmButton = { TextButton(onClick = { showRestartPrompt = false; onRestartNow() }) { Text(stringResource(R.string.restart_now)) } },
+            dismissButton = { TextButton(onClick = { showRestartPrompt = false }) { Text(stringResource(R.string.later)) } }
+        )
+    }
     var confirmPins by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     if (confirmFav) {
         AlertDialog(
@@ -598,7 +612,7 @@ fun SettingsScreen(
                     label = stringResource(R.string.theme_title),
                     entries = THEME_OPTIONS.map { it.first to stringResource(it.second) },
                     selected = theme,
-                    onPick = onTheme
+                    onPick = { if (it != theme) { onTheme(it); showRestartPrompt = true } }
                 )
                 Text(stringResource(R.string.accent_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 // screens-fix Settings P1-S5: 48dp targets + visible labels + radio group (were 40dp color-only).
@@ -606,7 +620,7 @@ fun SettingsScreen(
                     ACCENT_OPTIONS.forEach { (code, pair) ->
                         val (fill, label) = pair
                         val selected = accent == code
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f).selectable(selected = selected, onClick = { onAccent(code) }, role = Role.RadioButton)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f).selectable(selected = selected, onClick = { if (code != accent) { onAccent(code); showRestartPrompt = true } }, role = Role.RadioButton)) {
                             Box(
                                 modifier = Modifier.size(48.dp)
                                     .clip(CircleShape)

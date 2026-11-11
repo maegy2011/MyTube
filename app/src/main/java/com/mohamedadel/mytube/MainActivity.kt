@@ -183,6 +183,20 @@ import org.schabi.newpipe.extractor.Page
 private val themeLive = androidx.compose.runtime.mutableStateOf("dark")
 private val accentLive = androidx.compose.runtime.mutableStateOf("red")
 
+// Restart-prompt (11 Nov 2026 — بأمر محمد): full process restart after a
+// theme/accent change — relaunch MainActivity with a clean task, then exit.
+// API 26+: getLaunchIntentForPackage + CLEAR_TASK works on all supported levels.
+private fun restartAppNow(activity: android.app.Activity) {
+    try {
+        val launch = activity.packageManager.getLaunchIntentForPackage(activity.packageName)?.apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        if (launch != null) activity.startActivity(launch)
+    } catch (_: Exception) { }
+    try { android.os.Process.killProcess(android.os.Process.myPid()) } catch (_: Exception) { }
+    try { kotlin.system.exitProcess(0) } catch (_: Exception) { }
+}
+
 class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     val pipMode = androidx.compose.runtime.mutableStateOf(false)
@@ -192,6 +206,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // theme + ui-language prefs are read here (before composition) so they survive restarts;
         // theme/accent changes apply live via themeLive/accentLive (no recreate — queue survives).
+        // Restart-prompt (11 Nov 2026): darkTheme reads themeLive (was the stale themePref snapshot,
+        // so dark/light/system needed a manual restart); values are saved immediately and the settings
+        // dialog offers restart-now for full consistency, or later (applies on next launch at latest).
         val themePref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_theme", "dark") ?: "dark" } catch (_: Exception) { "dark" }
         val accentPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_accent", "red") ?: "red" } catch (_: Exception) { "red" }
         try { themeLive.value = themePref } catch (_: Exception) { }
@@ -201,7 +218,7 @@ class MainActivity : ComponentActivity() {
         val uiLangPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { "ar" }
         setContent {
             MyTubeTheme(
-                darkTheme = when (themePref) {
+                darkTheme = when (themeLive.value) {
                     "light" -> false
                     "system" -> androidx.compose.foundation.isSystemInDarkTheme()
                     else -> true
@@ -3948,15 +3965,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         prefTheme = v
                         try { prefs.edit().putString("pref_theme", v).apply() } catch (_: Exception) { }
                         try { themeLive.value = v } catch (_: Exception) { }
-                        toast(ctx.getString(R.string.toast_theme_applied))
                     },
                     accent = prefAccent,
                     onAccent = { v ->
                         prefAccent = v
                         try { prefs.edit().putString("pref_accent", v).apply() } catch (_: Exception) { }
                         try { accentLive.value = v } catch (_: Exception) { }
-                        toast(ctx.getString(R.string.toast_theme_applied))
                     },
+                    // Restart-prompt (11 Nov 2026 — بأمر محمد): dialog choice after theme/accent change.
+                    onRestartNow = { (ctx as? android.app.Activity)?.let { restartAppNow(it) } },
                     volume = volumeLive.value,
                     muted = mutedLive.value,
                     onVolume = { v ->

@@ -373,6 +373,10 @@
     <string name="accent_orange">Orange</string>
     <string name="accent_teal">Teal</string>
     <string name="toast_theme_applied">Theme applied</string>
+    <string name="restart_needed_title">Restart required</string>
+    <string name="restart_appearance_msg">Appearance saved. Restart the app to apply it fully.</string>
+    <string name="restart_now">Restart now</string>
+    <string name="later">Later</string>
     <string name="volume_title">Volume level</string>
     <string name="eq_title">Equalizer</string>
     <string name="eq_on">Equalizer on</string>
