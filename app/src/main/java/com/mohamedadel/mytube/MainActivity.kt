@@ -533,6 +533,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var trendTab by remember { mutableStateOf(0) }
     var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
     var trendingLoading by remember { mutableStateOf(false) }
+    // screens-fix 2026-11-11 Home P0-H2: trending error state for retry UI.
+    var trendingError by remember { mutableStateOf<String?>(null) }
+    // screens-fix 2026-11-11 Home P1-H5: cancellable suggestions job.
+    var suggestJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var openPlaylistId by remember { mutableStateOf<Long?>(null) }
     val openItems by remember(openPlaylistId) {
         openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
@@ -1339,7 +1343,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun refreshSuggestions(region: String?, myTab: Int) {
         val seeds = (recentSearches.take(3) + trending.take(2)).distinct().take(3)
         if (seeds.isEmpty()) { if (trendTab == myTab) { suggestionChips = emptyMap(); trendingItems = emptyList() }; return }
-        scope.launch {
+        suggestJob?.cancel()
+        suggestJob = scope.launch {
             try {
                 val chips = seeds.associateWith { seed ->
                     try { YouTubeRepo.suggestions(seed).take(4) } catch (_: Exception) { emptyList() }
@@ -1347,8 +1352,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val vids = seeds.take(2).flatMap { seed ->
                     try { YouTubeRepo.search(seed, null, region).items.take(6) } catch (_: Exception) { emptyList() }
                 }.distinctBy { it.id ?: it.url ?: it.title }.take(18)
-                if (trendTab == myTab) { suggestionChips = chips; trendingItems = vids }
-            } catch (_: Exception) { if (trendTab == myTab) { suggestionChips = emptyMap(); trendingItems = emptyList() } }
+                if (trendTab == myTab) { suggestionChips = chips; trendingItems = vids; trendingError = null }
+            } catch (_: Exception) { if (trendTab == myTab) { suggestionChips = emptyMap(); trendingItems = emptyList(); trendingError = ctx.getString(R.string.err_kiosk) } }
             finally { if (trendTab == myTab) trendingLoading = false }
         }
     }
@@ -1358,6 +1363,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val kiosk = tab?.second
         val isSearchTab = tab?.third == true
         trendingLoading = true
+        // screens-fix Home P1-H5: cancel in-flight suggestions when switching tabs.
+        if (kiosk != "suggestions") suggestJob?.cancel()
+        trendingError = null
         if (kiosk == "suggestions") {
             val region = if (prefCountry == "global") null else prefCountry
             val myTab = trendTab
@@ -1374,7 +1382,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 } else {
                     YouTubeRepo.trending(region, kiosk)
                 }
-            } catch (_: Exception) { trendingItems = emptyList() }
+                // screens-fix Home P0-H2: empty trending = error surface (was silent).
+                trendingError = if (trendingItems.isEmpty()) ctx.getString(R.string.err_kiosk) else null
+            } catch (_: Exception) { trendingItems = emptyList(); trendingError = ctx.getString(R.string.err_kiosk) }
             finally { trendingLoading = false }
         }
     }
@@ -2809,7 +2819,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 } else {
                     subs.flatMap { oneChannel(it.channelUrl) }
                 }
-                feedItems = all
+                // screens-fix Home P0-H1: VideoItem has no publishedAt (only uploadDate String),
+                // so newest-first sort is unreliable — round-robin interleave avoids channel blocks.
+                // TODO(field): verify newest-first across 3+ subs; add publishedAt to VideoItem if needed.
+                feedItems = if (all.size <= 1) all else {
+                    val perChannel = all.groupBy { it.channelUrl ?: it.channel ?: "?" }.values.toList()
+                    val mixed = mutableListOf<VideoItem>()
+                    var idx = 0
+                    var added: Boolean
+                    do {
+                        added = false
+                        for (bucket in perChannel) {
+                            if (idx < bucket.size) { mixed += bucket[idx]; added = true }
+                        }
+                        idx++
+                    } while (added)
+                    mixed
+                }
             } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_feed_fail)) }
             feedLoading = false
         }
@@ -4077,11 +4103,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                     )
                                 }
-                                itemsIndexed(items = remotePlaylists, key = { idx, p -> "pl|$idx|" + (p.url ?: p.title ?: "?") }) { _, p ->
+                                // screens-fix Home P0-H3: stable keys (no index prefix).
+                                itemsIndexed(items = remotePlaylists, key = { _, p -> "pl|" + (p.url ?: p.title ?: p.hashCode().toString()) }) { _, p ->
                                     com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
                                 }
                             }
-                            itemsIndexed(items = scResults, key = { idx, v -> "$idx|${v.url ?: v.title ?: "n/a"}" }) { _, v ->
+                            itemsIndexed(items = scResults, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
                                 SearchRow(
                                     v = v,
                                     isCurrent = playing?.url == v.url,
@@ -4285,11 +4312,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         trending = trending,
                         trendTab = trendTab,
                         onTrendTab = { i ->
+                            // screens-fix Home P1-H5: cancel stale suggestions before switching.
+                            suggestJob?.cancel()
                             trendTab = i
                             refreshTrending()
                         },
                         trendingItems = trendingItems,
                         trendingLoading = trendingLoading,
+                        trendingError = trendingError,
+                        onRetryTrending = { refreshTrending() },
                         countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry,
                         onSearch = { q -> query = q; doSearch(q) },
                         isSuggestionsTab = TREND_TABS.getOrNull(trendTab)?.second == "suggestions",
@@ -4383,7 +4414,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         item {
                             Text(stringResource(R.string.results_found_fmt, results.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp))
                         }
-                        itemsIndexed(items = results, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
+                        // screens-fix Home P0-H3: stable keys (no index prefix).
+                        itemsIndexed(items = results, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
                             SearchRow(
                                 v = v,
                                 isCurrent = playing?.id == v.id || playing?.url == v.url,

@@ -69,7 +69,10 @@ fun HomeEmptyState(
     onFav: (VideoItem) -> Unit = {},
     onLongClick: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
-    pinningKeys: Set<String> = emptySet()
+    pinningKeys: Set<String> = emptySet(),
+    // screens-fix Home P0-H2: error surface + retry.
+    trendingError: String? = null,
+    onRetryTrending: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScrollableTabRow(selectedTabIndex = trendTab, edgePadding = 8.dp) {
@@ -91,6 +94,22 @@ fun HomeEmptyState(
         // every tab is a real kiosk list (or labeled region-search for news); empty = honest fallback chips
         if (trendingLoading) {
             VideoListSkeleton(count = 4)
+        } else if (trendingError != null && trendingItems.isEmpty()) {
+            // screens-fix Home P0-H2: explicit error + retry (was silent chips).
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    trendingError,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.padding(vertical = 4.dp))
+                androidx.compose.material3.Button(onClick = onRetryTrending) {
+                    Text(stringResource(R.string.retry))
+                }
+            }
         } else if (trendingItems.isEmpty()) {
             Text(
                 if (TREND_TABS.getOrNull(trendTab)?.third == true) stringResource(R.string.news_empty)
@@ -105,7 +124,10 @@ fun HomeEmptyState(
                 }
             }
         } else {
+            // screens-fix Home P1-H4: dedicated scroll state preserves position per tab set.
+            val trendListState = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyColumn(
+                state = trendListState,
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)

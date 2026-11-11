@@ -137,7 +137,8 @@ fun FeedScreen(
                             }
                         }
                     }
-                    itemsIndexed(items = shown, key = { idx, v -> "$idx|${v.id ?: v.url ?: v.title ?: "n/a"}" }) { _, v ->
+                    // screens-fix Home P0-H3: stable keys (no index prefix).
+                    itemsIndexed(items = shown, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
                         SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
                     }
                 }

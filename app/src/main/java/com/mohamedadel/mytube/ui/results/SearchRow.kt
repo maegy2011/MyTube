@@ -43,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,7 +76,14 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
         }
     }
     Column(
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongClick(v) })
+        // screens-fix Home P1-H6: card semantics (role + label) for TalkBack.
+        modifier = Modifier.fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { onLongClick(v) },
+                onClickLabel = v.title ?: ""
+            )
+            .semantics(mergeDescendants = false) { contentDescription = v.title ?: "" },
     ) {
         // 16:9 full-bleed thumbnail (edge-to-edge, no rounding — like YouTube)
         Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -158,7 +167,8 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
             }
             // major #7: onRemove was accepted but never rendered (history delete was dead).
             if (onRemove != null) {
-                IconButton(onClick = { onRemove(v) }, modifier = Modifier.size(36.dp)) {
+                // screens-fix Home P1-H6: 48dp touch target.
+                IconButton(onClick = { onRemove(v) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                     Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error)
                 }
             }

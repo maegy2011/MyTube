@@ -62,10 +62,11 @@ fun VideoCardSkeleton() {
 // Full-list loading state: N skeletons with the same spacing as real rows.
 @Composable
 fun VideoListSkeleton(count: Int = 4) {
-    LazyColumn(
+    // screens-fix Home P2-H9: Column (not LazyColumn) so it nests safely inside scroll hosts.
+    Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        items(count) { VideoCardSkeleton() }
+        repeat(count) { VideoCardSkeleton() }
     }
 }
