@@ -79,6 +79,9 @@ fun QueuePanel(
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
     onOptions: (VideoItem) -> Unit = {},
+    pinBadges: Map<String, String> = emptyMap(),
+    pinningKeys: Set<String> = emptySet(),
+    progressOf: (String) -> Float? = { null },
     // screens-fix Music P1-M4: radio state badge + stop.
     radioOn: Boolean = false,
     onStopRadio: () -> Unit = {}
@@ -161,6 +164,16 @@ fun QueuePanel(
                             }
                         ) {
                         Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
+                            // pin-deepfix 2026-11-11: distinctive pinned badge + live % in queue rows.
+                            val qKey = v.favKey()
+                            val qProg = progressOf(qKey)
+                            val qBadgeText = pinBadges[qKey]
+                            if (pinningKeys.contains(qKey) && qProg != null && qProg >= 0f) {
+                                Text(stringResource(R.string.dl_progress_fmt, (qProg * 100).toInt()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp))
+                            } else if (qBadgeText != null) {
+                                Icon(Icons.Rounded.PushPin, contentDescription = stringResource(R.string.cd_pinned_fmt, qBadgeText), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            }
                             Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
                             Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
                             // explicit "play from here": sequential playback starts ONLY from this button

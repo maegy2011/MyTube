@@ -195,6 +195,7 @@ fun PlayerArea(
     onSubscribe: () -> Unit = {},
     isPinned: Boolean = false,
     isPinning: Boolean = false,
+    pinProgress: Float? = null,
     onPin: () -> Unit = {},
     category: String? = null,
     tags: List<String> = emptyList(),
@@ -690,7 +691,7 @@ fun PlayerArea(
                     )
                     ActionPill(
                         icon = { Icon(Icons.Rounded.PushPin, contentDescription = null, tint = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                        label = if (isPinning) stringResource(R.string.pinning) else stringResource(R.string.pill_pin),
+                        label = if (isPinning) (pinProgress?.takeIf { it >= 0f }?.let { stringResource(R.string.dl_progress_fmt, (it * 100).toInt()) } ?: stringResource(R.string.pinning)) else stringResource(R.string.pill_pin),
                         selected = isPinned,
                         onClick = onPin
                     )

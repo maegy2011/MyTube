@@ -312,6 +312,8 @@
     <string name="pin_ext_fallback">التخزين الخارجي غير متاح — سيُحفظ التثبيت داخليًا (بلا حاجة لأي إذن)</string>
     <string name="pin_no_space">لا توجد مساحة كافية لهذا التثبيت</string>
     <string name="toast_pin_fail">فشل التثبيت — تحقق من الاتصال</string>
+    <string name="pin_err_stream">هذا المقطع لا يدعم التثبيت (بث متدفق فقط)</string>
+    <string name="cd_pinned_fmt">مثبّت: %1$s</string>
     <string name="toast_unpinned">تمت إزالة التثبيت</string>
     <string name="offline_title">وضع بدون اتصال</string>
     <string name="offline_mode">تشغيل المثبت فقط (بلا بيانات)</string>

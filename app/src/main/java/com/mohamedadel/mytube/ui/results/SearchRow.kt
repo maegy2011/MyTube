@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,8 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -63,7 +66,7 @@ import com.mohamedadel.mytube.util.formatViews
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null, pinBadge: String? = null, pinning: Boolean = false) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null, pinBadge: String? = null, pinning: Boolean = false, pinProgress: Float? = null) {
     val lctx = LocalContext.current
     val metaHasCheck = v.verified
     val meta = buildString {
@@ -150,13 +153,26 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                // Phase 5: offline-pin badge (📌 quality • size) or in-progress state
+                // Phase 5: offline-pin badge or in-progress state (pin-deepfix 2026-11-11:
+                // distinctive PinBadge pill + live % bar driven by the single pinProgress source).
                 if (pinning) {
                     Spacer(Modifier.height(4.dp))
-                    Text(text = stringResource(R.string.pinning), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1)
+                    val prog = pinProgress?.takeIf { it >= 0f }
+                    if (prog != null) {
+                        LinearProgressIndicator(
+                            progress = { prog },
+                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                                .semantics { progressBarRangeInfo = ProgressBarRangeInfo(prog, 0f..1f) }
+                        )
+                        Spacer(Modifier.height(2.dp))
+                    }
+                    Text(
+                        text = if (prog != null) stringResource(R.string.dl_progress_fmt, (prog * 100).toInt()) else stringResource(R.string.pinning),
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1
+                    )
                 } else if (!pinBadge.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
-                    Text(text = pinBadge, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    PinBadge(text = pinBadge)
                 }
             }
             IconButton(onClick = { onFav(v) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {

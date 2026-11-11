@@ -66,6 +66,7 @@ fun ChannelScreen(
     onFav: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
+    progressOf: (String) -> Float? = { null },
     subsLabel: (Long?) -> String = { "" },
     // Extra tabs (lazy-loaded by the caller via onTabSelect): Shorts / Live / Playlists.
     shorts: List<VideoItem> = emptyList(),
@@ -146,15 +147,16 @@ fun ChannelScreen(
                             isFav = isFav(v),
                             onFav = onFav,
                             pinBadge = pinBadges[v.favKey()],
-                            pinning = pinningKeys.contains(v.favKey())
+                            pinning = pinningKeys.contains(v.favKey()),
+                            pinProgress = progressOf(v.favKey())
                         )
                     }
                 }
             }
         } else if (tab == 1) {
-            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = shorts, loading = shortsLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys)
+            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = shorts, loading = shortsLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys, progressOf = progressOf)
         } else if (tab == 2) {
-            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = live, badge = stringResource(R.string.live_badge), loading = liveLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys)
+            ChannelVideoList(modifier = Modifier.fillMaxWidth().weight(1f), videos = live, badge = stringResource(R.string.live_badge), loading = liveLoading, onPlay = onPlay, onLongClick = onLongClick, onAdd = onAdd, isFav = isFav, onFav = onFav, pinBadges = pinBadges, pinningKeys = pinningKeys, progressOf = progressOf)
         } else if (tab == 3) {
             if (channelPlaylistsLoading) {
                 VideoListSkeleton(count = 4)
@@ -209,7 +211,8 @@ private fun ChannelVideoList(
     isFav: (VideoItem) -> Boolean,
     onFav: (VideoItem) -> Unit,
     pinBadges: Map<String, String>,
-    pinningKeys: Set<String>
+    pinningKeys: Set<String>,
+    progressOf: (String) -> Float? = { null }
 ) {
     Column(modifier = modifier) {
         if (badge != null && !loading && videos.isNotEmpty()) {
@@ -237,7 +240,8 @@ private fun ChannelVideoList(
                         isFav = isFav(v),
                         onFav = onFav,
                         pinBadge = pinBadges[v.favKey()],
-                        pinning = pinningKeys.contains(v.favKey())
+                        pinning = pinningKeys.contains(v.favKey()),
+                        pinProgress = progressOf(v.favKey())
                     )
                 }
             }

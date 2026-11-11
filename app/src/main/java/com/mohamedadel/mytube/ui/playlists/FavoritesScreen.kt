@@ -52,6 +52,7 @@ fun FavoritesScreen(
     onLongClick: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
+    progressOf: (String) -> Float? = { null },
     onPlayAll: (() -> Unit)? = null,
     onRadio: (() -> Unit)? = null
 ) {
@@ -156,7 +157,8 @@ fun FavoritesScreen(
                         isFav = true,
                         onFav = onToggleFav,
                         pinBadge = pinBadges[v.favKey()],
-                        pinning = pinningKeys.contains(v.favKey())
+                        pinning = pinningKeys.contains(v.favKey()),
+                        pinProgress = progressOf(v.favKey())
                     )
                 }
             }

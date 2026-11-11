@@ -3104,6 +3104,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         showFeed = true
         if (feedItems.isEmpty()) refreshFeed()
     }
+    // pin-deepfix 2026-11-11: retry choices for the one fresh-resolve retry in runPinDownload
+    // (googlevideo URLs expire — a stale plan fails even on good networks).
+    data class PinRetry(val quality: String, val audioIdx: Int, val subIdxs: Set<Int>)
     // requestPin: player context passes resolved sd+selection (no re-resolve); list context resolves first.
     fun requestPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?, q: String?, aIdx: Int?, sIdxs: Set<Int>?) {
         if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
@@ -3114,7 +3117,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         pinningKeys = pinningKeys + key
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val s = sd ?: YouTubeRepo.streamRouted(v.url ?: return@launch) ?: return@launch
+                // pin-deepfix: a null URL used to exit silently (no toast at all).
+                val u = v.url
+                if (sd == null && u.isNullOrBlank()) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                val s = sd ?: YouTubeRepo.streamRouted(u ?: return@launch) ?: run { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                // pin-deepfix: streaming-only (HLS) audio cannot be pinned as bytes — say so clearly.
+                if (s.audioHlsOnly) { toast(ctx.getString(R.string.pin_err_stream)); return@launch }
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
                     toast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
@@ -3141,7 +3149,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             finally { pinningKeys = pinningKeys - key }
         }
     }
-    fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String, alreadyAdded: Boolean = false) {
+    fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String, alreadyAdded: Boolean = false, retry: PinRetry? = null) {
         // F6: callers that added the key optimistically (quickPin) skip the re-add, not the guard.
         if (pinningKeys.contains(key) && !alreadyAdded) { toast(ctx.getString(R.string.pinning)); return }
         if (!alreadyAdded) pinningKeys = pinningKeys + key
@@ -3189,11 +3197,37 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         nm?.notify(notifId, b.build())
                     } catch (_: Exception) { }
                 }
-                val size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, v, plan, progCb)
+                var size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, v, plan, progCb)
+                // pin-deepfix: one fresh-resolve retry — signed googlevideo URLs expire, so a stale
+                // plan fails even on a good network. Rebuild from a fresh resolve with the same choices.
+                if (size < 0 && retry != null && !com.mohamedadel.mytube.data.local.PinManager.isCancelRequested(key)) {
+                    try {
+                        val fresh = v.url?.let { YouTubeRepo.streamRouted(it) }
+                        if (fresh != null && !fresh.audioHlsOnly &&
+                            (fresh.audioLowestUrl != null || fresh.videoUrlByQuality.isNotEmpty())) {
+                            val rebuilt = com.mohamedadel.mytube.data.local.PinManager.buildPlan(
+                                fresh, retry.quality, retry.audioIdx, retry.subIdxs,
+                                ctx.estimatedDownstreamKbps(), maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
+                            if (rebuilt != null) {
+                                size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, v, rebuilt, progCb)
+                            }
+                        }
+                    } catch (_: Exception) { }
+                }
                 try { pinProgress = pinProgress - key } catch (_: Exception) { }
                 try { nm?.cancel(notifId) } catch (_: Exception) { }
-                if (size >= 0) toast(ctx.getString(R.string.toast_pin_done))
+                // pin-deepfix: a user-cancelled pin is not a failure — stay silent
+                // (cancelPinDownload already toasted). Clear the consumed flag.
+                if (com.mohamedadel.mytube.data.local.PinManager.isCancelRequested(key)) {
+                    try { com.mohamedadel.mytube.data.local.PinManager.consumeCancel(key) } catch (_: Exception) { }
+                }
+                else if (size >= 0) toast(ctx.getString(R.string.toast_pin_done))
                 else toast(ctx.getString(R.string.toast_pin_fail))
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                // pin-deepfix: job-cancel path of cancelPinDownload — silent, then propagate.
+                try { pinProgress = pinProgress - key } catch (_: Exception) { }
+                try { com.mohamedadel.mytube.data.local.PinManager.consumeCancel(key) } catch (_: Exception) { }
+                throw ce
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
             finally { pinningKeys = pinningKeys - key; try { val j = dlJobBox[0]; if (j != null) pinJobs.remove(key, j) } catch (_: Exception) { } }
         }
@@ -3216,7 +3250,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSubs, ctx.estimatedDownstreamKbps(), maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
         } else pc.plan
         if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return }
-        runPinDownload(pc.v, plan, key)
+        runPinDownload(pc.v, plan, key, retry = PinRetry(pinSelQuality, pinSelAudio, pinSelSubs))
     }
     // Shared download execution (dialog confirm + quick pin): progress card + notification + guards.
     // Quick pin: one tap, no dialog. Replays the last confirmed choices (quality + subtitle set
@@ -3232,7 +3266,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         pinningKeys = pinningKeys + key
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val s = sd ?: YouTubeRepo.streamRouted(v.url ?: return@launch) ?: return@launch
+                // pin-deepfix: a null URL used to exit silently (no toast at all).
+                val u = v.url
+                if (sd == null && u.isNullOrBlank()) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                val s = sd ?: YouTubeRepo.streamRouted(u ?: return@launch) ?: run { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                // pin-deepfix: streaming-only (HLS) audio cannot be pinned as bytes — say so clearly.
+                if (s.audioHlsOnly) { toast(ctx.getString(R.string.pin_err_stream)); return@launch }
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
                     toast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
@@ -3246,7 +3285,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val si = if (lastSubs.isNotEmpty()) lastSubs else matchSubIdxsFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
                 if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                runPinDownload(v, plan, key, alreadyAdded = true)
+                runPinDownload(v, plan, key, alreadyAdded = true, retry = PinRetry(qq, ai, si))
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
             finally { pinningKeys = pinningKeys - key }
         }
@@ -3722,6 +3761,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
                     isPinned = pinKeys.contains(cur.favKey()),
                     isPinning = pinningKeys.contains(cur.favKey()),
+                    pinProgress = pinProgress[cur.favKey()],
                     onPin = {
                         if (pinKeys.contains(cur.favKey())) doUnpin(cur.favKey())
                         else requestPin(cur, streamData, quality, audioTrackIdx, ((if (subTrackIdx >= 0) setOf(subTrackIdx) else emptySet()) + matchSubIdxsFor(streamData)))
@@ -4114,6 +4154,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onFav = { toggleFavorite(it) },
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] },
                         subsLabel = { n -> if (n != null && n > 0) ctx.getString(R.string.subs_count_fmt, n) else "" },
                         shorts = channelShorts,
                         shortsLoading = channelShortsLoading,
@@ -4150,6 +4191,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         },
                         onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
                         onOptions = { optionsFor = it },
+                        // pin-deepfix 2026-11-11: badges + live % in queue rows.
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] },
                         onSave = { name ->
                             scope.launch {
                                 // new playlist: dedupe the working queue before saving
@@ -4282,6 +4327,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         filterLabel = feedGroupName,
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] },
                         onLongClick = { optionsFor = it },
                         onPlay = { playVideo(it) },
                         isFav = { v -> v.favKey() in favoriteSet },
@@ -4311,6 +4357,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         favoriteSet = favoriteSet,
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] },
                         scListState = scListState,
                         onQueryChange = { scQuery = it },
                         onSearch = { q -> doScSearch(q) },
@@ -4348,6 +4395,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         searchResults = histSearchResults,
                         pinInfo = remember(pins) { pins.associateBy { it.videoKey } },
                         pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) }
                     )
@@ -4362,6 +4410,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onLongClick = { optionsFor = it },
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] },
                         onPlayAll = {
                             val list = favorites.map { it.toVideoItem() }
                             if (list.isNotEmpty()) {
@@ -4479,6 +4528,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         favSet = favoriteSet,
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] },
                         onBack = { openRemote = null; openRemoteItems = emptyList() },
                         onPlayAll = { list ->
                             results = list
@@ -4527,7 +4577,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onFav = { toggleFavorite(it) },
                         onLongClick = { optionsFor = it },
                         pinBadges = pinBadges,
-                        pinningKeys = pinningKeys
+                        pinningKeys = pinningKeys,
+                        progressOf = { k -> pinProgress[k] }
                     )
                 }
                 results.isEmpty() && !loading -> {
@@ -4621,7 +4672,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 onLongClick = { optionsFor = it },
                                 onFav = { toggleFavorite(it) },
                                 pinBadge = pinBadges[v.favKey()],
-                                pinning = pinningKeys.contains(v.favKey())
+                                pinning = pinningKeys.contains(v.favKey()),
+                                pinProgress = pinProgress[v.favKey()]
                             )
                         }
                         if (loadingMore) {

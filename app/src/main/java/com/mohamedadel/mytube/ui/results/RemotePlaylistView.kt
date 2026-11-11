@@ -37,6 +37,7 @@ fun RemoteRoute(
     favSet: Set<String>,
     pinBadges: Map<String, String>,
     pinningKeys: Set<String>,
+    progressOf: (String) -> Float? = { null },
     onBack: () -> Unit,
     onPlayAll: (List<VideoItem>) -> Unit,
     onPlay: (VideoItem) -> Unit,
@@ -60,6 +61,7 @@ fun RemoteRoute(
         onFav = onFav,
         pinBadgeOf = { v -> pinBadges[v.favKey()] },
         pinningOf = { v -> pinningKeys.contains(v.favKey()) },
+        progressOf = { v -> progressOf(v.favKey()) },
         onSave = onSave,
         onPinAll = onPinAll
     )
@@ -84,6 +86,7 @@ fun RemotePlaylistView(
     onFav: (VideoItem) -> Unit,
     pinBadgeOf: (VideoItem) -> String?,
     pinningOf: (VideoItem) -> Boolean,
+    progressOf: (VideoItem) -> Float? = { null },
     onSave: ((List<VideoItem>) -> Unit)? = null,
     onPinAll: ((List<VideoItem>) -> Unit)? = null
 ) {
@@ -129,7 +132,8 @@ fun RemotePlaylistView(
                         isFav = isFav(v),
                         onFav = onFav,
                         pinBadge = pinBadgeOf(v),
-                        pinning = pinningOf(v)
+                        pinning = pinningOf(v),
+                        pinProgress = progressOf(v)
                     )
                 }
             }

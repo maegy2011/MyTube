@@ -238,11 +238,9 @@ fun DownloadsScreen(
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text(
-                                    (p.quality ?: "") + " • " + String.format("%.1f MB", (p.sizeBytes ?: 0L) / 1048576.0),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
+                                // pin-deepfix 2026-11-11: distinctive badge (was bare text).
+                                com.mohamedadel.mytube.ui.results.PinBadge(
+                                    text = (p.quality ?: "") + " • " + String.format("%.1f MB", (p.sizeBytes ?: 0L) / 1048576.0)
                                 )
                                 if (inFlight && prog != null) {
                                     Spacer(Modifier.height(4.dp))

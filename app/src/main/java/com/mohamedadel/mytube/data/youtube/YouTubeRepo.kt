@@ -19,7 +19,7 @@ data class ChapterItem(val title: String, val startSec: Int)
 data class Storyboard(val urls: List<String>, val total: Int, val perX: Int, val perY: Int, val fw: Int, val fh: Int, val durPerFrame: Int)
 data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
 data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0, val isLive: Boolean = false)
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0, val isLive: Boolean = false, val audioHlsOnly: Boolean = false)
 data class RemotePlaylist(
     val title: String? = null,
     val uploader: String? = null,
@@ -279,9 +279,20 @@ object YouTubeRepo {
         } catch (e: Exception) { SearchPage(error = e.message ?: e.javaClass.simpleName) }
     }
 
+    // pin-deepfix 2026-11-11: YTM tracks (music.youtube.com/watch, youtu.be/…) must resolve
+    // through the www host — the YouTube extractor does not accept the music host
+    // (fetchPlaylist already normalized; this covers direct pin/play of YTM items).
+    fun normalizeStreamUrl(url: String): String {
+        return try {
+            var u = url.replace("music.youtube.com", "www.youtube.com")
+            val short = Regex("^https?://youtu\\.be/([^?#/]+)").find(u)
+            if (short != null) u = "https://www.youtube.com/watch?v=" + short.groupValues[1]
+            u
+        } catch (_: Exception) { url }
+    }
     suspend fun stream(url: String): StreamData = withContext(Dispatchers.IO) {
         try {
-            val ext = service().getStreamExtractor(url)
+            val ext = service().getStreamExtractor(normalizeStreamUrl(url))
             ext.fetchPage()
             // Livestreams: no progressive/DASH-video map — single HLS (or DASH manifest) URL.
             // ExoPlayer sniffs HLS/DASH automatically once the hls/dash modules are on classpath.
@@ -717,13 +728,19 @@ object YouTubeRepo {
     }
 
     // Audio-only StreamData for a SoundCloud track (highest-bitrate audio stream).
+    // pin-deepfix 2026-11-11: skip HLS (.m3u8) variants — pinning stores raw bytes, so a
+    // playlist URL would produce a corrupt audio.m4a. audioHlsOnly lets callers say so clearly.
     suspend fun scStream(url: String): StreamData? = withContext(Dispatchers.IO) {
         try {
             val ext = scService().getStreamExtractor(url)
             ext.fetchPage()
             val audios = try { ext.audioStreams } catch (_: Exception) { null } ?: emptyList()
-            val best = audios.sortedByDescending { a -> try { a.averageBitrate } catch (_: Exception) { 0 } }.firstOrNull()
-            val audioUrl: String? = try { best?.content } catch (_: Exception) { null }
+            val withUrl = audios.mapNotNull { a -> try { a.content?.let { a to it } } catch (_: Exception) { null } }
+            if (withUrl.isEmpty()) return@withContext null
+            val progressive = withUrl.filter { (_, u) -> !u.contains("m3u8", ignoreCase = true) }
+            if (progressive.isEmpty()) return@withContext StreamData(audioHlsOnly = true)
+            val best = progressive.sortedByDescending { (a, _) -> try { a.averageBitrate } catch (_: Exception) { 0 } }.firstOrNull()
+            val audioUrl: String? = best?.second
             if (audioUrl.isNullOrBlank()) return@withContext null
             StreamData(
                 audioLowestUrl = audioUrl,

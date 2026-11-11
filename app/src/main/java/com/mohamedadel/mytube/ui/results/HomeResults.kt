@@ -79,6 +79,7 @@ fun HomeEmptyState(
     onLongClick: (VideoItem) -> Unit = {},
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
+    progressOf: (String) -> Float? = { null },
     // screens-fix Home P0-H2: error surface + retry.
     trendingError: String? = null,
     onRetryTrending: () -> Unit = {},
@@ -212,7 +213,7 @@ fun HomeEmptyState(
                     }
                 }
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
+                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()), pinProgress = progressOf(v.favKey()))
                 }
                 // Deferred item 1: honest pagination — hidden when the kiosk/search has no next page.
                 if (!isSuggestionsTab && (hasMore || loadingMore)) {

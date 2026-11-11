@@ -68,7 +68,8 @@ fun FeedScreen(
     filterUrls: Set<String> = emptySet(),
     filterLabel: String? = null,
     pinBadges: Map<String, String> = emptyMap(),
-    pinningKeys: Set<String> = emptySet()
+    pinningKeys: Set<String> = emptySet(),
+    progressOf: (String) -> Float? = { null }
 ) {
     val shown = remember(items, filterChannelUrl, filterUrls) {
         if (filterUrls.isNotEmpty()) items.filter { it.channelUrl in filterUrls }
@@ -181,7 +182,7 @@ fun FeedScreen(
                             )
                             is FeedRow.Video -> {
                                 val v = r.v
-                                SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()))
+                                SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()), pinProgress = progressOf(v.favKey()))
                             }
                         }
                     }

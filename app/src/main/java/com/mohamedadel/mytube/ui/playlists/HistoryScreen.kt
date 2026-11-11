@@ -53,6 +53,7 @@ fun HistoryScreen(
     // Phase 5: offline-pin badges (zero network)
     pinInfo: Map<String, com.mohamedadel.mytube.data.local.PinEntity> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
+    progressOf: (String) -> Float? = { null },
     isFav: (VideoItem) -> Boolean = { false },
     onFav: (VideoItem) -> Unit = {},
     totalCount: Int = 0,
@@ -173,7 +174,8 @@ fun HistoryScreen(
                         onFav = onFav,
                             onRemove = { confirmRow = it },
                             pinBadge = pin?.let { pp -> "📌 " + (pp.quality ?: "") + (if (pp.sizeBytes > 0) " • " + sizeLabel(pp.sizeBytes) else "") },
-                            pinning = pinningKeys.contains(h.videoKey)
+                            pinning = pinningKeys.contains(h.videoKey),
+                            pinProgress = progressOf(h.videoKey)
                         )
                     }
                 }
@@ -228,7 +230,8 @@ fun HistoryScreen(
                         onFav = onFav,
                         onRemove = { confirmRow = it },
                         pinBadge = badge,
-                        pinning = pinningKeys.contains(h.videoKey)
+                        pinning = pinningKeys.contains(h.videoKey),
+                        pinProgress = progressOf(h.videoKey)
                     )
                 }
                 if (paged.loadState.append is androidx.paging.LoadState.Loading) {

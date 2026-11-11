@@ -312,6 +312,8 @@
     <string name="pin_ext_fallback">External storage unavailable — pin saved internally instead (no permission needed)</string>
     <string name="pin_no_space">Not enough free space for this pin</string>
     <string name="toast_pin_fail">Pin failed — check connection</string>
+    <string name="pin_err_stream">This track cannot be pinned (streaming-only format)</string>
+    <string name="cd_pinned_fmt">Pinned: %1$s</string>
     <string name="toast_unpinned">Pin removed</string>
     <string name="offline_title">Offline mode</string>
     <string name="offline_mode">Play pinned only (no data)</string>

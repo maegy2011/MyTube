@@ -58,6 +58,7 @@ fun MusicTab(
     favoriteSet: Set<String>,
     pinBadges: Map<String, String>,
     pinningKeys: Set<String>,
+    progressOf: (String) -> Float? = { null },
     scListState: LazyListState,
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
@@ -179,7 +180,8 @@ fun MusicTab(
                     onLongClick = { if (v.isChannel) onOpenChannel(v.channelUrl ?: v.url ?: "") else onOptions(it) },
                     onFav = onToggleFav,
                     pinBadge = pinBadges[v.favKey()],
-                    pinning = pinningKeys.contains(v.favKey())
+                    pinning = pinningKeys.contains(v.favKey()),
+                    pinProgress = progressOf(v.favKey())
                 )
             }
             if (scHasMore || scLoadingMore) {

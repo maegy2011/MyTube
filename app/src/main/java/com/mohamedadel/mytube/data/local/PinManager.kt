@@ -112,6 +112,9 @@ object PinManager {
     private val cancelKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     fun requestCancel(key: String) { try { cancelKeys.add(key) } catch (_: Exception) { } }
     fun consumeCancel(key: String): Boolean = try { cancelKeys.remove(key) } catch (_: Exception) { false }
+    // pin-deepfix 2026-11-11: non-consuming peek — lets runPinDownload tell
+    // "user cancelled" apart from "download failed" for the right toast.
+    fun isCancelRequested(key: String): Boolean = try { cancelKeys.contains(key) } catch (_: Exception) { false }
 
     // F14 (audit P2 2026-11-11): startup sweep — a killed download leaves staging_* orphans
     // (invisible to existingDir/totalBytes). Called once per launch from MyTubeApp on a worker thread.
