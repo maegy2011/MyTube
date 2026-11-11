@@ -25,4 +25,4 @@
 - بلا assembleRelease، بلا push — حسب القواعد.
 
 ## الـcommit
-- (يُملأ بعد التنفيذ)
+- `9fdae36` — audit P0: F1 sleep service-side, F2 pin length, D1 subtitle preview, T3 leak fix, L2 PiP sticky, L3 age-gate toast
