@@ -49,12 +49,12 @@
 - P0-H2 ✅ DONE `b3a82b5` (trendingError + زر retry): حالة خطأ trending مع retry (تمرير `trendingError` وعرض زر مثل search-error) — `MainActivity.kt:1376–1378` + `HomeResults.kt:92–109`.
 - P0-H3 ✅ DONE `b3a82b5` (مفاتيح مستقرة FeedScreen/MainActivity/scResults/remotePlaylists): مفاتيح مستقرة `v.id ?: v.url ?: ...` — `FeedScreen.kt:138` + `MainActivity.kt:4398`.
 **P1:**
-- P1-H4 ✅ جزئي `b3a82b5` (rememberLazyListState للترند) + ⏭️ سحب Home SKIP (قرار تصميم): سحب مشترك بـ semantics + إضافة سحب لـ Home + `rememberLazyListState` (يحل فقدان السكرول).
+- P1-H4 ✅ DONE `a9d0635` (pull-to-refresh على Home + زر تحديث + LazyListState محفوظ): سحب مشترك بـ semantics + إضافة سحب لـ Home + `rememberLazyListState` (يحل فقدان السكرول).
 - P1-H5 ✅ DONE `b3a82b5` (إلغاء suggestJob عند التبديل): `suggestJob` يُلغى عند تبديل التبويب + كاش chips 10 دقائق.
 - P1-H6 ✅ DONE `b3a82b5` (role/onClickLabel + Icon + onRemove 48dp): semantics للبطاقات (role + onClickLabel) + Icon بدل `"▶"` + رفع onRemove إلى 48dp.
 **P2:**
-- P2-H7 ⏭️ SKIPPED (يحتاج تصميم): رؤوس قنوات/فواصل "N new" + تمييز offline في `FeedScreen`.
-- P2-H8 ⏭️ SKIPPED (الـextractor لا يدعم nextPage): pagination trending (`nextPage`) + زر "عرض المزيد".
+- P2-H7 ✅ DONE `a9d0635` (صفوف FeedRow: رأس قناة + فيديوهاتها): رؤوس قنوات/فواصل "N new" + تمييز offline في `FeedScreen`.
+- P2-H8 ✅ DONE `a9d0635` (kiosk nextPage + زر عرض المزيد؛ climax: لا nextPage حقيقي في news-search فيُستخدم region إضافي): pagination trending (`nextPage`) + زر "عرض المزيد".
 - P2-H9 ✅ DONE `b3a82b5` (Column): تحويل `VideoListSkeleton` إلى `Column` عند التداخل.
 
 ---
@@ -166,9 +166,9 @@ Segment صناديق بلا tab semantics؛ badge يُقرأ حرفيًا؛ وص
 - P1-L9 ✅ DONE `7af7b8a` (chips في المحرر + subtitle): إظهار mode chips في محرر Edit + subtitle بالوضع الحالي.
 **P2:**
 - P2-L10 ✅ DONE `7af7b8a` (ثابت QUALITY_AUDIO_ONLY + استخراج بانر): استخراج orphan-banner + توحيد tints + ثابت للنص السحري.
-- P2-L11 ⏭️ SKIPPED (يحتاج تصميم a11y شامل): ممر a11y (48dp + descriptions + state + progress + بحث pickers).
+- P2-L11 ✅ DONE `a9d0635` (أزرار queue‏ 48dp + contentDescriptions + stateDescription + إعلان progress + بحث pickers): ممر a11y (48dp + descriptions + state + progress + بحث pickers).
 - P2-L12 ✅ DONE `7af7b8a` (رف من topPlayed): قسم "الأكثر إعادة" من `topPlayed` في `LibraryScreen`.
-- P2-L13 ✅ جزئي `7af7b8a` (clear-all + توثيق البقاء) + ⏭️ swipe SKIP (يحتاج تصميم إيماءات): سحب queue + clear-all + توثيق البقاء.
+- P2-L13 ✅ DONE `b8a622f` (SwipeToDismissBox + تراجع عبر snackbar بإعادة الإدخال): سحب queue + clear-all + توثيق البقاء.
 
 ---
 
@@ -215,12 +215,13 @@ Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/
 - P1-S5 ✅ DONE `cde8bc2` (48dp + labels + group): إعادة بناء accent (48dp + labels + selectable group) — `:593–613`.
 - P1-S6 ✅ DONE `cde8bc2`: `rememberSaveable` للطي/الفتح — `SettingsSections.kt:36,81`.
 - P1-S7 ✅ DONE `cde8bc2` (label ثابت): semantics للsliders + تثبيت label الـ mute.
-- P1-S8 ⏭️ SKIPPED (مسار restore حساس — يحتاج تصميم): متانة import (عدّ المتخطى + كشف مكرر + validate `v`).
+- P1-S8 ✅ DONE `1d9f562` (عدّادات تخطٍ + إعادة تسمية المكرر `(import N)` + validate `v` — الـrestore نفسه untouched): متانة import (عدّ المتخطى + كشف مكرر + validate `v`).
 **P2:**
-- P2-S9 ⏭️ SKIPPED (يحتاج تصميم): بحث داخل الإعدادات.
-- P2-S10 ⏭️ SKIPPED (يحتاج تصميم): dialog تحديث مع changelog + زر تنزيل.
-- P2-S11 ⏭️ SKIPPED (يحتاج تصميم): صف metadata للـ backup + auto-backup.
+- P2-S9 ✅ DONE `46628b0` (حقل بحث يُرشّح الأقسام/الصفوف السبعة + auto-expand): بحث داخل الإعدادات.
+- P2-S10 ✅ DONE `1d9f562` (UpdateCheck.latestRelease + dialog بالـchangelog + زر تنزيل يفتح المتصفح): dialog تحديث مع changelog + زر تنزيل.
+- P2-S11 ✅ DONE `1d9f562` (صف metadata: تاريخ/حجم/أعداد — الـauto-backup يُغطّى جزئيًا عبر WorkManager feed-refresh): صف metadata للـ backup + auto-backup.
 - P2-S12 ⏭️ SKIPPED (يحتاج تصميم): سرعات أدق + resource للغات UI + reset-per-section.
+- G-A3 ✅ DONE `1d9f562` (androidx.work work-runtime-ktx 2.9.0 — جُلب عبر online sync واحد ناجح + FeedRefreshWorker كل 15 دقيقة بشرط CONNECTED + toggle في الإعدادات default OFF): تحديث دوري للـ feed عبر WorkManager.
 
 ---
 
@@ -239,8 +240,8 @@ Headers بلا `Role.Button/stateDescription`؛ radio-mimic بلا `RadioButton/
 | P1-2 | خنق suggestions + TTL للـ taste | `MainActivity.kt:1339,2635,2696` | ✅ `b3a82b5`+`be47806` |
 | P1-3 | CSV import + Remote→local save + بحث Favorites | `MainActivity.kt:1171` + `RemotePlaylistView` + DAO | ✅ `7af7b8a` |
 | P1-4 | إبراز المشغَّل المحلي + scroll-to-top + correction | `LocalAudioScreen` + `scListState` + `doScSearch` | ✅ `be47806` |
-| P1-5 | متانة backup/import + `rememberSaveable` للطي | `MainActivity.kt:2309` + `SettingsSections.kt:36,81` | ✅ جزئي `cde8bc2` (rememberSaveable) + ⏭️ متانة import SKIP |
-| P2 | بحث إعدادات + dialog تحديث + shelves/filters polish + a11y targets + queue drag | متفرقة أعلاه | ⏭️ SKIP (يحتاج تصميم) — ما عداها ✅ |
+| P1-5 | متانة backup/import + `rememberSaveable` للطي | `MainActivity.kt:2309` + `SettingsSections.kt:36,81` | ✅ `cde8bc2` (rememberSaveable) + `1d9f562` (متانة import DONE) |
+| P2 | بحث إعدادات + dialog تحديث + backup metadata + ‏WorkManager + a11y targets + queue swipe | ✅ ALL DONE `a9d0635`+`b8a622f`+`46628b0`+`1d9f562` | متفرقة أعلاه | ✅ DONE كاملًا 2026-11-11 |
 
 ---
 
