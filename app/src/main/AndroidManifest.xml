@@ -11,8 +11,15 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- S7 (audit P2 2026-11-11) permission justifications (mirror in Play declaration):
+         READ_PHONE_STATE — pause/duck on incoming calls via call state (applyAudioFocus).
+         REQUEST_IGNORE_BATTERY_OPTIMIZATIONS — optional exemption prompt so background audio
+           survives OEM killers; OFF by default, user-gated in Settings.
+         RECORD_AUDIO — voice search input only (nothing recorded/stored); drop with voice search. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- L5 (audit P2 2026-11-11): re-sync KeepAlive after reboot (only when the toggle is ON). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:name=".MyTubeApp"
         android:label="MyTube"
@@ -22,7 +29,7 @@
         android:supportsRtl="true"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
-        android:dataExtractionRules="@xml/backup_rules">
+        android:dataExtractionRules="@xml/backup_rules_d2d">
         <!-- Chromecast sender: default media receiver, no console registration needed -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
@@ -30,13 +37,50 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:supportsPictureInPicture="true"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- G-A1 (audit P2 2026-11-11): receive shared YouTube links from other apps. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="youtube.com" />
+                <data android:host="www.youtube.com" />
+                <data android:host="m.youtube.com" />
+                <data android:host="music.youtube.com" />
+                <data android:host="youtu.be" />
+            </intent-filter>
         </activity>
+        <!-- S9 (audit P2 2026-11-11): file-based CSV/backup sharing (no file://, no TransactionTooLarge). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.mohamedadel.mytube.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        <!-- L5 (audit P2 2026-11-11): BOOT_COMPLETED re-syncs KeepAlive when the toggle is ON. -->
+        <receiver android:name=".playback.BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <!-- L6 (audit P2 2026-11-11): PiP play/pause + close actions (explicit intents only). -->
+        <receiver android:name=".playback.PipActionReceiver" android:exported="false" />
         <service
             android:name=".playback.PlaybackService"
             android:foregroundServiceType="mediaPlayback"

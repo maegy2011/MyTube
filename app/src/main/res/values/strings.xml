@@ -520,4 +520,34 @@
     <string name="audio_role_title">نوع الصوت</string>
     <string name="speed_title">السرعة</string>
     <string name="pins_warn_title">التنبيه عند الامتلاء</string>
+    <!-- P2 (audit 2026-11-11): L7/L10/G-A1/G-A2/G-A4/D8 -->
+    <string name="region_changed">تغيّرت المنطقة — حُدّثت الخلاصة والرائج</string>
+    <string name="toast_local_fail">تعذّر مسح الصوت المحلي</string>
+    <string name="toast_hist_fail">تعذّر حفظ السجل</string>
+    <string name="toast_feed_fail">تعذّر تحديث الخلاصة</string>
+    <string name="toast_lib_fail">تعذّر تحديث المكتبة</string>
+    <string name="update_check">التحقق من وجود تحديث</string>
+    <string name="update_checking">جارٍ التحقق…</string>
+    <string name="update_latest">أنت على أحدث نسخة</string>
+    <string name="update_available_fmt">توجد نسخة جديدة: %1$s (الحالية %2$s)</string>
+    <string name="update_not_configured">التحديث التلقائي غير مضبوط بعد — تابع الإصدارات يدويًا</string>
+    <string name="update_fail">تعذّر التحقق من التحديث</string>
+    <string name="backup_export">تصدير نسخة احتياطية (JSON)</string>
+    <string name="backup_import">استيراد نسخة احتياطية</string>
+    <string name="backup_export_ok">حُفظت النسخة الاحتياطية — شاركها لمكان آمن</string>
+    <string name="backup_export_fail">تعذّر إنشاء النسخة الاحتياطية</string>
+    <string name="backup_import_ok_fmt">تم الاستيراد: %1$d قائمة، %2$d مفضلة، %3$d سجل</string>
+    <string name="backup_import_fail">ملف النسخة غير صالح</string>
+    <string name="backup_desc">كل القوائم والمفضلة والسجل والاشتراكات والإعدادات في ملف واحد</string>
+    <string name="update_desc">يقارن نسختك بآخر إصدار على GitHub Releases</string>
+    <string name="cd_pip_close">إغلاق النافذة العائمة</string>
+    <string name="cd_pip_toggle">تشغيل / إيقاف مؤقت</string>
+    <string name="cd_audio_lang">لغة الصوت</string>
+    <string name="cd_sub_lang">لغة الترجمة</string>
+    <string name="cd_quality">الجودة</string>
+    <string name="cd_speed">سرعة التشغيل</string>
+    <!-- G-A2: fill when a GitHub repo hosts releases; blank keeps the check dormant -->
+    <string name="update_repo_owner" translatable="false"></string>
+    <string name="update_repo_name" translatable="false"></string>
+    <string name="pause">إيقاف مؤقت</string>
 </resources>

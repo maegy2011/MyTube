@@ -14,6 +14,7 @@ android {
         targetSdk = 34
         versionCode = 31
         versionName = "0.3.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         release {
@@ -56,4 +57,8 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    // P2 tests (audit 2026-11-11): resolve on the first ONLINE sync; compileDebugKotlin needs none of these.
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
+    androidTestImplementation("androidx.test:runner:1.5.2")
 }

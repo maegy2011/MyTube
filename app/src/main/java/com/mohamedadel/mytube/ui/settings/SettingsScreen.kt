@@ -222,7 +222,10 @@ fun SettingsScreen(
     onTitleTranslate: (Boolean) -> Unit = {},
     onClearFavorites: () -> Unit,
     onClearHistory: () -> Unit,
-    onCopyDiagnostics: () -> Unit = {}
+    onCopyDiagnostics: () -> Unit = {},
+    onCheckUpdate: () -> Unit = {},
+    onExportFull: () -> Unit = {},
+    onImportFull: () -> Unit = {}
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -640,6 +643,16 @@ fun SettingsScreen(
                     androidx.compose.material3.OutlinedButton(onClick = { confirmCache = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_cache)) }
                     androidx.compose.material3.OutlinedButton(onClick = onCopyDiagnostics, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.diag_copy)) }
                 }
+                // G-A2/G-A4 (audit P2 2026-11-11): update check + full backup (shared YouTube links land in G-A1).
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = onCheckUpdate, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.update_check)) }
+                    androidx.compose.material3.OutlinedButton(onClick = onExportFull, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.backup_export)) }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = onImportFull, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.backup_import)) }
+                }
+                Text(stringResource(R.string.update_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.backup_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(stringResource(R.string.diag_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SwitchRow(
                     label = stringResource(R.string.offline_mode),

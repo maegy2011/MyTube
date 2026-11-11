@@ -113,6 +113,15 @@ object PinManager {
     fun requestCancel(key: String) { try { cancelKeys.add(key) } catch (_: Exception) { } }
     fun consumeCancel(key: String): Boolean = try { cancelKeys.remove(key) } catch (_: Exception) { false }
 
+    // F14 (audit P2 2026-11-11): startup sweep — a killed download leaves staging_* orphans
+    // (invisible to existingDir/totalBytes). Called once per launch from MyTubeApp on a worker thread.
+    fun sweepOnStartup(app: Context) {
+        try {
+            val root = try { PinFiles.pinDir(app, "__probe__").parentFile } catch (_: Exception) { null }
+            if (root != null) sweepStaleStaging(root)
+        } catch (_: Exception) { }
+    }
+
     private fun sweepStaleStaging(root: File, maxAgeMs: Long = 24L * 3600 * 1000) {
         // F5 companion: interrupted pins keep .part for resume; abandon them after a day.
         try {

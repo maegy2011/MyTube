@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.ui.theme.ScrimSoft
 import com.mohamedadel.mytube.data.youtube.VideoItem
 
 // Segmented SoundCloud | YouTube Music switch: one pill, two halves, no chip sprawl.
@@ -106,7 +107,7 @@ fun MusicCard(
             }
             val dur = v.durationSec ?: 0L
             if (dur > 0) {
-                Surface(color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp), modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
+                Surface(color = ScrimSoft, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
                     Text(
                         "%d:%02d".format(dur / 60, dur % 60),
                         style = MaterialTheme.typography.labelSmall,

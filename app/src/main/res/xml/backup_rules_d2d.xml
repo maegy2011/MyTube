@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- S3 (audit P2 2026-11-11): D2D mirror of the full-backup block above — pinned bytes
+     and caches never leave the device via cloud backup either (DB + prefs still roam).
+     Separate file: dataExtractionRules requires its own single-root document. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="travel/"/>
+    </cloud-backup>
+</data-extraction-rules>

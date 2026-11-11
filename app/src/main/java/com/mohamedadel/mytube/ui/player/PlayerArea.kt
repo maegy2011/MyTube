@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -71,6 +72,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -89,6 +93,7 @@ import com.mohamedadel.mytube.data.youtube.SubtitleItem
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.util.formatDuration
 import com.mohamedadel.mytube.ui.theme.LiveBadge
+import com.mohamedadel.mytube.ui.theme.Scrim
 import com.mohamedadel.mytube.ui.theme.OnLiveBadge
 import com.mohamedadel.mytube.util.formatMs
 import com.mohamedadel.mytube.util.formatViews
@@ -107,10 +112,16 @@ private fun ActionPill(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    // D8 (audit P2 2026-11-11): TalkBack announces the pill as a button with its label
+    // (the icon itself stays decorative).
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.semantics(mergeDescendants = true) {
+            contentDescription = label
+            role = androidx.compose.ui.semantics.Role.Button
+        }
     ) {
         Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             icon()
@@ -271,11 +282,11 @@ fun PlayerArea(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onCollapse, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onCollapse, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                         Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = stringResource(R.string.cd_collapse_player), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onClose, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                         Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cd_close_player), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -436,7 +447,7 @@ fun PlayerArea(
                                 }
                             }
                             Spacer(Modifier.height(4.dp))
-                            Surface(shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.8f)) {
+                            Surface(shape = RoundedCornerShape(6.dp), color = Scrim) {
                                 Text(formatMs(scrubPosMs), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                             }
                         }
@@ -490,7 +501,7 @@ fun PlayerArea(
                 }
                 // live badge while playing audio-only
                 if (isPlaying && quality == "audio-only (default)" && errorMsg == null && !playerLoading) {
-                    Surface(modifier = Modifier.align(Alignment.TopStart).padding(10.dp), shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.65f)) {
+                    Surface(modifier = Modifier.align(Alignment.TopStart).padding(10.dp), shape = RoundedCornerShape(8.dp), color = Scrim) {
                         Text(stringResource(R.string.now_playing), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
@@ -512,7 +523,7 @@ fun PlayerArea(
                         ) {
                             IconButton(
                                 onClick = { controlsVisible = true; onTogglePlay() },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                             ) {
                                 Icon(
                                     if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -533,7 +544,7 @@ fun PlayerArea(
                             // mute toggle
                             IconButton(
                                 onClick = { controlsVisible = true; mutedLive.value = !mutedLive.value },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                             ) {
                                 Icon(
                                     if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
@@ -662,7 +673,7 @@ fun PlayerArea(
                                     try { com.mohamedadel.mytube.playback.CastManager.selector()?.let { routeSelector = it } } catch (_: Exception) { }
                                 }
                             },
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(48.dp)
                         )
                     }
                     ActionPill(
@@ -804,7 +815,7 @@ fun PlayerArea(
                                     Text(rv.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     Text((rv.channel ?: "") + if (rv.viewCount != null && rv.viewCount > 0) " • " + lctx.formatViews(rv.viewCount) else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                                IconButton(onClick = { onRelatedOptions(rv) }, modifier = Modifier.size(36.dp)) {
+                                IconButton(onClick = { onRelatedOptions(rv) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                     Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -855,7 +866,7 @@ fun PlayerArea(
                             }
                             // volume (the native controller has no volume button)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.material3.IconButton(onClick = { mutedLive.value = !mutedLive.value }, modifier = Modifier.size(40.dp)) {
+                                androidx.compose.material3.IconButton(onClick = { mutedLive.value = !mutedLive.value }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                     Icon(
                                         if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
                                         else if (volume < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown

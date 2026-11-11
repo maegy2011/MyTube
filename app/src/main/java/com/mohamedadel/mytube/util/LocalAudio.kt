@@ -33,6 +33,12 @@ fun LocalTrack.toVideoItem(): VideoItem = VideoItem(
 fun String.isLocalAudioUri(): Boolean =
     startsWith("content://media/") || startsWith("file://")
 
+// L9 (audit P2 2026-11-11): explicit type prefix + check before play. Local tracks are
+// minted with id="local:<mediaId>" (see toVideoItem); YouTube keys keep their bare form
+// deliberately — prefixing them yt: would orphan every existing favorite/history row.
+fun VideoItem.isLocal(): Boolean =
+    id?.startsWith("local:") == true || url?.isLocalAudioUri() == true
+
 fun Context.scanLocalAudio(compat: Boolean): List<LocalTrack> {
     val out = mutableListOf<LocalTrack>()
     try {

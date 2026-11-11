@@ -113,3 +113,9 @@ val LightContainerHighest = Color(0xFFDFDFE6)
 // D3 (audit P1 2026-11-11): single LIVE-badge source (was: raw 0xFFB71C1C in 2 files).
 val LiveBadge = Color(0xFFB71C1C)
 val OnLiveBadge = Color(0xFFFFFFFF)
+
+// D10 (audit P2 2026-11-11): single scrim source for text/badges over images and video
+// (text-over-image is a justified use, not a theme violation — one value everywhere).
+val Scrim = Color.Black.copy(alpha = 0.8f)
+val ScrimSoft = Color.Black.copy(alpha = 0.75f)
+val OnScrim = Color.White

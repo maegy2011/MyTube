@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube.ui.playlists
 
 import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.ui.theme.Scrim
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.graphics.Color
@@ -288,7 +289,7 @@ fun PlaylistsScreen(
                         Box(modifier = Modifier.size(72.dp, 42.dp).clip(MaterialTheme.shapes.extraSmall)) {
                             AsyncImage(model = r.thumbnail, contentDescription = r.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                             if ((r.durationSec ?: 0) > 0) {
-                                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), shape = MaterialTheme.shapes.extraSmall, color = Color.Black.copy(alpha = 0.8f)) {
+                                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), shape = MaterialTheme.shapes.extraSmall, color = Scrim) {
                                     Text(text = com.mohamedadel.mytube.util.formatDuration(r.durationSec ?: 0), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 4.dp))
                                 }
                             }

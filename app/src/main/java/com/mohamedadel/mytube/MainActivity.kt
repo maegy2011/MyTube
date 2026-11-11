@@ -131,6 +131,7 @@ import com.mohamedadel.mytube.util.autoUrl
 import com.mohamedadel.mytube.util.batteryExemptionIntent
 import com.mohamedadel.mytube.util.estimatedDownstreamKbps
 import com.mohamedadel.mytube.util.isBatteryExempt
+import com.mohamedadel.mytube.util.isLocal
 import com.mohamedadel.mytube.util.isLocalAudioUri
 import com.mohamedadel.mytube.util.scanLocalAudio
 import com.mohamedadel.mytube.util.openInYoutubeCtx
@@ -160,6 +161,7 @@ import com.mohamedadel.mytube.data.local.toEntity
 import com.mohamedadel.mytube.data.local.toVideoItem
 import com.mohamedadel.mytube.ui.icons.myTubeLogo
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import com.mohamedadel.mytube.ui.search.SearchViewModel
 import com.mohamedadel.mytube.ui.theme.MyTubeTheme
@@ -184,6 +186,7 @@ class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     val pipMode = androidx.compose.runtime.mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
+        pendingSharedIntent = intent
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         // theme + ui-language prefs are read here (before composition) so they survive restarts;
@@ -215,14 +218,24 @@ class MainActivity : ComponentActivity() {
         config.setLocale(java.util.Locale(lang))
         super.attachBaseContext(newBase.createConfigurationContext(config))
     }
+    companion object {
+        // G-A1 (audit P2 2026-11-11): onCreate/onNewIntent park the shared/viewed intent here;
+        // the composition consumes it once playVideo/doSearch are in scope.
+        var pendingSharedIntent: android.content.Intent? = null
+    }
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        try { setIntent(intent) } catch (_: Exception) { }
+        pendingSharedIntent = intent
+    }
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         pipMode.value = isInPictureInPictureMode
     }
-    private fun enterPip() {
+    // L6 (audit P2 2026-11-11): PiP params with play/pause + close RemoteActions (API26+).
+    // The toggle icon/label follow the `playing` argument — callers refresh on isPlaying change.
+    private fun buildPipParams(autoPip: Boolean, playing: Boolean): PictureInPictureParams {
         val p = player
-        // L2 (audit P0 2026-11-11): auto-enter follows pref_pip — a stale `true` used to stick after the first manual PiP.
-        val autoPip = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_pip", true) } catch (_: Exception) { true }
         val ratio = run {
             val w = p?.videoSize?.width ?: 0
             val h = p?.videoSize?.height ?: 0
@@ -235,10 +248,31 @@ class MainActivity : ComponentActivity() {
                 Rational(16, 9)
             }
         }
-        val params = PictureInPictureParams.Builder()
+        val b = PictureInPictureParams.Builder()
             .setAspectRatio(ratio)
             .apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(autoPip) }
-            .build()
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            try {
+                val toggleTitle = if (playing) getString(R.string.sleep_pause) else getString(R.string.play)
+                val toggleIcon = android.graphics.drawable.Icon.createWithResource(
+                    this, if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+                )
+                val closeIcon = android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel)
+                b.setActions(listOf(
+                    android.app.RemoteAction(toggleIcon, toggleTitle, toggleTitle,
+                        com.mohamedadel.mytube.playback.PipActionReceiver.pendingToggle(this)),
+                    android.app.RemoteAction(closeIcon, getString(R.string.close), getString(R.string.close),
+                        com.mohamedadel.mytube.playback.PipActionReceiver.pendingClose(this))
+                ))
+            } catch (_: Exception) { }
+        }
+        return b.build()
+    }
+    private fun enterPip() {
+        // L2 (audit P0 2026-11-11): auto-enter follows pref_pip — a stale `true` used to stick after the first manual PiP.
+        val autoPip = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_pip", true) } catch (_: Exception) { true }
+        val playingNow = try { player?.isPlaying == true } catch (_: Exception) { false }
+        val params = buildPipParams(autoPip, playingNow)
         try { setPictureInPictureParams(params) } catch (_: Exception) { }
         enterPictureInPictureMode(params)
     }
@@ -307,6 +341,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var isFullscreen by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
     var showSuggestions by remember { mutableStateOf(false) }
+    // G-A1: bumped on every resume when a shared/view intent is parked (consumed below after doSearch is in scope).
+    var sharedPending by remember { mutableStateOf(0) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var showSplash by remember { mutableStateOf(true) }
     // Low: splash target time (the wait loop sits after feedItems is declared, below).
@@ -314,6 +350,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showLibrary by remember { mutableStateOf(false) }
     var fromLibrary by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
+    fun toast(msg: String) {
+        try { Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+    }
+    // S5 (audit P2 2026-11-11): toasts from IO scopes — Toast needs the main Looper, post it.
+    fun uiToast(msg: String) {
+        try {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) toast(msg)
+            else android.os.Handler(android.os.Looper.getMainLooper()).post { try { toast(msg) } catch (_: Exception) { } }
+        } catch (_: Exception) { }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     // explicit queue: ONLY what the user queued (play-single => one item; play-all => results copy; long-press => insert/append).
     // Search results are display-only; nothing joins the queue implicitly.
@@ -498,6 +544,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showSleep by remember { mutableStateOf(false) }
     // end-of-track mode: stop when the current track ends instead of after N minutes
     var sleepEndOfTrack by remember { mutableStateOf(false) }
+    // F12 (audit P2 2026-11-11): the armed track's key — a stale flag must never stop a future track.
+    var sleepTrackKey by remember { mutableStateOf<String?>(null) }
     var showQueue by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var channelDetail by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.ChannelDetail?>(null) }
@@ -899,7 +947,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption(); if (!com.mohamedadel.mytube.playback.CastManager.available.value) { try { com.mohamedadel.mytube.playback.CastManager.init(ctx.applicationContext) } catch (_: Exception) { } }
                 // L4 (audit P1 2026-11-11): ACTION_STOP writes the pref directly — re-read on resume or the toggle lies.
-                try { prefKeepalive = prefs.getBoolean("pref_keepalive", false) } catch (_: Exception) { } }
+                try { prefKeepalive = prefs.getBoolean("pref_keepalive", false) } catch (_: Exception) { }
+                // G-A1: a parked SEND/VIEW intent (cold start or share-while-alive) gets consumed below.
+                try { if (MainActivity.pendingSharedIntent != null) sharedPending++ } catch (_: Exception) { } }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         // no remove needed for composition lifetime
@@ -1060,7 +1110,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 localCompat = try { prefs.getBoolean("local_scan_compat", false) } catch (_: Exception) { false }
                 val all = try { ctx.scanLocalAudio(localCompat) } catch (_: Exception) { emptyList() }
                 localTracks = all.filter { t -> (t.folder ?: "") !in excl }
-            } catch (_: Exception) { }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_local_fail)) }
         }
     }
     fun excludeLocalFolder(f: String) {
@@ -1072,7 +1122,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 localExcl = next
                 localTracks = localTracks.filter { (it.folder ?: "") !in next }
                 if (localFolder == f) localFolder = null
-            } catch (_: Exception) { }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_lib_fail)) }
         }
     }
     fun unexcludeLocalFolder(f: String) {
@@ -1083,7 +1133,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 prefs.edit().putStringSet("local_excl", next).apply()
                 localExcl = next
                 refreshLocalAudio()
-            } catch (_: Exception) { }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_lib_fail)) }
         }
     }
     val localPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -1108,9 +1158,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     androidx.compose.runtime.LaunchedEffect(playlists) { refreshPlCovers() }
     // One-tap favorite toggle (needs scope, so it lives here).
     // Short user feedback for every silent success/failure in favorites/queue/playlists.
-    fun toast(msg: String) {
-        try { Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
-    }
     // playlist tools: tab sort + per-playlist song sort (prefs) + video-mode queue flag
     var plTabSort by remember { mutableStateOf("custom") }
     var plSongSort by remember { mutableStateOf("added") }
@@ -1119,25 +1166,46 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try { plTabSort = prefs.getString("pl_tab_sort", "custom") ?: "custom" } catch (_: Exception) { }
         try { plSongSort = if (pid == null) "added" else (prefs.getString("pl_sort_" + pid, "added") ?: "added") } catch (_: Exception) { plSongSort = "added" }
     }
+    // S5+S9 (audit P2 2026-11-11): CSV goes through FileProvider + EXTRA_STREAM —
+    // a thousand-row list as EXTRA_TEXT would blow the ~1MB Binder budget (TransactionTooLarge).
     fun exportPlaylistCsv(pid: Long) {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val rows = dao.itemsOnce(pid)
-                if (rows.isEmpty()) { toast(ctx.getString(R.string.toast_csv_empty)); return@launch }
+                if (rows.isEmpty()) { uiToast(ctx.getString(R.string.toast_csv_empty)); return@launch }
                 val sb = StringBuilder("title,channel,url,duration_sec\n")
                 for (r in rows) {
                     fun q(v: String?): String = "\"" + (v ?: "").replace("\"", "\"\"") + "\""
                     sb.append(q(r.title)).append(',').append(q(r.channel)).append(',')
                         .append(q(r.url)).append(',').append(r.durationSec ?: "").append('\n')
                 }
+                val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
+                val f = java.io.File(dir, "mytube_playlist_" + pid + ".csv")
+                f.writeText(sb.toString())
+                val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "com.mohamedadel.mytube.fileprovider", f)
                 val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+                    type = "text/csv"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 val chooser = android.content.Intent.createChooser(send, try { ctx.getString(R.string.export_csv) } catch (_: Exception) { "CSV" })
                 chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 ctx.startActivity(chooser)
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_csv_fail)) }
+            } catch (_: Exception) {
+                // fallback: tiny inline text so an export never hard-fails (may truncate large lists)
+                try {
+                    val rows = dao.itemsOnce(pid).take(50)
+                    val sb = StringBuilder()
+                    for (r in rows) sb.append(r.title ?: r.url ?: "").append('\n')
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+                    }
+                    val chooser = android.content.Intent.createChooser(send, "CSV")
+                    chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    ctx.startActivity(chooser)
+                } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_csv_fail)) }
+            }
         }
     }
     androidx.compose.runtime.LaunchedEffect(showPlaylists, openPlaylistId) { if (showPlaylists) loadPlSorts(openPlaylistId) }
@@ -1261,7 +1329,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try {
                 dao.upsertHistory(v.toHistory())
                 dao.trimHistory()
-            } catch (_: Exception) { }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_hist_fail)) }
         }
     }
     val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
@@ -1504,7 +1572,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } else {
             autoAdvance = true
         }
-        queueIndex = queue.indexOfFirst { it.id == v.id || (it.url != null && it.url == v.url) }
+        // F11 (audit P2 2026-11-11): canonical key everywhere — id/url matching let dupes slip the position.
+        queueIndex = queue.indexOfFirst { it.favKey() == v.favKey() }
         playerLoading = true
         playerError = null
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
@@ -1525,7 +1594,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             playingPinned = false
             // On-device file (MediaStore content:// or file://): zero-network playback,
             // same local path as pins (no cache, no autoplay change).
-            if (v.url?.isLocalAudioUri() == true) {
+            // L9 (audit P2 2026-11-11): explicit local type check (id carries the local: prefix).
+            if (v.isLocal()) {
                 try {
                     audioTrackIdx = 0
                     subTrackIdx = -1
@@ -1744,7 +1814,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     if (url.isNullOrBlank()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
                     try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(url)?.related ?: emptyList() } catch (_: Exception) { emptyList() }
                 }
-                val fresh = seed.filter { it.url?.isNotBlank() == true }.take(15)
+                val fresh = seed.filter { it.url?.isNotBlank() == true }.distinctBy { it.favKey() }.take(15)
                 if (fresh.isEmpty()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
                 queue = listOf(v) + fresh.filter { it.favKey() != v.favKey() }
                 queueIndex = 0
@@ -1820,14 +1890,27 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (next != null) { playVideo(next, inQueue = true, expand = playerExpanded); return }
         // queue exhausted: radio refills from the just-played track's related list (endless)
         if (radioOn) {
+            // F11: one canonical key for refill too (dedupe seeds, not just the queue).
             val fresh = (streamData?.related ?: emptyList())
                 .filter { r -> (r.url?.isNotBlank() == true) && queue.none { it.favKey() == r.favKey() } }
+                .distinctBy { it.favKey() }
                 .take(10)
             if (fresh.isNotEmpty()) {
                 queue = queue + fresh
+                // F10 (audit P2 2026-11-11): radio grows +10 per refill — trim the consumed head,
+                // keeping the last 50 + everything upcoming (queueIndex adjusted).
+                val over = queue.size - 60
+                if (over > 0 && queueIndex > 0) {
+                    val drop = minOf(over, queueIndex)
+                    queue = queue.drop(drop)
+                    queueIndex -= drop
+                }
                 playVideo(fresh[0], inQueue = true, expand = playerExpanded)
                 return
             }
+            // F9 (audit P2 2026-11-11): repeatAll wraps the live queue when radio dries up
+            // instead of stranding playback at the end (inlined: playFirstInQueue is declared below).
+            if (playMode == "repeatAll" && queue.isNotEmpty()) { playVideo(queue[0], inQueue = true, expand = playerExpanded); return }
             radioOn = false
         }
         autoAdvance = false
@@ -1947,13 +2030,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 // queue end: repeat one -> replay; shuffle -> random; repeat all -> wrap; order -> next (stops at end)
                 if (state == Player.STATE_ENDED && autoAdvance) {
                     if (sleepEndOfTrack) {
-                        // stop at end of track: no advance, no repeat, no radio refill
+                        // F12: honor only for the track that armed it; a stale flag falls through
+                        // to the normal advance instead of killing a future track silently.
+                        val stale = sleepTrackKey != null && playing?.favKey() != sleepTrackKey
                         sleepEndOfTrack = false
-                        autoAdvance = false
-                        radioOn = false
-                        videoModeQueue = false
-                        sleepLeft = ""
-                        return
+                        sleepTrackKey = null
+                        if (!stale) {
+                            // stop at end of track: no advance, no repeat, no radio refill
+                            autoAdvance = false
+                            radioOn = false
+                            videoModeQueue = false
+                            sleepLeft = ""
+                            return
+                        }
                     }
                     when {
                         playMode == "repeatOne" -> try { player?.seekTo(0L); player?.play() } catch (_: Exception) { }
@@ -2131,10 +2220,243 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         } catch (_: Exception) { "MyTube diagnostics unavailable" }
     }
+    // G-A4 (audit P2 2026-11-11): full export/import — every list, fav, history row
+    // (capped 500), subscription, group + all prefs in one JSON file shared via FileProvider.
+    // Pins are descriptors only: bytes stay on the old device (re-pin after moving).
+    fun exportFullBackup() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val root = org.json.JSONObject()
+                root.put("app", "mytube")
+                root.put("v", 1)
+                root.put("at", System.currentTimeMillis())
+                val jpls = org.json.JSONArray()
+                for (pw in dao.observePlaylists().first()) {
+                    val o = org.json.JSONObject()
+                    o.put("name", pw.name); o.put("emoji", pw.emoji); o.put("mode", pw.mode)
+                    val ja = org.json.JSONArray()
+                    for (it in dao.itemsOnce(pw.id)) {
+                        val e = org.json.JSONObject()
+                        e.put("videoId", it.videoId); e.put("title", it.title); e.put("channel", it.channel)
+                        e.put("thumbnail", it.thumbnail); e.put("url", it.url)
+                        e.put("durationSec", it.durationSec ?: -1); e.put("viewCount", it.viewCount ?: -1)
+                        e.put("position", it.position)
+                        ja.put(e)
+                    }
+                    o.put("items", ja)
+                    jpls.put(o)
+                }
+                root.put("playlists", jpls)
+                fun vrow(videoKey: String, videoId: String?, title: String?, channel: String?, thumb: String?, url: String?, dur: Long?, views: Long?): org.json.JSONObject {
+                    val e = org.json.JSONObject()
+                    e.put("videoKey", videoKey); e.put("videoId", videoId); e.put("title", title)
+                    e.put("channel", channel); e.put("thumbnail", thumb); e.put("url", url)
+                    e.put("durationSec", dur ?: -1); e.put("viewCount", views ?: -1)
+                    return e
+                }
+                val jf = org.json.JSONArray()
+                for (f in dao.observeFavorites().first()) jf.put(vrow(f.videoKey, f.videoId, f.title, f.channel, f.thumbnail, f.url, f.durationSec, f.viewCount))
+                root.put("favorites", jf)
+                val jh = org.json.JSONArray()
+                for (h in dao.historyPage(500, 0)) jh.put(vrow(h.videoKey, h.videoId, h.title, h.channel, h.thumbnail, h.url, h.durationSec, h.viewCount))
+                root.put("history", jh)
+                val js = org.json.JSONArray()
+                for (x in dao.observeSubscriptions().first()) {
+                    val e = org.json.JSONObject()
+                    e.put("channelUrl", x.channelUrl); e.put("name", x.name); e.put("avatar", x.avatar)
+                    js.put(e)
+                }
+                root.put("subscriptions", js)
+                val jg = org.json.JSONArray()
+                for (g in dao.observeGroups().first()) {
+                    val o = org.json.JSONObject()
+                    o.put("name", g.name)
+                    val jm = org.json.JSONArray()
+                    for (m in dao.observeGroupMembers(g.id).first()) jm.put(m.channelUrl)
+                    o.put("members", jm)
+                    jg.put(o)
+                }
+                root.put("groups", jg)
+                val jp = org.json.JSONObject()
+                for ((k, v) in prefs.all) {
+                    try {
+                        when (v) {
+                            is Boolean -> jp.put(k, v)
+                            is Int -> jp.put(k, v)
+                            is Long -> jp.put(k, v)
+                            is Float -> jp.put(k, v.toDouble())
+                            is String -> jp.put(k, v)
+                            is Set<*> -> { val a = org.json.JSONArray(); for (e in v) a.put(e.toString()); jp.put(k, a) }
+                        }
+                    } catch (_: Exception) { }
+                }
+                root.put("prefs", jp)
+                val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
+                val f = java.io.File(dir, "mytube_backup_" + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date()) + ".json")
+                f.writeText(root.toString())
+                val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "com.mohamedadel.mytube.fileprovider", f)
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = android.content.Intent.createChooser(send, try { ctx.getString(R.string.backup_export) } catch (_: Exception) { "backup" })
+                chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(chooser)
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.backup_export_fail)) }
+        }
+    }
+    fun importFullBackup(uri: android.net.Uri) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val text = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return@launch
+                val root = org.json.JSONObject(text)
+                if (root.optString("app") != "mytube") { uiToast(ctx.getString(R.string.backup_import_fail)); return@launch }
+                var nPl = 0; var nFav = 0
+                val jpls = root.optJSONArray("playlists") ?: org.json.JSONArray()
+                for (i in 0 until jpls.length()) {
+                    try {
+                        val o = jpls.getJSONObject(i)
+                        val pid = dao.insertPlaylist(com.mohamedadel.mytube.data.local.PlaylistEntity(
+                            name = (o.optString("name", "import") + " (import)").take(80),
+                            emoji = o.optString("emoji", "\uD83C\uDFB5"), mode = o.optString("mode", "music")))
+                        val items = o.optJSONArray("items") ?: org.json.JSONArray()
+                        val rows = (0 until items.length()).mapNotNull { j ->
+                            try {
+                                val e = items.getJSONObject(j)
+                                com.mohamedadel.mytube.data.local.PlaylistItemEntity(
+                                    playlistId = pid, videoId = e.optString("videoId").ifBlank { null },
+                                    title = e.optString("title").ifBlank { null }, channel = e.optString("channel").ifBlank { null },
+                                    thumbnail = e.optString("thumbnail").ifBlank { null }, url = e.optString("url").ifBlank { null },
+                                    durationSec = e.optLong("durationSec", -1).takeIf { it >= 0 }, viewCount = e.optLong("viewCount", -1).takeIf { it >= 0 },
+                                    position = e.optInt("position", j))
+                            } catch (_: Exception) { null }
+                        }
+                        if (rows.isNotEmpty()) dao.insertItems(rows)
+                        nPl++
+                    } catch (_: Exception) { }
+                }
+                fun vrow(e: org.json.JSONObject, playedAt: Long): com.mohamedadel.mytube.data.local.HistoryEntity {
+                    return com.mohamedadel.mytube.data.local.HistoryEntity(
+                        videoKey = e.optString("videoKey"), videoId = e.optString("videoId").ifBlank { null },
+                        title = e.optString("title").ifBlank { null }, channel = e.optString("channel").ifBlank { null },
+                        thumbnail = e.optString("thumbnail").ifBlank { null }, url = e.optString("url").ifBlank { null },
+                        durationSec = e.optLong("durationSec", -1).takeIf { it >= 0 }, viewCount = e.optLong("viewCount", -1).takeIf { it >= 0 },
+                        playedAt = playedAt)
+                }
+                val jf = root.optJSONArray("favorites") ?: org.json.JSONArray()
+                for (i in 0 until jf.length()) {
+                    try {
+                        val h = vrow(jf.getJSONObject(i), System.currentTimeMillis())
+                        if (h.videoKey.isNotBlank() && dao.favoriteCount(h.videoKey) == 0) {
+                            dao.insertFavorite(com.mohamedadel.mytube.data.local.FavoriteEntity(
+                                videoKey = h.videoKey, videoId = h.videoId, title = h.title, channel = h.channel,
+                                thumbnail = h.thumbnail, url = h.url, durationSec = h.durationSec, viewCount = h.viewCount))
+                            nFav++
+                        }
+                    } catch (_: Exception) { }
+                }
+                var nHist = 0
+                val jh = root.optJSONArray("history") ?: org.json.JSONArray()
+                for (i in 0 until jh.length()) {
+                    try { dao.upsertHistory(vrow(jh.getJSONObject(i), System.currentTimeMillis())); nHist++ } catch (_: Exception) { }
+                }
+                val js = root.optJSONArray("subscriptions") ?: org.json.JSONArray()
+                for (i in 0 until js.length()) {
+                    try {
+                        val e = js.getJSONObject(i)
+                        val u = e.optString("channelUrl")
+                        if (u.isNotBlank() && dao.subscriptionCount(u) == 0)
+                            dao.insertSubscription(com.mohamedadel.mytube.data.local.SubscriptionEntity(channelUrl = u, name = e.optString("name").ifBlank { null }, avatar = e.optString("avatar").ifBlank { null }))
+                    } catch (_: Exception) { }
+                }
+                val existingGroups = dao.observeGroups().first().map { it.name }.toSet()
+                val jg = root.optJSONArray("groups") ?: org.json.JSONArray()
+                for (i in 0 until jg.length()) {
+                    try {
+                        val o = jg.getJSONObject(i)
+                        val name = o.optString("name")
+                        if (name.isBlank() || name in existingGroups) continue
+                        val gid = dao.insertGroup(com.mohamedadel.mytube.data.local.ChannelGroupEntity(name = name))
+                        val jm = o.optJSONArray("members") ?: org.json.JSONArray()
+                        for (j in 0 until jm.length()) {
+                            try { dao.addMember(com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity(groupId = gid, channelUrl = jm.optString(j))) } catch (_: Exception) { }
+                        }
+                    } catch (_: Exception) { }
+                }
+                val jp = root.optJSONObject("prefs")
+                if (jp != null) {
+                    try {
+                        val ed = prefs.edit()
+                        val cur = prefs.all
+                        val keys = jp.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            try {
+                                if (k == "pref_pin_location") continue // device-local paths never roam
+                                val old = cur[k]
+                                when {
+                                    old is Boolean -> ed.putBoolean(k, jp.optBoolean(k, old))
+                                    old is Int -> ed.putInt(k, jp.optInt(k, old))
+                                    old is Long -> ed.putLong(k, jp.optLong(k, old))
+                                    old is Float -> ed.putFloat(k, jp.optDouble(k, old.toDouble()).toFloat())
+                                    old is String -> ed.putString(k, jp.optString(k, old))
+                                    old is Set<*> -> {
+                                        val a = jp.optJSONArray(k)
+                                        if (a != null) ed.putStringSet(k, (0 until a.length()).map { a.optString(it) }.toSet())
+                                    }
+                                    else -> {
+                                        // unknown key: restore by JSON type (best effort)
+                                        val v: Any? = jp.opt(k)
+                                        when (v) {
+                                            is Boolean -> ed.putBoolean(k, v)
+                                            is Int -> ed.putInt(k, v)
+                                            is Long -> ed.putLong(k, v)
+                                            is Double -> ed.putFloat(k, v.toFloat())
+                                            is String -> ed.putString(k, v)
+                                            is org.json.JSONArray -> ed.putStringSet(k, (0 until v.length()).map { v.optString(it) }.toSet())
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) { }
+                        }
+                        ed.apply()
+                    } catch (_: Exception) { }
+                }
+                uiToast(ctx.getString(R.string.backup_import_ok_fmt, nPl, nFav, nHist))
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.backup_import_fail)) }
+        }
+    }
+    // G-A2 (audit P2 2026-11-11): compare installed versionName with latest GitHub tag.
+    fun checkUpdate() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val owner = try { ctx.getString(R.string.update_repo_owner) } catch (_: Exception) { "" }
+                val repo = try { ctx.getString(R.string.update_repo_name) } catch (_: Exception) { "" }
+                if (owner.isBlank() || repo.isBlank()) { uiToast(ctx.getString(R.string.update_not_configured)); return@launch }
+                uiToast(ctx.getString(R.string.update_checking))
+                val tag = com.mohamedadel.mytube.data.UpdateCheck.latestTag(owner, repo)
+                if (tag == null) { uiToast(ctx.getString(R.string.update_fail)); return@launch }
+                val cur = com.mohamedadel.mytube.BuildConfig.VERSION_NAME
+                if (!com.mohamedadel.mytube.data.UpdateCheck.isNewer(tag, cur)) uiToast(ctx.getString(R.string.update_latest))
+                else uiToast(ctx.getString(R.string.update_available_fmt, tag, cur))
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.update_fail)) }
+        }
+    }
     fun copyDiagnostics() {
         try {
             val cm = ctx.getSystemService(android.content.ClipboardManager::class.java) ?: return
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("MyTube diagnostics", diagnosticsReport()))
+            val clip = android.content.ClipData.newPlainText("MyTube diagnostics", diagnosticsReport())
+            // S6 (audit P2 2026-11-11): diagnostics carry prefs + player errors — keep them
+            // out of the Gboard clipboard history on API33+.
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    clip.description.extras = android.os.PersistableBundle().apply {
+                        putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
+                    }
+                }
+            } catch (_: Exception) { }
+            cm.setPrimaryClip(clip)
             toast(ctx.getString(R.string.diag_copied))
         } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) }
     }
@@ -2188,6 +2510,55 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
             }
         }
+    }
+    // G-A1 (audit P2 2026-11-11): shared / viewed YouTube links land here.
+    // Companion-parked by onCreate/onNewIntent; consumed on resume (covers cold start +
+    // share-while-alive via singleTop). A bare video URL plays like a tapped result;
+    // anything else becomes a search query.
+    fun extractYoutubeId(t: String): String? {
+        return try {
+            val pats = listOf(
+                Regex("[?&]v=([A-Za-z0-9_-]{6,})"),
+                Regex("youtu\\.be/([A-Za-z0-9_-]{6,})"),
+                Regex("/(?:shorts|embed|live)/([A-Za-z0-9_-]{6,})")
+            )
+            pats.firstNotNullOfOrNull { r -> r.find(t)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } }
+        } catch (_: Exception) { null }
+    }
+    fun handleSharedIntent(inc: android.content.Intent) {
+        try {
+            val action = inc.action
+            val type = inc.type
+            var text: String? = null
+            if (action == android.content.Intent.ACTION_SEND && type == "text/plain")
+                text = inc.getStringExtra(android.content.Intent.EXTRA_TEXT)
+            else if (action == android.content.Intent.ACTION_VIEW) text = inc.dataString
+            text = text?.trim()
+            if (text.isNullOrBlank()) return
+            val vid = extractYoutubeId(text)
+            if (vid != null) {
+                val url = "https://www.youtube.com/watch?v=" + vid
+                playVideo(VideoItem(id = vid, url = url, title = text.take(120)), inQueue = false, expand = true)
+            } else {
+                doSearch(text.take(200))
+            }
+        } catch (_: Exception) { }
+    }
+    // consumed by the ON_RESUME observer above via sharedPending ticks (declared up top).
+    androidx.compose.runtime.LaunchedEffect(sharedPending) {
+        if (sharedPending > 0) {
+            val inc = MainActivity.pendingSharedIntent
+            MainActivity.pendingSharedIntent = null
+            if (inc != null) {
+                val a = inc.action
+                if (a == android.content.Intent.ACTION_SEND || a == android.content.Intent.ACTION_VIEW) handleSharedIntent(inc)
+            }
+        }
+    }
+    // L6 (audit P2 2026-11-11): refresh PiP actions with the live play state while in PiP
+    // (onEnterPip rebuilds params from the current isPlaying; no state change -> no loop).
+    androidx.compose.runtime.LaunchedEffect(pipMode.value, isPlaying) {
+        if (pipMode.value) { try { onEnterPip() } catch (_: Exception) { } }
     }
     // SoundCloud search (separate tab, own state; failures surface with retry).
     var scJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -2439,7 +2810,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     subs.flatMap { oneChannel(it.channelUrl) }
                 }
                 feedItems = all
-            } catch (_: Exception) { }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_feed_fail)) }
             feedLoading = false
         }
     }
@@ -3025,6 +3396,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     audioTracks = streamData?.audioTracks ?: emptyList(),
                     audioIdx = audioTrackIdx,
                     onAudioTrack = { i ->
+                        // F13 (audit P2 2026-11-11, by design): the picked track may be an external
+                        // (merged) stream, so the source is rebuilt via applyQuality; in-player
+                        // trackSelector overrides are already used where the source is shared
+                        // (muxed-audio disable + F8 subtitle override in applyLangPrefs).
                         audioTrackIdx = i
                         // manual pick becomes the saved preference (applies to all future videos)
                         try {
@@ -3140,8 +3515,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
             if (!isFullscreen) {
 
+            val backupImportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        importFullBackup(uri)
+    }
             @Composable
-            fun SettingsPane() {
+    fun SettingsPane() {
                 SettingsScreen(
                     subLang = prefSubLang,
                     audioLang = prefAudioLang,
@@ -3173,7 +3554,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         prefCountry = v
                         try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
                         try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(v, prefUiLang) } catch (_: Exception) { }
+                        // L7 (audit P2 2026-11-11): stale region results are invisible — reload both surfaces + announce.
                         refreshTrending()
+                        refreshFeed()
+                        toast(ctx.getString(R.string.region_changed))
                     },
                     onQuality = { v ->
                         prefQuality = v
@@ -3221,6 +3605,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onClearFavorites = { clearFavorites() },
                     onClearHistory = { clearHistory() },
                     onCopyDiagnostics = { copyDiagnostics() },
+                    onCheckUpdate = { checkUpdate() },
+                    onExportFull = { exportFullBackup() },
+                    onImportFull = { try { backupImportLauncher.launch("application/json") } catch (_: Exception) { } },
                     cacheSize = cacheSizeLabel,
                     cacheMaxMb = prefCacheMaxMb,
                     onCacheMax = { mb ->
@@ -4085,6 +4472,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     currentLabel = sleepLeft.ifBlank { null },
                     onPick = { m ->
                         sleepEndOfTrack = false
+                        sleepTrackKey = null // F12: a fresh timer disarms any track-bound flag
                         sleepAtMs = if (m == null) null else android.os.SystemClock.uptimeMillis() + m * 60000L
                         if (m == null) {
                             sleepLeft = ""
@@ -4101,6 +4489,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onEndOfTrack = {
                         sleepAtMs = null
                         try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
+                        sleepTrackKey = playing?.favKey() // F12: bind the flag to this track
                         sleepEndOfTrack = true
                         sleepLeft = try { ctx.getString(R.string.sleep_track) } catch (_: Exception) { "..." }
                         showSleep = false

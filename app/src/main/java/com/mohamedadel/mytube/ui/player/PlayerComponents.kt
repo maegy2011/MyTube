@@ -178,7 +178,7 @@ fun SleepTimerDialog(
                 Spacer(Modifier.height(8.dp))
                 options.forEach { m ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onPick(m) }.padding(vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { onPick(m) }.padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -188,7 +188,7 @@ fun SleepTimerDialog(
                 }
                 if (onEndOfTrack != null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onEndOfTrack() }.padding(vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { onEndOfTrack() }.padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -198,7 +198,7 @@ fun SleepTimerDialog(
                 }
                 if (currentLabel != null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onPick(null) }.padding(vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { onPick(null) }.padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Rounded.Clear, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

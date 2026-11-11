@@ -1,8 +1,11 @@
 package com.mohamedadel.mytube.ui.results
 
 import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.ui.theme.Scrim
+import com.mohamedadel.mytube.ui.theme.ScrimSoft
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,12 +88,12 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                 }
             }
             if (v.isShort) {
-                Surface(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), shape = MaterialTheme.shapes.extraSmall, color = Color.Black.copy(alpha = 0.8f)) {
+                Surface(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), shape = MaterialTheme.shapes.extraSmall, color = Scrim) {
                     Text(text = "Shorts", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
             }
             v.durationSec?.takeIf { it > 0 }?.let { dur ->
-                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = MaterialTheme.shapes.extraSmall, color = Color.Black.copy(alpha = 0.8f)) {
+                Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = MaterialTheme.shapes.extraSmall, color = Scrim) {
                     Text(text = formatDuration(dur), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
             }
@@ -142,14 +146,14 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                     Text(text = pinBadge, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            IconButton(onClick = { onFav(v) }, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = { onFav(v) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                 Icon(
                     if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                     contentDescription = stringResource(if (isFav) R.string.cd_fav_remove else R.string.cd_fav_add),
                     tint = if (isFav) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(onClick = { onLongClick(v) }, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = { onLongClick(v) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.video_options_title), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             // major #7: onRemove was accepted but never rendered (history delete was dead).
@@ -168,7 +172,7 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
 @OptIn(ExperimentalFoundationApi::class)
 fun PlaylistCard(p: com.mohamedadel.mytube.data.youtube.RemotePlaylist, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = {}).padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.size(width = 160.dp, height = 90.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
@@ -179,7 +183,7 @@ fun PlaylistCard(p: com.mohamedadel.mytube.data.youtube.RemotePlaylist, onClick:
             }
             // count badge (bottom-end): N tracks
             if (p.count > 0) {
-                Surface(color = Color.Black.copy(alpha = 0.75f), shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
+                Surface(color = ScrimSoft, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
                     Text(
                         text = stringResource(R.string.playlist_count_fmt, p.count),
                         style = MaterialTheme.typography.labelSmall,
