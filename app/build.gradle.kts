@@ -12,8 +12,8 @@ android {
         applicationId = "com.mohamedadel.mytube"
         minSdk = 26
         targetSdk = 34
-        versionCode = 32
-        versionName = "0.3.2"
+        versionCode = 33
+        versionName = "0.3.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
