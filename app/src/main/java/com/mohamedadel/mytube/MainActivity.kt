@@ -101,6 +101,8 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import com.mohamedadel.mytube.util.BROWSER_UA
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -1600,15 +1602,31 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).setSubtitleConfigurations(subConfigs).apply { try { s.videoMime?.takeIf { it.isNotBlank() }?.let { setMimeType(it) } } catch (_: Exception) { } }.build()
         // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
         val resume = (autoplay && wasPlaying) || forceStart
+        // 2026-11-12 (runtime fix): extensionless HLS urls (SC /stream/hls pointers,
+        // cached/redirected variants) are mis-sniffed as Progressive by the default
+        // factory — route the flagged/playlist urls through HlsMediaSource explicitly.
+        // Single tap still prepares paused (no-autoplay policy unchanged).
+        val hlsOnly = s.audioHlsOnly || url.contains("m3u8", ignoreCase = true)
         p.playWhenReady = false
         // Fix: muxed files bake their own audio, so a picked track was silently ignored there.
         // Merged rebuild (muxed video + picked audio) + one-shot disable of the baked audio group.
         val needExternalAudio = isMuxed && selAudio != null && audioTrackIdx != 0 && q != QUALITY_AUDIO_ONLY
-        if (q == QUALITY_AUDIO_ONLY || selAudio == null || (isMuxed && !needExternalAudio)) {
+        // Shared HTTP stack for explicit sources: browser UA (googlevideo/cf-media 403
+        // non-browser agents) + cache-first for online, direct for local/pinned files.
+        fun explicitDsf(local: Boolean): androidx.media3.datasource.DataSource.Factory {
+            val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(BROWSER_UA)
+            return if (local) DefaultDataSource.Factory(ctx, httpFactory) else try {
+                com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
+            } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
+        }
+        if (hlsOnly && q == QUALITY_AUDIO_ONLY) {
+            p.setMediaSource(HlsMediaSource.Factory(explicitDsf(local)).createMediaSource(mediaItem))
+            p.prepare()
+        } else if (q == QUALITY_AUDIO_ONLY || selAudio == null || (isMuxed && !needExternalAudio)) {
             p.setMediaItem(mediaItem)
             p.prepare()
         } else {
-            val httpFactory = DefaultHttpDataSource.Factory()
+            val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(BROWSER_UA)
             // Phase 1: cache-first media (replay within URL lifetime = zero bytes).
             // Phase 4: pinned files bypass the cache entirely (no duplicate bytes on disk).
             val dataSourceFactory = if (local) DefaultDataSource.Factory(ctx, httpFactory) else try {
@@ -1912,9 +1930,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
             // total extraction failure used to leave the spinner forever with NO error (silent death).
             // Detect it here and report a smart message instead.
+            // 2026-11-12: StreamData.error carries the extractor's own reason — show it
+            // so a stale-extractor/403 class is diagnosable on device (was: generic text only).
             if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
                 playerLoading = false
-                playerError = ctx.getString(R.string.err_no_sources)
+                playerError = if (!s.error.isNullOrBlank()) ctx.getString(R.string.err_extract_detail, s.error) else ctx.getString(R.string.err_no_sources)
                 return@launch
             }
             // Fresh video = fresh indices, set HERE (the LaunchedEffect on streamData races

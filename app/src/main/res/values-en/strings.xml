@@ -65,6 +65,7 @@
     <string name="toast_move_fail">Couldn’t move</string>
     <string name="toast_sub_fail">Couldn’t change subtitles</string>
     <string name="err_no_sources">Couldn’t fetch this video’s sources — it may be deleted, restricted, or protected. Try again or watch on YouTube.</string>
+    <string name="err_extract_detail">Couldn’t extract the stream (%1$s) — try again or watch on YouTube.</string>
     <string name="err_kiosk">Couldn’t load this section for your country right now — try later or change country in Settings.</string>
     <string name="toast_delete_item_fail">Couldn’t delete item</string>
     <string name="toast_playlist_save_fail">Couldn’t save playlist</string>

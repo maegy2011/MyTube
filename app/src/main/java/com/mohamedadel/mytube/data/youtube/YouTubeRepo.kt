@@ -19,7 +19,7 @@ data class ChapterItem(val title: String, val startSec: Int)
 data class Storyboard(val urls: List<String>, val total: Int, val perX: Int, val perY: Int, val fw: Int, val fh: Int, val durPerFrame: Int)
 data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
 data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0, val isLive: Boolean = false, val audioHlsOnly: Boolean = false, val videoMime: String? = null, val audioMime: String? = null)
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0, val isLive: Boolean = false, val audioHlsOnly: Boolean = false, val videoMime: String? = null, val audioMime: String? = null, val error: String? = null)
 data class RemotePlaylist(
     val title: String? = null,
     val uploader: String? = null,
@@ -418,7 +418,9 @@ object YouTubeRepo {
                 try { Storyboard(f.urls, f.totalCount, f.framesPerPageX, f.framesPerPageY, f.frameWidth, f.frameHeight, f.durationPerFrame) } catch (_: Exception) { null }
             } ?: emptyList() } catch (_: Exception) {}
             StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chUrl, chapters, related, boards, ageLimit = age)
-        } catch (_: Exception) { StreamData() }
+        // 2026-11-12: surface the extractor failure instead of a silent empty —
+        // playVideo shows it via err_extract_detail (was: generic err_no_sources, no diagnosis).
+        } catch (e: Exception) { StreamData(error = (e.message ?: e.javaClass.simpleName).take(120)) }
     }
 
     // A2 subscriptions: import OPML/JSON/CSV/ZIP (YouTube Takeout) via the extractor's own dispatch.
@@ -730,18 +732,30 @@ object YouTubeRepo {
     // Audio-only StreamData for a SoundCloud track (highest-bitrate audio stream).
     // pin-deepfix 2026-11-11: skip HLS (.m3u8) variants — pinning stores raw bytes, so a
     // playlist URL would produce a corrupt audio.m4a. audioHlsOnly lets callers say so clearly.
+    // 2026-11-12 (runtime fix): HLS-only used to return NO url at all, so ONLINE playback
+    // died with err_no_sources too. Now the HLS url rides along (flag set): pins still
+    // refuse via the flag, but online playback routes it through HlsMediaSource in applyQuality.
     suspend fun scStream(url: String): StreamData? = withContext(Dispatchers.IO) {
         try {
             val ext = scService().getStreamExtractor(url)
             ext.fetchPage()
             val audios = try { ext.audioStreams } catch (_: Exception) { null } ?: emptyList()
             val withUrl = audios.mapNotNull { a -> try { a.content?.let { a to it } } catch (_: Exception) { null } }
-            if (withUrl.isEmpty()) return@withContext null
+            if (withUrl.isEmpty()) return@withContext StreamData(error = "empty")
             val progressive = withUrl.filter { (_, u) -> !u.contains("m3u8", ignoreCase = true) }
-            if (progressive.isEmpty()) return@withContext StreamData(audioHlsOnly = true)
+            if (progressive.isEmpty()) {
+                val hlsUrl = withUrl.map { it.second }.firstOrNull { it.contains("m3u8", ignoreCase = true) }
+                    ?: withUrl.map { it.second }.firstOrNull { it.contains("/hls", ignoreCase = true) }
+                return@withContext StreamData(
+                    audioLowestUrl = hlsUrl,
+                    audioHlsOnly = true,
+                    title = try { ext.name } catch (_: Exception) { null },
+                    error = if (hlsUrl == null) "hls-only" else null
+                )
+            }
             val best = progressive.sortedByDescending { (a, _) -> try { a.averageBitrate } catch (_: Exception) { 0 } }.firstOrNull()
             val audioUrl: String? = best?.second
-            if (audioUrl.isNullOrBlank()) return@withContext null
+            if (audioUrl.isNullOrBlank()) return@withContext StreamData(error = "empty")
             StreamData(
                 audioLowestUrl = audioUrl,
                 videoUrlByQuality = emptyMap(),
@@ -749,7 +763,7 @@ object YouTubeRepo {
                 title = try { ext.name } catch (_: Exception) { null },
                 subtitles = emptyList()
             )
-        } catch (_: Exception) { null }
+        } catch (e: Exception) { StreamData(error = (e.message ?: e.javaClass.simpleName).take(120)) }
     }
 
     // Router: SoundCloud URLs resolve via SC, everything else via YouTube. Call sites use this.

@@ -65,6 +65,7 @@
     <string name="toast_move_fail">تعذّر النقل</string>
     <string name="toast_sub_fail">تعذّر تغيير الترجمة</string>
     <string name="err_no_sources">تعذّر جلب مصادر هذا الفيديو — قد يكون محذوفًا أو مقيّدًا أو محميًا. جرّب مجددًا أو شاهده في يوتيوب.</string>
+    <string name="err_extract_detail">تعذّر استخراج المصدر (%1$s) — جرّب مجددًا أو شاهده في يوتيوب.</string>
     <string name="err_kiosk">تعذّر جلب هذا القسم لبلدك حاليًا — جرّب لاحقًا أو غيّر البلد من الإعدادات.</string>
     <string name="toast_delete_item_fail">تعذّر حذف العنصر</string>
     <string name="toast_playlist_save_fail">تعذّر حفظ القائمة</string>

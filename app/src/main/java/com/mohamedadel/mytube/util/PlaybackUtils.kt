@@ -12,6 +12,11 @@ import com.mohamedadel.mytube.data.youtube.VideoItem
 // Pure playback/format/battery helpers extracted from MainActivity (split step 1).
 // No Compose, no Activity state — safe to unit-test and reuse.
 
+// Runtime-layer shared UA (2026-11-12 fix): googlevideo/cf-media now 403s
+// non-browser agents on the player stack too — same class as the pin-side
+// 403 fixed with PIN_UA in PinManager. One constant for both stacks.
+const val BROWSER_UA = "Mozilla/5.0"
+
 fun Context.estimatedDownstreamKbps(): Int {
     return try {
         val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return 0
@@ -26,7 +31,9 @@ fun autoUrl(s: StreamData, kbps: Int = 0): String? {
     val heights = s.videoUrlByQuality.keys.mapNotNull { k ->
         qualityHeight(k)?.let { h -> h to k }
     }
-    if (heights.isEmpty()) return s.videoUrlByQuality.values.firstOrNull()
+    // 2026-11-12: audio-only sources (e.g. SC HLS) carry no video map — fall back
+    // to the resolved audio URL instead of returning null (null = err_quality_unavailable).
+    if (heights.isEmpty()) return s.videoUrlByQuality.values.firstOrNull() ?: s.audioLowestUrl
     if (kbps <= 0) {
         val target = heights.filter { it.first == 720 }.firstOrNull()
             ?: heights.filter { it.first == 480 }.firstOrNull()

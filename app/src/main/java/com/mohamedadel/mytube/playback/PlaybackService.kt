@@ -8,7 +8,11 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.mohamedadel.mytube.util.BROWSER_UA
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
@@ -80,7 +84,12 @@ class PlaybackService : MediaSessionService() {
         // Pref is read at service creation; toggling rebuilds via service restart (recreate route).
         val skip = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_skip_silence", false) } catch (_: Exception) { false }
         val rf = SilenceSkippingRenderersFactory(this).apply { skipSilence = skip }
-        val p = ExoPlayer.Builder(this, rf).build()
+        // 2026-11-12 (runtime fix): browser UA on the player's HTTP stack — stream CDNs
+        // (googlevideo/cf-media) 403 non-browser agents, same class as the pin-side fix.
+        // DefaultDataSource keeps file:// + content:// working for pins/local files.
+        val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(BROWSER_UA)
+        val msf = DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpFactory))
+        val p = ExoPlayer.Builder(this, rf).setMediaSourceFactory(msf).build()
         player = p
         val activityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
