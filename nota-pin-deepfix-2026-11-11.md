@@ -37,4 +37,4 @@ Skill: `android` (layer=runtime — pin flow, extractor streams, Compose rows). 
 - Progress surfaces (single `pinProgress` source): originating card/row bar+%, Downloads rows, player pin pill %, queue rows %, system notification %.
 - Badges: new `PinBadge` pill (PushPin icon, primary-container theme tokens, `cd_pinned_fmt` TalkBack description) in search rows, queue, favorites/history (via SearchRow), downloads.
 - Cancel: user-cancelled pins stay silent (cancel toast only) — no more false "pin failed".
-- Commit: (hash below).
+- Commit: `b3791bf` (local only, no push). 19 files, +256/−36.
