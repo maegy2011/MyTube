@@ -201,6 +201,9 @@ fun SettingsScreen(
     pinsBytes: Long = 0L,
     pinsWarnMb: Long = 1024L,
     onPinsWarn: (Long) -> Unit = {},
+    pinLoc: String = "internal",
+    extAvailable: Boolean = false,
+    onPinLoc: (String) -> Unit = {},
     onClearPins: () -> Unit = {},
     feedParallel: Boolean = true,
     onFeedParallel: (Boolean) -> Unit = {},
@@ -852,6 +855,34 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        item {
+            Text(stringResource(R.string.pin_loc_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        }
+        items(listOf("internal", "external")) { loc ->
+            val enabled = loc == "internal" || extAvailable
+            Row(
+                modifier = Modifier.fillMaxWidth().let { m -> if (enabled) m.clickable { onPinLoc(loc) } else m }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (pinLoc == loc) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (pinLoc == loc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.4f),
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(if (loc == "internal") R.string.pin_loc_internal else R.string.pin_loc_external),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (loc == "external" && !extAvailable) {
+                        Text(stringResource(R.string.pin_loc_ext_missing), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
         items(listOf(512L, 1024L, 2048L, 0L)) { mb ->
             Row(modifier = Modifier.fillMaxWidth().clickable { onPinsWarn(mb) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {

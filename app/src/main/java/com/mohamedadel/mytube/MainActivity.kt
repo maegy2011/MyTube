@@ -2321,7 +2321,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 pinSelQuality = qq
                 pinSelAudio = ai
                 pinSelSubs = si
-                try { pinSelLoc = ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE).getString("pref_pin_location", "internal") ?: "internal" } catch (_: Exception) { }
+                try {
+                    val stored = ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE).getString("pref_pin_location", null)
+                    // SD-first: no stored choice yet + external root mounted -> default to external
+                    pinSelLoc = stored ?: if (com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext)) "external" else "internal"
+                } catch (_: Exception) { }
                 pinEst = est
                 pinConfirm = com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est)
             } catch (_: Exception) { toast(ctx.getString(R.string.toast_pin_fail)) }
@@ -3107,6 +3111,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     pinsSize = pinsSizeLabel,
                     pinsBytes = pinsBytes,
                     pinsWarnMb = prefPinWarnMb,
+                    pinLoc = pinSelLoc,
+                    extAvailable = try { com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext) } catch (_: Exception) { false },
+                    onPinLoc = { loc ->
+                        pinSelLoc = loc
+                        try { prefs.edit().putString("pref_pin_location", loc).apply() } catch (_: Exception) { }
+                    },
                     onPinsWarn = { mb ->
                         prefPinWarnMb = mb
                         try { prefs.edit().putLong("pref_pin_warn_mb", mb).apply() } catch (_: Exception) { }

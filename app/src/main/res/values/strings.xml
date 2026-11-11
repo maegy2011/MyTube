@@ -501,4 +501,8 @@
     <string name="local_empty">لا ملفات صوتية</string>
     <string name="local_empty_hint">امنح الإذن ثم أعد المسح، أو جرّب الوضع الشامل.</string>
     <string name="rescan">إعادة مسح</string>
+    <string name="pin_loc_title">مكان التنزيل الافتراضي:</string>
+    <string name="pin_loc_internal">ذاكرة الجهاز الداخلية</string>
+    <string name="pin_loc_external">بطاقة SD (خارجية)</string>
+    <string name="pin_loc_ext_missing">غير متاحة حاليًا — أدخل البطاقة أولًا</string>
 </resources>
