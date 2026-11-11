@@ -161,6 +161,7 @@
     <string name="err_playback_code">Playback failed (error %1$d) — retry or watch on YouTube.</string>
     <string name="auto_device_fmt">Auto (device language: %1$s)</string>
     <string name="del_hist_confirm_fmt">All history items (%1$d) will be permanently deleted.</string>
+    <string name="del_hist_item_fmt">“%1$s” will be removed from history.</string>
     <string name="del_fav_confirm_fmt">All favorite items (%1$d) will be permanently deleted.</string>
     <!-- screens-fix Library P0-L1 -->
     <string name="clear_items_title">Empty this playlist?</string>
@@ -416,6 +417,12 @@
     <string name="dl_clear_all">Clear all</string>
     <!-- screens-fix Library P0-L3 -->
     <string name="dl_empty_hint">Pinned clips are stored on your device and play offline.</string>
+    <!-- screens-fix Library P0-L1/L3 -->
+    <string name="dl_how_to_pin">How to pin</string>
+    <string name="dl_how_to_steps">1. Open any video.
+2. Long-press it, then choose Pin.
+3. Find it here — it plays offline.</string>
+    <string name="del_pin_confirm_fmt">“%1$s” will be deleted from this device permanently.</string>
     <string name="dl_total_fmt">Total: %.1f MB</string>
     <string name="dl_channel">Download progress</string>
     <string name="dl_progress_fmt">%d%%</string>

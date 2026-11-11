@@ -62,6 +62,10 @@ fun DownloadsScreen(
 ) {
     // screens-fix Library P0-L1: destructive clear-all needs explicit confirmation.
     var confirmClearAll by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    // screens-fix Library P0-L1 (row-delete): single-pin delete also confirms (offline file loss).
+    var confirmDeleteKey by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    // screens-fix Library P0-L3: how-to-pin explainer toggle in the empty state.
+    var showHowTo by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -104,6 +108,16 @@ fun DownloadsScreen(
                 onDismiss = { confirmClearAll = false }
             )
         }
+        if (confirmDeleteKey != null) {
+            val dk = confirmDeleteKey
+            val dt = pins.firstOrNull { it.videoKey == dk }?.title ?: titleOf(dk ?: "")
+            com.mohamedadel.mytube.ui.playlists.ConfirmDeleteDialog(
+                title = stringResource(R.string.delete),
+                message = stringResource(R.string.del_pin_confirm_fmt, dt ?: ""),
+                onConfirm = { confirmDeleteKey = null; if (dk != null) onDelete(dk) },
+                onDismiss = { confirmDeleteKey = null }
+            )
+        }
         Text(
             stringResource(R.string.dl_total_fmt, totalBytes / 1048576.0),
             style = MaterialTheme.typography.bodySmall,
@@ -132,6 +146,19 @@ fun DownloadsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 32.dp)
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                androidx.compose.material3.OutlinedButton(onClick = { showHowTo = !showHowTo }) {
+                    Text(stringResource(R.string.dl_how_to_pin))
+                }
+                if (showHowTo) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.dl_how_to_steps),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 32.dp)
+                    )
+                }
             }
         } else {
             LazyColumn(
@@ -234,7 +261,7 @@ fun DownloadsScreen(
                                     Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cancel), tint = MaterialTheme.colorScheme.error)
                                 }
                             }
-                            IconButton(onClick = { onDelete(p.videoKey) }, enabled = !inFlight) {
+                            IconButton(onClick = { confirmDeleteKey = p.videoKey }, enabled = !inFlight) {
                                 Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error)
                             }
                         }

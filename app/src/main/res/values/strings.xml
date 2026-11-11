@@ -161,6 +161,7 @@
     <string name="err_playback_code">تعذّر التشغيل (خطأ %1$d) — أعد المحاولة أو شاهده في يوتيوب.</string>
     <string name="auto_device_fmt">تلقائي (لغة الجهاز: %1$s)</string>
     <string name="del_hist_confirm_fmt">سيتم حذف كل عناصر السجل (%1$d) نهائيًا.</string>
+    <string name="del_hist_item_fmt">سيتم حذف «%1$s» من السجل.</string>
     <string name="del_fav_confirm_fmt">سيتم حذف كل عناصر المفضلة (%1$d) نهائيًا.</string>
     <!-- screens-fix Library P0-L1 -->
     <string name="clear_items_title">إفراغ القائمة؟</string>
@@ -416,6 +417,12 @@
     <string name="dl_clear_all">مسح الكل</string>
     <!-- screens-fix Library P0-L3 -->
     <string name="dl_empty_hint">المقاطع المثبتة تُحفظ على جهازك وتُشغَّل دون إنترنت.</string>
+    <!-- screens-fix Library P0-L1/L3 -->
+    <string name="dl_how_to_pin">كيف تثبّت؟</string>
+    <string name="dl_how_to_steps">١. افتح أي فيديو.
+٢. اضغط مطوّلًا على الفيديو ثم اختر «تثبيت».
+٣. تجده هنا ويُشغَّل دون إنترنت.</string>
+    <string name="del_pin_confirm_fmt">سيتم حذف «%1$s» من الجهاز نهائيًا.</string>
     <string name="dl_total_fmt">الإجمالي: %.1f ميجابايت</string>
     <string name="dl_channel">تقدّم التنزيل</string>
     <string name="dl_progress_fmt">%d٪</string>

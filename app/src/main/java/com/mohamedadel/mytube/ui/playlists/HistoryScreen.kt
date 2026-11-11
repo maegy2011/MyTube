@@ -63,6 +63,8 @@ fun HistoryScreen(
 ) {
     // screens-fix Library P0-L1: destructive clear needs explicit confirmation.
     var confirmClear by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    // screens-fix Library P0-L1 (row-delete): single history-item delete also confirms.
+    var confirmRow by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<VideoItem?>(null) }
     val lctx = androidx.compose.ui.platform.LocalContext.current
     var tab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
     fun sizeLabel(bytes: Long): String = try {
@@ -95,6 +97,15 @@ fun HistoryScreen(
                 message = stringResource(R.string.del_hist_confirm_fmt, totalCount),
                 onConfirm = { confirmClear = false; onClear() },
                 onDismiss = { confirmClear = false }
+            )
+        }
+        if (confirmRow != null) {
+            val rv = confirmRow
+            ConfirmDeleteDialog(
+                title = stringResource(R.string.delete),
+                message = stringResource(R.string.del_hist_item_fmt, rv?.title ?: ""),
+                onConfirm = { confirmRow = null; if (rv != null) onDelete(rv) },
+                onDismiss = { confirmRow = null }
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -160,7 +171,7 @@ fun HistoryScreen(
                             onLongClick = { onLongClick(it) },
                         isFav = isFav(v),
                         onFav = onFav,
-                            onRemove = onDelete,
+                            onRemove = { confirmRow = it },
                             pinBadge = pin?.let { pp -> "📌 " + (pp.quality ?: "") + (if (pp.sizeBytes > 0) " • " + sizeLabel(pp.sizeBytes) else "") },
                             pinning = pinningKeys.contains(h.videoKey)
                         )
@@ -215,7 +226,7 @@ fun HistoryScreen(
                         onLongClick = { onLongClick(it) },
                         isFav = isFav(v),
                         onFav = onFav,
-                        onRemove = onDelete,
+                        onRemove = { confirmRow = it },
                         pinBadge = badge,
                         pinning = pinningKeys.contains(h.videoKey)
                     )
