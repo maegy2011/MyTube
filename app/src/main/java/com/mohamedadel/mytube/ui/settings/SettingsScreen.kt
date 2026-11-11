@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -263,654 +262,423 @@ fun SettingsScreen(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item { Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface) }
         item {
-            Text(
-                stringResource(R.string.device_line_fmt, deviceLang?.displayLanguage ?: deviceTag, deviceTag),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        item {
-            Text(stringResource(R.string.sub_primary_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("auto", "off") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onSubLang(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (subLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (subLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.sub_fallback_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onSubLang2(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (subLang2 == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (subLang2 == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.audio_primary_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("auto") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onAudioLang(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (audioLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (audioLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.audio_fallback_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("original") + LANG_OPTIONS.map { it.first }) { code ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onAudioLang2(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (audioLang2 == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (audioLang2 == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(langText(code, deviceTag), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.quality_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(QUALITY_OPTIONS) { (code, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onQuality(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (quality == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (quality == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.ui_lang_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(UI_LANG_OPTIONS) { (code, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onUiLang(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (uiLang == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (uiLang == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.sub_studio_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSubHideAuto(!subHideAuto) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (subHideAuto) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subHideAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.sub_hide_auto), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            // Live preview: same fg/bg/opacity/size/bold the player will use (edge renders in-player only).
-            val pvFg = when (subFg) { "yellow" -> Color.Yellow; "black" -> Color.Black; "cyan" -> Color.Cyan; else -> Color.White }
-            val pvBgBase = when (subBg) { "black" -> Color.Black; "white" -> Color.White; else -> Color.Transparent }
-            val pvBg = if (subBg == "transparent") Color.Transparent else pvBgBase.copy(alpha = subBgOpacity.coerceIn(0, 100) / 100f)
-            val pvBoxBg = if (subBg == "transparent" || subBg == "black") Color(0xFF3A3A44) else Color(0xFF1A1A1F)
-            Box(modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(pvBoxBg).padding(12.dp), contentAlignment = Alignment.Center) {
+            SettingsSection(title = stringResource(R.string.settings_sec_lang)) {
                 Text(
-                    stringResource(R.string.sub_preview_text),
-                    color = pvFg,
-                    fontSize = (16f * subScale.coerceIn(0.5f, 2.0f)).sp,
-                    fontWeight = if (subBold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
-                    modifier = Modifier.background(pvBg).padding(horizontal = 4.dp)
+                    stringResource(R.string.device_line_fmt, deviceLang?.displayLanguage ?: deviceTag, deviceTag),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                DropRow(
+                    label = stringResource(R.string.ui_lang_title),
+                    entries = UI_LANG_OPTIONS.map { it.first to it.second },
+                    selected = uiLang,
+                    onPick = onUiLang
+                )
+                DropRow(
+                    label = stringResource(R.string.country_title),
+                    entries = COUNTRY_OPTIONS.map { it.first to stringResource(it.second) },
+                    selected = country,
+                    onPick = onCountry
+                )
+                SwitchRow(
+                    label = stringResource(R.string.title_translate),
+                    desc = stringResource(R.string.title_translate_desc),
+                    checked = titleTranslate,
+                    onToggle = { onTitleTranslate(!titleTranslate) }
                 )
             }
         }
         item {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.sub_size_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.width(8.dp))
-                Slider(value = subScale.coerceIn(0.5f, 2.0f), onValueChange = onSubScale, valueRange = 0.5f..2.0f, steps = 14, modifier = Modifier.weight(1f))
-                Spacer(Modifier.width(8.dp))
-                Text(String.format(java.util.Locale.US, "%.1fx", subScale.coerceIn(0.5f, 2.0f)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        items(listOf("white", "yellow", "black", "cyan")) { code ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSubFg(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (subFg == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subFg == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(when (code) { "yellow" -> R.string.sub_fg_yellow; "black" -> R.string.sub_fg_black; "cyan" -> R.string.sub_fg_cyan; else -> R.string.sub_fg_white }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        items(listOf("transparent", "black", "white")) { code ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSubBg(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (subBg == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subBg == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(when (code) { "black" -> R.string.sub_bg_black; "white" -> R.string.sub_bg_white; else -> R.string.sub_bg_trans }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.sub_bg_opacity), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.width(8.dp))
-                Slider(value = subBgOpacity.toFloat(), onValueChange = { onSubBgOpacity(it.toInt()) }, valueRange = 0f..100f, steps = 19, modifier = Modifier.weight(1f), enabled = subBg != "transparent")
-                Spacer(Modifier.width(8.dp))
-                Text("$subBgOpacity%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        items(listOf("outline", "none", "shadow", "raised")) { code ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSubEdge(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (subEdge == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subEdge == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(code, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSubBold(!subBold) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (subBold) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subBold) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.sub_bold), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        items(listOf("subtitle", "caption", "descriptive", "system")) { code ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSubRole(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (subRole == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (subRole == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(when (code) { "caption" -> R.string.sub_role_caption; "descriptive" -> R.string.sub_role_descriptive; "system" -> R.string.sub_role_system; else -> R.string.sub_role_subtitle }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onHideForced(!hideForced) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (hideForced) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (hideForced) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.hide_forced_subs), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onUndetermined(!undetermined) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (undetermined) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (undetermined) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.undetermined_lang), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.audio_studio_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onPreferOriginal(!preferOriginal) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (preferOriginal) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (preferOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.prefer_original), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        items(listOf("auto", "dubbed", "original", "commentary")) { code ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onAudioRole(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (audioRole == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (audioRole == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(when (code) { "dubbed" -> R.string.audio_role_dubbed; "original" -> R.string.audio_role_original; "commentary" -> R.string.audio_role_commentary; else -> R.string.audio_role_auto }), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSkipSilence(!skipSilence) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (skipSilence) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (skipSilence) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.skip_silence), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        items(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)) { v ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSpeed(v) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (speed == v) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (speed == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(if (v == 1.0f) stringResource(R.string.speed_normal) else "${v}x", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.pitch_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf(0.5f, 0.8f, 1.0f, 1.25f, 1.5f, 2.0f)) { v ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onPitch(v) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (pitch == v) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pitch == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(if (v == 1.0f) stringResource(R.string.speed_normal) else "${v}x", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.volume_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (muted || volume == 0f) Icons.AutoMirrored.Filled.VolumeOff else if (volume < 0.5f) Icons.AutoMirrored.Filled.VolumeDown else Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(8.dp))
-                Slider(value = if (muted) 0f else volume, onValueChange = onVolume, valueRange = 0f..1f, modifier = Modifier.weight(1f))
-                Spacer(Modifier.width(8.dp))
-                Text("${(if (muted) 0f else volume * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-            Row(modifier = Modifier.fillMaxWidth().clickable { onMuted(!muted) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (muted) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (muted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(if (muted) R.string.cd_unmute else R.string.cd_mute), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.eq_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        if (!eqSupported) {
-            item { Text(stringResource(R.string.eq_unsupported), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        } else {
-            item {
-                Row(modifier = Modifier.fillMaxWidth().clickable { onEqEnabled(!eqEnabled) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (eqEnabled) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (eqEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text(stringResource(if (eqEnabled) R.string.eq_on else R.string.eq_off), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            SettingsSection(title = stringResource(R.string.settings_sec_subs)) {
+                DropRow(
+                    label = stringResource(R.string.sub_primary_title),
+                    entries = listOf("auto" to langText("auto", deviceTag), "off" to langText("off", deviceTag)) + LANG_OPTIONS.map { it.first to langText(it.first, deviceTag) },
+                    selected = subLang,
+                    onPick = onSubLang
+                )
+                DropRow(
+                    label = stringResource(R.string.sub_fallback_title),
+                    entries = listOf("original" to langText("original", deviceTag)) + LANG_OPTIONS.map { it.first to langText(it.first, deviceTag) },
+                    selected = subLang2,
+                    onPick = onSubLang2
+                )
+                SwitchRow(
+                    label = stringResource(R.string.sub_hide_auto),
+                    checked = subHideAuto,
+                    onToggle = { onSubHideAuto(!subHideAuto) }
+                )
+                Box(modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(if (subBg == "transparent" || subBg == "black") Color(0xFF3A3A44) else Color(0xFF1A1A1F)).padding(12.dp), contentAlignment = Alignment.Center) {
+                    val pvFg = when (subFg) { "yellow" -> Color.Yellow; "black" -> Color.Black; "cyan" -> Color.Cyan; else -> Color.White }
+                    val pvBgBase = when (subBg) { "black" -> Color.Black; "white" -> Color.White; else -> Color.Transparent }
+                    val pvBg = if (subBg == "transparent") Color.Transparent else pvBgBase.copy(alpha = subBgOpacity.coerceIn(0, 100) / 100f)
+                    Text(
+                        stringResource(R.string.sub_preview_text),
+                        color = pvFg,
+                        fontSize = (16f * subScale.coerceIn(0.5f, 2.0f)).sp,
+                        fontWeight = if (subBold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                        modifier = Modifier.background(pvBg).padding(horizontal = 4.dp)
+                    )
                 }
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.sub_size_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.width(8.dp))
+                    Slider(value = subScale.coerceIn(0.5f, 2.0f), onValueChange = onSubScale, valueRange = 0.5f..2.0f, steps = 14, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    Text(String.format(java.util.Locale.US, "%.1fx", subScale.coerceIn(0.5f, 2.0f)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+                DropRow(
+                    label = stringResource(R.string.sub_fg_title),
+                    entries = listOf("white", "yellow", "black", "cyan").map { it to stringResource(when (it) { "yellow" -> R.string.sub_fg_yellow; "black" -> R.string.sub_fg_black; "cyan" -> R.string.sub_fg_cyan; else -> R.string.sub_fg_white }) },
+                    selected = subFg,
+                    onPick = onSubFg
+                )
+                DropRow(
+                    label = stringResource(R.string.sub_bg_title),
+                    entries = listOf("transparent", "black", "white").map { it to stringResource(when (it) { "black" -> R.string.sub_bg_black; "white" -> R.string.sub_bg_white; else -> R.string.sub_bg_trans }) },
+                    selected = subBg,
+                    onPick = onSubBg
+                )
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.sub_bg_opacity), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.width(8.dp))
+                    Slider(value = subBgOpacity.toFloat(), onValueChange = { onSubBgOpacity(it.toInt()) }, valueRange = 0f..100f, steps = 19, modifier = Modifier.weight(1f), enabled = subBg != "transparent")
+                    Spacer(Modifier.width(8.dp))
+                    Text("$subBgOpacity%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+                DropRow(
+                    label = stringResource(R.string.sub_edge_title),
+                    entries = listOf("outline", "none", "shadow", "raised").map { it to it },
+                    selected = subEdge,
+                    onPick = onSubEdge
+                )
+                SwitchRow(
+                    label = stringResource(R.string.sub_bold),
+                    checked = subBold,
+                    onToggle = { onSubBold(!subBold) }
+                )
+                DropRow(
+                    label = stringResource(R.string.sub_role_title),
+                    entries = listOf("subtitle", "caption", "descriptive", "system").map { it to stringResource(when (it) { "caption" -> R.string.sub_role_caption; "descriptive" -> R.string.sub_role_descriptive; "system" -> R.string.sub_role_system; else -> R.string.sub_role_subtitle }) },
+                    selected = subRole,
+                    onPick = onSubRole
+                )
+                SwitchRow(
+                    label = stringResource(R.string.hide_forced_subs),
+                    checked = hideForced,
+                    onToggle = { onHideForced(!hideForced) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.undetermined_lang),
+                    checked = undetermined,
+                    onToggle = { onUndetermined(!undetermined) }
+                )
             }
-            if (eqEnabled) {
-                items(eqPresetNames.size) { i ->
-                    Row(modifier = Modifier.fillMaxWidth().clickable { onEqPreset(i) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (eqPreset == i) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (eqPreset == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text(eqPresetNames[i], style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
+        }
+        item {
+            SettingsSection(title = stringResource(R.string.settings_sec_audio)) {
+                DropRow(
+                    label = stringResource(R.string.audio_primary_title),
+                    entries = listOf("auto" to langText("auto", deviceTag)) + LANG_OPTIONS.map { it.first to langText(it.first, deviceTag) },
+                    selected = audioLang,
+                    onPick = onAudioLang
+                )
+                DropRow(
+                    label = stringResource(R.string.audio_fallback_title),
+                    entries = listOf("original" to langText("original", deviceTag)) + LANG_OPTIONS.map { it.first to langText(it.first, deviceTag) },
+                    selected = audioLang2,
+                    onPick = onAudioLang2
+                )
+                SwitchRow(
+                    label = stringResource(R.string.prefer_original),
+                    checked = preferOriginal,
+                    onToggle = { onPreferOriginal(!preferOriginal) }
+                )
+                DropRow(
+                    label = stringResource(R.string.audio_role_title),
+                    entries = listOf("auto", "dubbed", "original", "commentary").map { it to stringResource(when (it) { "dubbed" -> R.string.audio_role_dubbed; "original" -> R.string.audio_role_original; "commentary" -> R.string.audio_role_commentary; else -> R.string.audio_role_auto }) },
+                    selected = audioRole,
+                    onPick = onAudioRole
+                )
+                SwitchRow(
+                    label = stringResource(R.string.skip_silence),
+                    checked = skipSilence,
+                    onToggle = { onSkipSilence(!skipSilence) }
+                )
+                DropRow(
+                    label = stringResource(R.string.speed_title),
+                    entries = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).map { v -> v.toString() to (if (v == 1.0f) stringResource(R.string.speed_normal) else "${v}x") },
+                    selected = speed.toString(),
+                    onPick = { onSpeed(it.toFloat()) }
+                )
+                DropRow(
+                    label = stringResource(R.string.pitch_title),
+                    entries = listOf(0.5f, 0.8f, 1.0f, 1.25f, 1.5f, 2.0f).map { v -> v.toString() to (if (v == 1.0f) stringResource(R.string.speed_normal) else "${v}x") },
+                    selected = pitch.toString(),
+                    onPick = { onPitch(it.toFloat()) }
+                )
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (muted || volume == 0f) Icons.AutoMirrored.Filled.VolumeOff else if (volume < 0.5f) Icons.AutoMirrored.Filled.VolumeDown else Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Slider(value = if (muted) 0f else volume, onValueChange = onVolume, valueRange = 0f..1f, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    Text("${(if (muted) 0f else volume * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
-                item {
-                    Row(modifier = Modifier.fillMaxWidth().clickable { onEqPreset(-1) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (eqPreset == -1) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (eqPreset == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text(stringResource(R.string.eq_custom), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                }
-                if (eqPreset == -1) {
-                    items(eqLabels.size) { b ->
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(eqLabels[b], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp))
-                            Slider(value = eqBands.getOrNull(b) ?: 0.5f, onValueChange = { onEqBand(b, it) }, valueRange = 0f..1f, modifier = Modifier.weight(1f))
+                SwitchRow(
+                    label = stringResource(if (muted) R.string.cd_unmute else R.string.cd_mute),
+                    checked = muted,
+                    onToggle = { onMuted(!muted) }
+                )
+                if (!eqSupported) {
+                    Text(stringResource(R.string.eq_unsupported), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    SwitchRow(
+                        label = stringResource(if (eqEnabled) R.string.eq_on else R.string.eq_off),
+                        checked = eqEnabled,
+                        onToggle = { onEqEnabled(!eqEnabled) }
+                    )
+                    if (eqEnabled) {
+                        DropRow(
+                            label = stringResource(R.string.eq_title),
+                            entries = eqPresetNames.mapIndexed { i, n -> i.toString() to n } + ("-1" to stringResource(R.string.eq_custom)),
+                            selected = eqPreset.toString(),
+                            onPick = { onEqPreset(it.toInt()) }
+                        )
+                        if (eqPreset == -1) {
+                            eqLabels.forEachIndexed { b, _ ->
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(eqLabels[b], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp))
+                                    Slider(value = eqBands.getOrNull(b) ?: 0.5f, onValueChange = { onEqBand(b, it) }, valueRange = 0f..1f, modifier = Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 }
             }
         }
         item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.playmode_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Text(stringResource(R.string.af_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("all", "calls")) { code ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onAf(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (afMode == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (afMode == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(if (code == "all") R.string.af_all else R.string.af_calls), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    if (code == "calls") Text(stringResource(R.string.af_calls_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            // SponsorBlock (community skips; video IDs go to sponsor.ajay.app — default OFF).
-            Row(modifier = Modifier.fillMaxWidth().clickable { onSb(!sbEnabled) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (sbEnabled) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (sbEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.sb_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.sb_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            // Auto-PiP on leave (manual PiP button always stays available).
-            Row(modifier = Modifier.fillMaxWidth().clickable { onPip(!pipAuto) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (pipAuto) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pipAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.pip_auto), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        items(PLAYMODE_OPTIONS) { (code, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onPlayMode(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (playMode == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (playMode == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
+            SettingsSection(title = stringResource(R.string.settings_sec_player)) {
+                DropRow(
+                    label = stringResource(R.string.quality_title),
+                    entries = QUALITY_OPTIONS.map { it.first to stringResource(it.second) },
+                    selected = quality,
+                    onPick = onQuality
                 )
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Text(stringResource(R.string.appearance_title), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.theme_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(THEME_OPTIONS) { (code, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onTheme(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (theme == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (theme == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
+                DropRow(
+                    label = stringResource(R.string.playmode_title),
+                    entries = PLAYMODE_OPTIONS.map { it.first to stringResource(it.second) },
+                    selected = playMode,
+                    onPick = onPlayMode
                 )
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.accent_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                ACCENT_OPTIONS.forEach { (code, pair) ->
-                    val (fill, label) = pair
-                    val selected = accent == code
-                    Box(
-                        modifier = Modifier.size(40.dp)
-                            .clip(CircleShape)
-                            .background(fill)
-                            .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, CircleShape)
-                            .clickable(onClickLabel = stringResource(label)) { onAccent(code) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = stringResource(label), tint = Color.White, modifier = Modifier.size(22.dp))
+                listOf("all", "calls").forEach { code ->
+                    Row(modifier = Modifier.fillMaxWidth().clickable { onAf(code) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (afMode == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (afMode == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(if (code == "all") R.string.af_all else R.string.af_calls), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                            if (code == "calls") Text(stringResource(R.string.af_calls_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
-            }
-            Text(stringResource(R.string.accent_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.country_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(COUNTRY_OPTIONS) { (code, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onCountry(code) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (country == code) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (country == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
+                SwitchRow(
+                    label = stringResource(R.string.sb_title),
+                    desc = stringResource(R.string.sb_desc),
+                    checked = sbEnabled,
+                    onToggle = { onSb(!sbEnabled) }
                 )
-                Spacer(Modifier.width(12.dp))
-                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.data_note), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Text(
-                stringResource(R.string.settings_data_line, favCount, histCount, plCount, dbSize),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.OutlinedButton(onClick = { confirmFav = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_favorites)) }
-                androidx.compose.material3.OutlinedButton(onClick = { confirmHist = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_history)) }
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.perf_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onFeedParallel(!feedParallel) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (feedParallel) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (feedParallel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.perf_parallel), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.perf_parallel_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onFeedCache(!feedCache) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (feedCache) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (feedCache) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.perf_feedcache), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.perf_feedcache_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onPreloadNext(!preloadNext) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (preloadNext) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (preloadNext) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.perf_preload), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.perf_preload_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable(enabled = preloadNext, onClick = { onPreloadWifiOnly(!preloadWifiOnly) }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (preloadWifiOnly) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (preloadNext && preloadWifiOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (preloadNext) 1f else 0.35f), modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.perf_preload_wifi), style = MaterialTheme.typography.bodyMedium, color = if (preloadNext) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(stringResource(R.string.perf_preload_wifi_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onTitleTranslate(!titleTranslate) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (titleTranslate) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (titleTranslate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.title_translate), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.title_translate_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.offline_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onOfflineMode(!offlineMode) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (offlineMode) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (offlineMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.offline_mode), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.offline_mode_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            Text(stringResource(R.string.age_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            AgeModeRow(mode = "block", sel = ageMode, onPick = onAgeMode)
-        }
-        item {
-            AgeModeRow(mode = "warn", sel = ageMode, onPick = onAgeMode)
-        }
-        item {
-            AgeModeRow(mode = "allow", sel = ageMode, onPick = onAgeMode)
-        }
-        item {
-            Text(stringResource(R.string.player_content_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            VisRow(on = showComments, label = stringResource(R.string.vis_comments), desc = stringResource(R.string.vis_comments_desc), onToggle = { onShowComments(!showComments) })
-        }
-        item {
-            VisRow(on = showRelated, label = stringResource(R.string.vis_related), desc = stringResource(R.string.vis_related_desc), onToggle = { onShowRelated(!showRelated) })
-        }
-        item {
-            VisRow(on = showInfo, label = stringResource(R.string.vis_info), desc = stringResource(R.string.vis_info_desc), onToggle = { onShowInfo(!showInfo) })
-        }
-        item {
-            VisRow(on = showSubs, label = stringResource(R.string.vis_subs), desc = stringResource(R.string.vis_subs_desc), onToggle = { onShowSubs(!showSubs) })
-        }
-        item {
-            VisRow(on = allow4k, label = stringResource(R.string.vis_4k), desc = stringResource(R.string.vis_4k_desc), onToggle = { onAllow4k(!allow4k) })
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth().clickable { onKeepAlive(!keepAlive) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (keepAlive) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (keepAlive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.keepalive_setting), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(stringResource(R.string.keepalive_setting_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.cache_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Text(
-                stringResource(R.string.cache_line_fmt, cacheSize, cacheMaxMb),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        items(listOf(100L, 250L, 500L, 1024L)) { mb ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onCacheMax(mb) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (cacheMaxMb == mb) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (cacheMaxMb == mb) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(if (mb >= 1024) stringResource(R.string.cache_gb) else stringResource(R.string.cache_mb_fmt, mb.toInt()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.OutlinedButton(onClick = { confirmCache = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_cache)) }
-                androidx.compose.material3.OutlinedButton(onClick = onCopyDiagnostics, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.diag_copy)) }
-            }
-            Text(stringResource(R.string.diag_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.pins_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        }
-        item {
-            Text(
-                stringResource(R.string.pins_line_fmt, pinsCount, pinsSize),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        item {
-            Text(stringResource(R.string.pin_loc_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-        }
-        items(listOf("internal", "external")) { loc ->
-            val enabled = loc == "internal" || extAvailable
-            Row(
-                modifier = Modifier.fillMaxWidth().let { m -> if (enabled) m.clickable { onPinLoc(loc) } else m }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (pinLoc == loc) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (pinLoc == loc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.4f),
-                    modifier = Modifier.size(22.dp)
+                SwitchRow(
+                    label = stringResource(R.string.pip_auto),
+                    checked = pipAuto,
+                    onToggle = { onPip(!pipAuto) }
                 )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(if (loc == "internal") R.string.pin_loc_internal else R.string.pin_loc_external),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (loc == "external" && !extAvailable) {
-                        Text(stringResource(R.string.pin_loc_ext_missing), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SwitchRow(
+                    label = stringResource(R.string.vis_comments),
+                    desc = stringResource(R.string.vis_comments_desc),
+                    checked = showComments,
+                    onToggle = { onShowComments(!showComments) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.vis_related),
+                    desc = stringResource(R.string.vis_related_desc),
+                    checked = showRelated,
+                    onToggle = { onShowRelated(!showRelated) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.vis_info),
+                    desc = stringResource(R.string.vis_info_desc),
+                    checked = showInfo,
+                    onToggle = { onShowInfo(!showInfo) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.vis_subs),
+                    desc = stringResource(R.string.vis_subs_desc),
+                    checked = showSubs,
+                    onToggle = { onShowSubs(!showSubs) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.vis_4k),
+                    desc = stringResource(R.string.vis_4k_desc),
+                    checked = allow4k,
+                    onToggle = { onAllow4k(!allow4k) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.keepalive_setting),
+                    desc = stringResource(R.string.keepalive_setting_desc),
+                    checked = keepAlive,
+                    onToggle = { onKeepAlive(!keepAlive) }
+                )
+                Text(stringResource(R.string.age_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                AgeModeRow(mode = "block", sel = ageMode, onPick = onAgeMode)
+                AgeModeRow(mode = "warn", sel = ageMode, onPick = onAgeMode)
+                AgeModeRow(mode = "allow", sel = ageMode, onPick = onAgeMode)
+            }
+        }
+        item {
+            SettingsSection(title = stringResource(R.string.settings_sec_appearance)) {
+                DropRow(
+                    label = stringResource(R.string.theme_title),
+                    entries = THEME_OPTIONS.map { it.first to stringResource(it.second) },
+                    selected = theme,
+                    onPick = onTheme
+                )
+                Text(stringResource(R.string.accent_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ACCENT_OPTIONS.forEach { (code, pair) ->
+                        val (fill, label) = pair
+                        val selected = accent == code
+                        Box(
+                            modifier = Modifier.size(40.dp)
+                                .clip(CircleShape)
+                                .background(fill)
+                                .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, CircleShape)
+                                .clickable(onClickLabel = stringResource(label)) { onAccent(code) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = stringResource(label), tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
                     }
                 }
-            }
-        }
-        items(listOf(512L, 1024L, 2048L, 0L)) { mb ->
-            Row(modifier = Modifier.fillMaxWidth().clickable { onPinsWarn(mb) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (pinsWarnMb == mb) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (pinsWarnMb == mb) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                val label = when {
-                    mb == 0L -> stringResource(R.string.pins_warn_off)
-                    mb >= 1024 -> stringResource(R.string.pins_warn_gb_fmt, (mb / 1024).toInt())
-                    else -> stringResource(R.string.pins_warn_mb_fmt, mb.toInt())
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                }
+                Text(stringResource(R.string.accent_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
-            if (pinsWarnMb > 0 && pinsCount > 0 && pinsBytes > pinsWarnMb * 1024 * 1024) {
-                // soft reminder only: honest byte comparison; never blocks pinning
+            SettingsSection(title = stringResource(R.string.settings_sec_downloads)) {
                 Text(
-                    stringResource(R.string.pins_over_warn),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    stringResource(R.string.pins_line_fmt, pinsCount, pinsSize),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(stringResource(R.string.pin_loc_title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                listOf("internal", "external").forEach { loc ->
+                    val enabled = loc == "internal" || extAvailable
+                    Row(
+                        modifier = Modifier.fillMaxWidth().let { m -> if (enabled) m.clickable { onPinLoc(loc) } else m }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (pinLoc == loc) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                            contentDescription = null,
+                            tint = if (pinLoc == loc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.4f),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(if (loc == "internal") R.string.pin_loc_internal else R.string.pin_loc_external),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (loc == "external" && !extAvailable) {
+                                Text(stringResource(R.string.pin_loc_ext_missing), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                DropRow(
+                    label = stringResource(R.string.pins_warn_title),
+                    entries = listOf(512L, 1024L, 2048L, 0L).map { mb ->
+                        mb.toString() to when {
+                            mb == 0L -> stringResource(R.string.pins_warn_off)
+                            mb >= 1024 -> stringResource(R.string.pins_warn_gb_fmt, (mb / 1024).toInt())
+                            else -> stringResource(R.string.pins_warn_mb_fmt, mb.toInt())
+                        }
+                    },
+                    selected = pinsWarnMb.toString(),
+                    onPick = { onPinsWarn(it.toLong()) }
+                )
+                if (pinsWarnMb > 0 && pinsCount > 0 && pinsBytes > pinsWarnMb * 1024 * 1024) {
+                    Text(
+                        stringResource(R.string.pins_over_warn),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = { confirmPins = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_pins)) }
+                }
+                Text(
+                    stringResource(R.string.cache_line_fmt, cacheSize, cacheMaxMb),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                DropRow(
+                    label = stringResource(R.string.cache_title),
+                    entries = listOf(100L, 250L, 500L, 1024L).map { mb -> mb.toString() to (if (mb >= 1024) stringResource(R.string.cache_gb) else stringResource(R.string.cache_mb_fmt, mb.toInt())) },
+                    selected = cacheMaxMb.toString(),
+                    onPick = { onCacheMax(it.toLong()) }
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = { confirmCache = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_cache)) }
+                    androidx.compose.material3.OutlinedButton(onClick = onCopyDiagnostics, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.diag_copy)) }
+                }
+                Text(stringResource(R.string.diag_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SwitchRow(
+                    label = stringResource(R.string.offline_mode),
+                    desc = stringResource(R.string.offline_mode_desc),
+                    checked = offlineMode,
+                    onToggle = { onOfflineMode(!offlineMode) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.perf_parallel),
+                    desc = stringResource(R.string.perf_parallel_desc),
+                    checked = feedParallel,
+                    onToggle = { onFeedParallel(!feedParallel) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.perf_feedcache),
+                    desc = stringResource(R.string.perf_feedcache_desc),
+                    checked = feedCache,
+                    onToggle = { onFeedCache(!feedCache) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.perf_preload),
+                    desc = stringResource(R.string.perf_preload_desc),
+                    checked = preloadNext,
+                    onToggle = { onPreloadNext(!preloadNext) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.perf_preload_wifi),
+                    desc = stringResource(R.string.perf_preload_wifi_desc),
+                    checked = preloadWifiOnly,
+                    enabled = preloadNext,
+                    onToggle = { onPreloadWifiOnly(!preloadWifiOnly) }
                 )
             }
         }
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.OutlinedButton(onClick = { confirmPins = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_pins)) }
+            SettingsSection(title = stringResource(R.string.settings_sec_data)) {
+                Text(
+                    stringResource(R.string.settings_data_line, favCount, histCount, plCount, dbSize),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = { confirmFav = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_favorites)) }
+                    androidx.compose.material3.OutlinedButton(onClick = { confirmHist = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.clear_history)) }
+                }
             }
         }
         item {
@@ -945,14 +713,3 @@ private fun AgeModeRow(mode: String, sel: String, onPick: (String) -> Unit) {
     }
 }
 
-@Composable
-private fun VisRow(on: Boolean, label: String, desc: String, onToggle: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().clickable { onToggle() }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(if (on) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, contentDescription = null, tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}

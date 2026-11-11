@@ -505,4 +505,18 @@
     <string name="pin_loc_internal">ذاكرة الجهاز الداخلية</string>
     <string name="pin_loc_external">بطاقة SD (خارجية)</string>
     <string name="pin_loc_ext_missing">غير متاحة حاليًا — أدخل البطاقة أولًا</string>
+    <string name="settings_sec_lang">اللغة والمحتوى</string>
+    <string name="settings_sec_subs">الترجمة</string>
+    <string name="settings_sec_audio">الصوت</string>
+    <string name="settings_sec_player">المشغّل</string>
+    <string name="settings_sec_appearance">المظهر</string>
+    <string name="settings_sec_downloads">التنزيلات والتخزين</string>
+    <string name="settings_sec_data">البيانات</string>
+    <string name="sub_fg_title">لون الخط</string>
+    <string name="sub_bg_title">لون الخلفية</string>
+    <string name="sub_edge_title">نمط الحدود</string>
+    <string name="sub_role_title">نوع الترجمة</string>
+    <string name="audio_role_title">نوع الصوت</string>
+    <string name="speed_title">السرعة</string>
+    <string name="pins_warn_title">التنبيه عند الامتلاء</string>
 </resources>

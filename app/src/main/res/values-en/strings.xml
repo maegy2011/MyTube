@@ -505,4 +505,18 @@
     <string name="pin_loc_internal">Internal device storage</string>
     <string name="pin_loc_external">SD card (external)</string>
     <string name="pin_loc_ext_missing">Not available right now — insert the card first</string>
+    <string name="settings_sec_lang">Language &amp; content</string>
+    <string name="settings_sec_subs">Subtitles</string>
+    <string name="settings_sec_audio">Audio</string>
+    <string name="settings_sec_player">Player</string>
+    <string name="settings_sec_appearance">Appearance</string>
+    <string name="settings_sec_downloads">Downloads &amp; storage</string>
+    <string name="settings_sec_data">Data</string>
+    <string name="sub_fg_title">Font color</string>
+    <string name="sub_bg_title">Background color</string>
+    <string name="sub_edge_title">Edge style</string>
+    <string name="sub_role_title">Subtitle type</string>
+    <string name="audio_role_title">Audio type</string>
+    <string name="speed_title">Speed</string>
+    <string name="pins_warn_title">Fullness warning</string>
 </resources>
