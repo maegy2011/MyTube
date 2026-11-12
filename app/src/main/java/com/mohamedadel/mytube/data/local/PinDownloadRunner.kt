@@ -145,7 +145,24 @@ object PinDownloadRunner {
                     try { d.setProgress(key, frac) } catch (_: Exception) { }
                     try { notify(nm, notifId, progressNotif(d, key, title, frac)) } catch (_: Exception) { }
                 }
-                var size = PinManager.downloadPin(app, d.dao, v, plan, progCb, resume)
+                // SoundCloud upgrade: transcodings expire fast — rebuild the plan from a fresh
+                // resolve right before the first attempt instead of trusting confirm-time URLs.
+                // Skipped on resume (Range continuation needs the original URL). Post-failure
+                // retry stays as the backstop.
+                var curPlan = plan
+                if (v.url?.contains("soundcloud.com") == true && retry != null && !resume) {
+                    try {
+                        val fresh = YouTubeRepo.streamRouted(v.url!!)
+                        if (fresh != null && (fresh.audioLowestUrl != null || fresh.videoUrlByQuality.isNotEmpty())) {
+                            val rebuilt = PinManager.buildPlan(fresh, retry.quality, retry.audioIdx, retry.subIdxs, d.kbps(), maxH = if (d.allow4k) Int.MAX_VALUE else 1080)
+                            if (rebuilt != null) {
+                                try { d.pinPlans[key] = Triple(v, rebuilt, retry) } catch (_: Exception) { }
+                                curPlan = rebuilt
+                            }
+                        }
+                    } catch (_: Exception) { }
+                }
+                var size = PinManager.downloadPin(app, d.dao, v, curPlan, progCb, resume)
                 // pin-deepfix: one fresh-resolve retry — signed googlevideo URLs expire, so a stale
                 // plan fails even on a good network. Rebuild from a fresh resolve with the same choices.
                 // never retry a paused or user-cancelled job.

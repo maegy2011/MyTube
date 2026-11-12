@@ -778,7 +778,12 @@ object YouTubeRepo {
                 try { a.content?.takeIf { it.isNotBlank() } } catch (_: Exception) { null }
             val progressive = audios.filter { a -> !isHls(a) && urlOf(a) != null }
             if (progressive.isEmpty()) {
-                val hlsUrl = audios.filter(::isHls).mapNotNull(::urlOf).firstOrNull()
+                // upgrade: best HLS rendition (highest bitrate first), not the first listed —
+                // SoundCloud serves several HLS transcodings (e.g. aac_96k + higher).
+                val hlsUrl = audios.filter(::isHls)
+                    .mapNotNull { a -> urlOf(a)?.takeIf { it.isNotBlank() }?.let { it to try { a.averageBitrate } catch (_: Exception) { 0 } } }
+                    .sortedByDescending { it.second }
+                    .firstOrNull()?.first
                 return@withContext StreamData(
                     audioLowestUrl = hlsUrl,
                     audioHlsOnly = true,
