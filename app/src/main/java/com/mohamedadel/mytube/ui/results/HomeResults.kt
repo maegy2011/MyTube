@@ -96,6 +96,10 @@ fun HomeEmptyState(
     onShowMore: () -> Unit = {},
     // home-redesign Phase 2 (2026-11-12): recent history for the continue-watching row.
     continueItems: List<VideoItem> = emptyList(),
+    // watch-position resume (2026-11-12): progress + resume-ms per continue item.
+    continueProgress: (VideoItem) -> Float? = { null },
+    continueResumeMs: (VideoItem) -> Long? = { null },
+    onResumePlay: (VideoItem, Long) -> Unit = { v, _ -> onPlay(v) },
     // home-redesign Phase 3 (2026-11-12): true when the list came from the 30-min cache.
     isCached: Boolean = false
 ) {
@@ -209,6 +213,9 @@ fun HomeEmptyState(
             com.mohamedadel.mytube.ui.home.HomeNetflixLayout(
                 items = trendingItems,
                 continueItems = continueItems,
+                continueProgress = continueProgress,
+                continueResumeMs = continueResumeMs,
+                onResumePlay = onResumePlay,
                 onPlay = onPlay,
                 onLongClick = onLongClick,
                 hasMore = hasMore,

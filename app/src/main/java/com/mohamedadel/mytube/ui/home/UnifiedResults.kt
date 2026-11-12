@@ -58,6 +58,8 @@ fun SectionCard(
     v: VideoItem,
     onClick: () -> Unit,
     onLongClick: (VideoItem) -> Unit = {},
+    // watch-position resume: 0..1 fraction shows a progress bar; null hides it.
+    progress: Float? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -100,6 +102,16 @@ fun SectionCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        // watch-position resume: thin progress bar under the card (Netflix-style).
+        if (progress != null) {
+            Spacer(Modifier.height(6.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
         }
     }

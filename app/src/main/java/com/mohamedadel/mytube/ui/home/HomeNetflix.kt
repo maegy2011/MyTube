@@ -143,6 +143,10 @@ fun HomeNetflixLayout(
     continueItems: List<VideoItem> = emptyList(),
     onPlay: (VideoItem) -> Unit,
     onLongClick: (VideoItem) -> Unit,
+    // watch-position resume: progress bar + resume-ms per continue item.
+    continueProgress: (VideoItem) -> Float? = { null },
+    continueResumeMs: (VideoItem) -> Long? = { null },
+    onResumePlay: (VideoItem, Long) -> Unit = { v, _ -> onPlay(v) },
     hasMore: Boolean = false,
     loadingMore: Boolean = false,
     onShowMore: () -> Unit = {},
@@ -168,7 +172,13 @@ fun HomeNetflixLayout(
                         continueItems,
                         key = { it.id ?: it.url ?: it.title ?: it.hashCode().toString() }
                     ) { v ->
-                        SectionCard(v = v, onClick = { onPlay(v) }, onLongClick = onLongClick)
+                        val resumeMs = continueResumeMs(v)
+                        SectionCard(
+                            v = v,
+                            onClick = { if (resumeMs != null) onResumePlay(v, resumeMs) else onPlay(v) },
+                            onLongClick = onLongClick,
+                            progress = continueProgress(v)
+                        )
                     }
                 }
             }

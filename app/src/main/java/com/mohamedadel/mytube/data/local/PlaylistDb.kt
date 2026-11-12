@@ -81,7 +81,9 @@ data class HistoryEntity(
     val url: String?,
     val durationSec: Long?,
     val viewCount: Long?,
-    val playedAt: Long = System.currentTimeMillis()
+    val playedAt: Long = System.currentTimeMillis(),
+    // watch-position resume (home-redesign follow-up, 2026-11-12): ms into the video; 0 = unwatched/finished.
+    val positionMs: Long = 0
 )
 
 // Subscriptions (local-only, no account): channel URL is the stable key.
@@ -254,6 +256,10 @@ interface PlaylistDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertHistory(h: HistoryEntity): Long
 
+    // watch-position resume: throttled UPDATE (never touches playedAt/order).
+    @Query("UPDATE history SET positionMs = :pos WHERE videoKey = :key")
+    suspend fun updatePosition(key: String, pos: Long)
+
     @Query("DELETE FROM history WHERE videoKey = :key")
     suspend fun deleteHistory(key: String)
 
@@ -397,7 +403,7 @@ data class PlayedStat(
 )
 
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class, NotificationItemEntity::class], version = 10, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class, NotificationItemEntity::class], version = 11, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -569,6 +575,13 @@ object FeedJson {
                     channelUrl = s("channelUrl"))
             }
         } catch (_: Exception) { emptyList() }
+    }
+}
+
+// v10 -> v11: watch-position resume (non-destructive; old rows read 0 = restart).
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE history ADD COLUMN positionMs INTEGER NOT NULL DEFAULT 0")
     }
 }
 

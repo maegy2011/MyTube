@@ -26,7 +26,7 @@ class FeedRefreshWorker(appCtx: Context, params: WorkerParameters) : CoroutineWo
             // builder used to throw (no migration to v9) on EVERY run -> Result.retry()
             // forever: the 15-min worker never succeeded and burned battery/radio.
             val db = Room.databaseBuilder(applicationContext, MyTubeDb::class.java, "mytube.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .build()
             val dao = try { db.playlists() } catch (_: Exception) { return Result.failure() }
             val subs = try { dao.observeSubscriptions().first() } catch (_: Exception) { emptyList() }

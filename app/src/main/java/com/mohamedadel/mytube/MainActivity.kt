@@ -160,6 +160,7 @@ import com.mohamedadel.mytube.data.local.MIGRATION_6_7
 import com.mohamedadel.mytube.data.local.MIGRATION_7_8
 import com.mohamedadel.mytube.data.local.MIGRATION_8_9
 import com.mohamedadel.mytube.data.local.MIGRATION_9_10
+import com.mohamedadel.mytube.data.local.MIGRATION_10_11
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
@@ -447,7 +448,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }
@@ -637,6 +638,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var topPlayedHome by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.local.PlayedStat>()) }
     // home-redesign Phase 2 (2026-11-12): recent history for the continue-watching row.
     var continueWatching by remember { mutableStateOf(emptyList<VideoItem>()) }
+    // watch-position resume (2026-11-12): favKey -> 0..1 progress + resume ms.
+    var continueProgress by remember { mutableStateOf(mapOf<String, Float>()) }
+    var continueResumeMs by remember { mutableStateOf(mapOf<String, Long>()) }
     val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var recentMusicSearches by remember { mutableStateOf(listOf<String>()) }
     // Local-profile recommendations (no account): quick picks + one YTM mix shelf.
@@ -742,6 +746,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pendingSeekMs by remember { mutableStateOf<Long?>(null) }
     var pendingSeekKey by remember { mutableStateOf<String?>(null) }
     var lastSessSave by remember { mutableStateOf(0L) }
+    // watch-position resume (2026-11-12): throttle twin of lastSessSave.
+    var lastPosSave by remember { mutableStateOf(0L) }
     // Simple equalizer state (framework effect; hidden on unsupported devices).
     var eqEnabled by remember { mutableStateOf(false) }
     var eqPreset by remember { mutableStateOf(0) } // index, or EqManager.CUSTOM
@@ -2656,6 +2662,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         val now = android.os.SystemClock.uptimeMillis()
                         if (now - lastSessSave > 15000L) { lastSessSave = now; saveSession() }
                     } catch (_: Exception) { }
+                    // watch-position resume (2026-11-12): persist the resume point on the same
+                    // 15s tick while actually playing; near-end clears it (finished = restart).
+                    try {
+                        val pl = playing
+                        val tick = android.os.SystemClock.uptimeMillis()
+                        if (pl != null && isPlaying && tick - lastPosSave > 15000L) {
+                            lastPosSave = tick
+                            val pos = playerPositionMs
+                            val dur = playerDurationMs
+                            val key = pl.favKey()
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    if (dur > 0 && pos >= dur - 10000L) dao.updatePosition(key, 0L)
+                                    else if (pos > 5000L) dao.updatePosition(key, pos)
+                                } catch (_: Exception) { }
+                            }
+                        }
+                    } catch (_: Exception) { }
                 } catch (_: Exception) { }
                 // sleep timer watch
                 sleepAtMs?.let { deadline ->
@@ -3114,10 +3138,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (results.isEmpty() && query.isBlank() && !showSearch) {
             try {
                 val rows = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dao.historyPage(10, 0) }
-                continueWatching = rows.mapNotNull { h ->
-                    val url = h.url ?: return@mapNotNull null
-                    VideoItem(id = h.videoId, title = h.title, channel = h.channel, thumbnail = h.thumbnail, url = url, durationSec = h.durationSec, viewCount = h.viewCount)
+                val items = mutableListOf<VideoItem>()
+                val prog = mutableMapOf<String, Float>()
+                val resume = mutableMapOf<String, Long>()
+                for (h in rows) {
+                    val url = h.url ?: continue
+                    val pos = h.positionMs
+                    val durMs = (h.durationSec ?: 0L) * 1000L
+                    // only genuinely in-progress: started (>5s) and not finished (10s margin).
+                    if (pos <= 5000L) continue
+                    if (durMs > 0 && pos >= durMs - 10000L) continue
+                    val v = VideoItem(id = h.videoId, title = h.title, channel = h.channel, thumbnail = h.thumbnail, url = url, durationSec = h.durationSec, viewCount = h.viewCount)
+                    items.add(v)
+                    if (durMs > 0) prog[v.favKey()] = (pos.toFloat() / durMs).coerceIn(0f, 1f)
+                    resume[v.favKey()] = pos
+                    if (items.size >= 10) break
                 }
+                continueWatching = items
+                continueProgress = prog
+                continueResumeMs = resume
             } catch (_: Exception) { }
         }
     }
@@ -5142,6 +5181,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         pinningKeys = pinningKeys,
                         progressOf = { k -> pinProgress[k] },
                         continueItems = continueWatching,
+                        continueProgress = { v -> continueProgress[v.favKey()] },
+                        continueResumeMs = { v -> continueResumeMs[v.favKey()] },
+                        onResumePlay = { v, ms -> pendingSeekMs = ms; pendingSeekKey = v.favKey(); playVideo(v, expand = true, forcePlay = true) },
                         isCached = trendingCached
                     )
                 }
