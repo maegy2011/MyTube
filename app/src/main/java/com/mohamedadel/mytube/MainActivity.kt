@@ -1660,7 +1660,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             .setArtist(playing?.channel)
             .setAlbumTitle("MyTube")
             .setDescription("© MyTube")
-            .setArtworkUri(playing?.thumbnail?.let { Uri.parse(it) })
+            .setArtworkUri((playing?.thumbnail ?: s.artworkUrl ?: playing?.channelAvatar)?.let { Uri.parse(it) })
             .build()
         // side-loaded captions: the native CC button lists them, user switches language there
         val subConfigs = s.subtitles.mapNotNull { cap ->
@@ -3934,7 +3934,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // expanded player, PiP (system-provided mini UI). Master switch pref_mini_enabled.
             if (!isInPip && !isFullscreen && prefMiniEnabled && playing != null && !playerExpanded && !showSettings) {
                 MiniPlayer(
-                    video = playing!!,
+                    // display-only art backfill (queue keeps the original): resolver artwork
+                    // then channel avatar, so audio-only/SC/YTM never show a blank thumb.
+                    video = playing!!.let { v -> if (v.thumbnail == null) v.copy(thumbnail = streamData?.artworkUrl ?: v.channelAvatar) else v },
                     swipeEnabled = prefMiniSwipe,
                     titleOverride = translatedTitle,
                     isPlaying = isPlaying,
@@ -4027,6 +4029,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 PlayerArea(
                     modifier = paneMod,
                     video = cur,
+                    artworkUrl = streamData?.artworkUrl,
                     player = player,
                     quality = quality,
                     qualities = qualityList,

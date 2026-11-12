@@ -20,7 +20,7 @@ data class ChapterItem(val title: String, val startSec: Int)
 data class Storyboard(val urls: List<String>, val total: Int, val perX: Int, val perY: Int, val fw: Int, val fh: Int, val durPerFrame: Int)
 data class ChannelDetail(val name: String? = null, val avatar: String? = null, val banner: String? = null, val subs: Long? = null, val description: String? = null, val verified: Boolean = false)
 data class CommentItem(val author: String? = null, val text: String? = null, val likes: Int = 0, val avatar: String? = null, val date: String? = null)
-data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0, val isLive: Boolean = false, val audioHlsOnly: Boolean = false, val videoMime: String? = null, val audioMime: String? = null, val error: String? = null)
+data class StreamData(val audioLowestUrl: String? = null, val videoUrlByQuality: Map<String, String> = emptyMap(), val muxedQualities: Set<String> = emptySet(), val title: String? = null, val subtitles: List<SubtitleItem> = emptyList(), val audioTracks: List<AudioTrackItem> = emptyList(), val likeCount: Long? = null, val description: String? = null, val uploadDate: String? = null, val category: String? = null, val tags: List<String> = emptyList(), val uploaderVerified: Boolean = false, val subscriberCount: Long? = null, val uploaderAvatar: String? = null, val language: String? = null, val channelUrl: String? = null, val chapters: List<ChapterItem> = emptyList(), val related: List<VideoItem> = emptyList(), val storyboards: List<Storyboard> = emptyList(), val ageLimit: Int = 0, val isLive: Boolean = false, val audioHlsOnly: Boolean = false, val videoMime: String? = null, val audioMime: String? = null, val error: String? = null, val artworkUrl: String? = null)
 data class RemotePlaylist(
     val title: String? = null,
     val uploader: String? = null,
@@ -336,6 +336,7 @@ object YouTubeRepo {
                             muxedQualities = setOf("live"),
                             title = try { ext.name } catch (_: Exception) { null },
                             channelUrl = try { ext.uploaderUrl } catch (_: Exception) { null },
+                            artworkUrl = try { bestThumb(ext.thumbnails) } catch (_: Exception) { null },
                             isLive = true,
                             // age gate must cover live too (was reset to 0 — an actual protection hole)
                             ageLimit = try { ext.ageLimit } catch (_: Exception) { 0 }
@@ -447,7 +448,7 @@ object YouTubeRepo {
             try { boards = ext.frames?.mapNotNull { f ->
                 try { Storyboard(f.urls, f.totalCount, f.framesPerPageX, f.framesPerPageY, f.frameWidth, f.frameHeight, f.durationPerFrame) } catch (_: Exception) { null }
             } ?: emptyList() } catch (_: Exception) {}
-            StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chUrl, chapters, related, boards, ageLimit = age)
+            StreamData(audioUrl, map, muxed, title, subs, tracks, likeCount, desc, upDate, category, tags, uVerified, subCount, uAvatar, lang, chUrl, chapters, related, boards, ageLimit = age, artworkUrl = try { bestThumb(ext.thumbnails) } catch (_: Exception) { null })
         // 2026-11-12: surface the extractor failure instead of a silent empty —
         // playVideo shows it via err_extract_detail (was: generic err_no_sources, no diagnosis).
         } catch (e: Exception) { StreamData(error = (e.message ?: e.javaClass.simpleName).take(120)) }
@@ -781,6 +782,7 @@ object YouTubeRepo {
                 return@withContext StreamData(
                     audioLowestUrl = hlsUrl,
                     audioHlsOnly = true,
+                    artworkUrl = try { bestThumb(ext.thumbnails) } catch (_: Exception) { null },
                     title = try { ext.name } catch (_: Exception) { null },
                     error = if (hlsUrl == null) "hls-only" else null
                 )
@@ -792,6 +794,7 @@ object YouTubeRepo {
                 audioLowestUrl = audioUrl,
                 videoUrlByQuality = emptyMap(),
                 muxedQualities = emptySet(),
+                artworkUrl = try { bestThumb(ext.thumbnails) } catch (_: Exception) { null },
                 title = try { ext.name } catch (_: Exception) { null },
                 subtitles = emptyList()
             )

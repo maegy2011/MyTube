@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Pause
@@ -142,6 +143,9 @@ internal val mutedLive = mutableStateOf(false)
 fun PlayerArea(
     modifier: Modifier = Modifier,
     video: VideoItem,
+    // resolver artwork (SoundCloud/YTM/shared links may carry no list thumbnail) —
+    // fallback after video.thumbnail, before channel avatar.
+    artworkUrl: String? = null,
     player: ExoPlayer?,
     quality: String,
     qualities: List<String>,
@@ -432,7 +436,16 @@ fun PlayerArea(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    AsyncImage(model = video.thumbnail, contentDescription = video.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    // audio-only artwork chain: list thumbnail → resolver artwork →
+                    // channel avatar → music-note placeholder (never a black void).
+                    val artUrl = video.thumbnail ?: artworkUrl ?: video.channelAvatar
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (artUrl == null) {
+                            Icon(Icons.Rounded.MusicNote, contentDescription = video.title, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.size(72.dp))
+                        } else {
+                            AsyncImage(model = artUrl, contentDescription = video.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        }
+                    }
                     Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
                 }
                 // Thumbnail while the stream loads (video mode): the PlayerView surface is black
