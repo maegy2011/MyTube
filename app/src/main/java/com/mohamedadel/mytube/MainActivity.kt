@@ -3952,6 +3952,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     Scaffold(
         topBar = { },
         bottomBar = {
+            // 2026-11-12 (mini-over-nav fix): Column wrapper so MiniPlayer stacks ABOVE
+            // the NavigationBar instead of overlapping it (siblings in bottomBar overlap).
+            Column {
             // Mini-player above the bottom nav (YouTube order): Scaffold layering keeps
             // this bar above ALL destinations except Settings (2026-11-12 runtime fix).
             // Surfaces allowlist (standing rule): Home/Search/Music/Library/Downloads/Queue/
@@ -4020,6 +4023,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         label = { Text(stringResource(R.string.settings_title)) }
                     )
                 }
+            }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
