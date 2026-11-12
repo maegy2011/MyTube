@@ -1858,7 +1858,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         playerLoading = true
         playerError = null
         playerPositionMs = 0L; playerDurationMs = 0L; playerBufferedPct = 0
-        // queue continuity: advancing inside a playing queue resumes; a fresh tap stays paused (no-autoplay policy).
+        // queue continuity: advancing inside a playing queue resumes; an explicit play-button
+        // tap (forcePlay) force-starts even when the player was idle (wasPlaying is false after
+        // the pause above, so autoplay alone could never resume a fresh tap). Plain prepares
+        // without forcePlay keep the old paused behavior.
         // 2026-11-12 (runtime fix): at STATE_ENDED isPlaying is already false, so the check
         // below was ALWAYS false on auto-advance — the next radio/queue track loaded paused
         // (radio looked dead). forcePlay=true is passed ONLY from the ENDED path, i.e. inside
@@ -1892,7 +1895,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     streamData = s
                     qualityList = listOf(QUALITY_AUDIO_ONLY)
                     quality = QUALITY_AUDIO_ONLY
-                    applyQuality(QUALITY_AUDIO_ONLY, s, player, autoplay = wasPlayingQueue, local = true)
+                    applyQuality(QUALITY_AUDIO_ONLY, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
                     if (CastManager.connected.value) castCurrent(autoplay = true)
                     return@launch
                 } catch (_: Exception) {
@@ -1997,7 +2000,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     audioTrackIdx = 0
                     subTrackIdx = if (hasSub) 0 else -1
                     subTrackFor = null // F8: packaged pin track, not an explicit pick
-                    applyQuality(label, s, player, autoplay = wasPlayingQueue, local = true)
+                    applyQuality(label, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
                     playingPinned = true
                 } catch (_: Exception) {
                     playerLoading = false
@@ -2059,7 +2062,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 qualityList = listOf("live")
                 quality = "live"
                 streamData = s
-                applyQuality("live", s, player, autoplay = wasPlayingQueue, local = true)
+                applyQuality("live", s, player, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
                 if (CastManager.connected.value) castCurrent(autoplay = true)
                 return@launch
             }
@@ -2072,7 +2075,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             quality = if (videoModeQueue && startQ == QUALITY_AUDIO_ONLY && s.videoUrlByQuality.isNotEmpty()) {
                 qualityList.firstOrNull { it != QUALITY_AUDIO_ONLY } ?: startQ
             } else startQ
-            applyQuality(startQ, s, player, autoplay = wasPlayingQueue)
+            applyQuality(startQ, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay)
             if (CastManager.connected.value) castCurrent(autoplay = true)
             // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
             try {
