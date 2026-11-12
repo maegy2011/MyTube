@@ -2,6 +2,7 @@ package com.mohamedadel.mytube.ui.results
 
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.ui.theme.Scrim
+import com.mohamedadel.mytube.ui.common.DraggableTitle
 import com.mohamedadel.mytube.ui.theme.ScrimSoft
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -130,13 +131,10 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                DraggableTitle(
                     text = v.title ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isCurrent) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = if (isCurrent) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
                 )
                 if (meta.isNotEmpty() || metaHasCheck) {
                     Text(

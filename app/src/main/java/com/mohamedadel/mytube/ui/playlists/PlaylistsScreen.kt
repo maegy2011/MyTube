@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube.ui.playlists
 
 import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.ui.common.DraggableTitle
 import com.mohamedadel.mytube.ui.theme.Scrim
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -323,7 +324,7 @@ fun PlaylistsScreen(
                             if (selecting && !editMode) selected = if (r.id in selected) selected - r.id else selected + r.id
                             else if (!editMode) onPlayFrom(idx)
                         }) {
-                            Text(r.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            DraggableTitle(text = r.title ?: "", style = MaterialTheme.typography.bodyMedium)
                             Text(r.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             pinBadges[r.toVideoItem().favKey()]?.let { b ->
                                 Text(b, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -433,7 +434,7 @@ fun PlaylistsScreen(
             title = { Text(stringResource(R.string.move_to), maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(r.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    DraggableTitle(text = r.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
                     if (targets.isEmpty()) {
                         Text(stringResource(R.string.move_no_target), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -532,7 +533,7 @@ fun PlaylistPickerDialog(
         title = { Text(stringResource(R.string.picker_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text(video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                DraggableTitle(text = video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 if (playlists.isEmpty()) {
                     Text(stringResource(R.string.picker_empty_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

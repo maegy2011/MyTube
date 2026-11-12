@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.player
 
+import com.mohamedadel.mytube.ui.common.DraggableTitle
 import com.mohamedadel.mytube.R
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -132,7 +133,7 @@ fun MiniPlayer(
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = titleOverride ?: video.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    DraggableTitle(text = titleOverride ?: video.title ?: "", style = MaterialTheme.typography.bodyMedium)
                     Text(text = video.channel ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 EqualizerBars(playing = isPlaying)

@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube.ui.queue
 
 import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.ui.common.DraggableTitle
 import com.mohamedadel.mytube.data.local.favKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -175,7 +176,7 @@ fun QueuePanel(
                                 Icon(Icons.Rounded.PushPin, contentDescription = stringResource(R.string.cd_pinned_fmt, qBadgeText), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                             }
                             Text("${idx + 1}.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
-                            Text(v.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { onPlayFrom(idx) })
+                            DraggableTitle(text = v.title ?: "", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                             // explicit "play from here": sequential playback starts ONLY from this button
                             IconButton(onClick = { onPlayFrom(idx) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                                 Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play_from_here), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
@@ -235,7 +236,7 @@ fun VideoOptionsDialog(
         title = { Text(stringResource(R.string.video_options_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text(video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                DraggableTitle(text = video.title ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 // (icon, label, action): icons bind by position, never by translated label
                 val items = listOf(

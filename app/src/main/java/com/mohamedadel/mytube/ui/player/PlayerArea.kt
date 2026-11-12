@@ -1,5 +1,6 @@
 package com.mohamedadel.mytube.ui.player
 
+import com.mohamedadel.mytube.ui.common.DraggableTitle
 import com.mohamedadel.mytube.R
 import android.view.ViewGroup
 import androidx.compose.foundation.background
@@ -615,7 +616,7 @@ fun PlayerArea(
             // playback settings behind a gear dialog. Hidden in fullscreen (pure video).
             if (!isFullscreen) {
             Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                // title (16sp semi-bold, 2 lines) + views meta (12sp gray)
+                // title (draggable + expandable, 2026-11-12) + views meta (12sp gray)
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (isLive) {
                         // D3 (audit P1 2026-11-11): shared LiveBadge + theme shape (was raw 0xFFB71C1C).
@@ -624,12 +625,9 @@ fun PlayerArea(
                         }
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text(
+                    DraggableTitle(
                         text = titleOverride ?: video.title ?: "",
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -839,7 +837,7 @@ fun PlayerArea(
                                 AsyncImage(model = rv.thumbnail, contentDescription = rv.title, modifier = Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                                 Spacer(Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(rv.title ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    DraggableTitle(text = rv.title ?: "", style = MaterialTheme.typography.bodyMedium)
                                     Text((rv.channel ?: "") + if (rv.viewCount != null && rv.viewCount > 0) " • " + lctx.formatViews(rv.viewCount) else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 IconButton(onClick = { onRelatedOptions(rv) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
