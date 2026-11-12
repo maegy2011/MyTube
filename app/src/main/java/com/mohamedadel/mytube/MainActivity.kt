@@ -2933,6 +2933,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var searchCorrected by remember { mutableStateOf(false) }
     fun doSearch(q: String) {
         if (q.isBlank()) return
+        // navigating to results collapses the full player — audio continues in the mini bar.
+        playerExpanded = false
         currentQuery = q
         loading = true
         searchError = null
@@ -3784,14 +3786,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             androidx.compose.material3.BadgedBox(
                 badge = { if (unreadCount > 0) androidx.compose.material3.Badge { Text(if (unreadCount > 99) "99+" else unreadCount.toString()) } }
             ) {
-                IconButton(onClick = { showNotifications = true }) {
+                IconButton(onClick = { playerExpanded = false; showNotifications = true }) {
                     Icon(Icons.Rounded.Notifications, contentDescription = stringResource(R.string.notif_bell))
                 }
             }
             if (loading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
             }
-            IconButton(onClick = { showSearch = true; showSuggestions = true }) {
+            IconButton(onClick = { playerExpanded = false; showSearch = true; showSuggestions = true }) {
                 Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.search_action))
             }
         }
