@@ -635,6 +635,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var tasteFetchedAt by remember { mutableStateOf(0L) }
     // screens-fix Library P2-L12: most-replayed rail data (loaded when the hub opens).
     var topPlayedHome by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.local.PlayedStat>()) }
+    // home-redesign Phase 2 (2026-11-12): recent history for the continue-watching row.
+    var continueWatching by remember { mutableStateOf(emptyList<VideoItem>()) }
     val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var recentMusicSearches by remember { mutableStateOf(listOf<String>()) }
     // Local-profile recommendations (no account): quick picks + one YTM mix shelf.
@@ -3061,6 +3063,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         } catch (_: Exception) { }
     }
+    // home-redesign Phase 2 (2026-11-12): load recent history when the home screen shows.
+    // No watch-position column exists yet (HistoryEntity has duration but no position),
+    // so this row replays from the start — position-resume is a later item.
+    androidx.compose.runtime.LaunchedEffect(results.isEmpty() && query.isBlank() && !showSearch) {
+        if (results.isEmpty() && query.isBlank() && !showSearch) {
+            try {
+                val rows = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dao.historyPage(10, 0) }
+                continueWatching = rows.mapNotNull { h ->
+                    val url = h.url ?: return@mapNotNull null
+                    VideoItem(id = h.videoId, title = h.title, channel = h.channel, thumbnail = h.thumbnail, url = url, durationSec = h.durationSec, viewCount = h.viewCount)
+                }
+            } catch (_: Exception) { }
+        }
+    }
     // consumed by the ON_RESUME observer above via sharedPending ticks (declared up top).
     androidx.compose.runtime.LaunchedEffect(sharedPending) {
         if (sharedPending > 0) {
@@ -5080,7 +5096,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onLongClick = { optionsFor = it },
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] }
+                        progressOf = { k -> pinProgress[k] },
+                        continueItems = continueWatching
                     )
                 }
                 results.isEmpty() && !loading -> {

@@ -635,4 +635,6 @@
     <string name="unified_src_youtube">YouTube</string>
     <string name="unified_src_sc">SoundCloud</string>
     <string name="unified_src_ytm">YouTube Music</string>
+    <string name="continue_watching">Continue watching</string>
+    <string name="hero_details">Details</string>
 </resources>

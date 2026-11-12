@@ -650,4 +650,6 @@
     <string name="unified_src_youtube">يوتيوب</string>
     <string name="unified_src_sc">ساوندكلاود</string>
     <string name="unified_src_ytm">يوتيوب ميوزك</string>
+    <string name="continue_watching">متابعة المشاهدة</string>
+    <string name="hero_details">التفاصيل</string>
 </resources>

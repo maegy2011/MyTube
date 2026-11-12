@@ -93,7 +93,9 @@ fun HomeEmptyState(
     // Deferred item 1 (2026-11-11): real kiosk/search pagination + pull-to-refresh on Home.
     hasMore: Boolean = false,
     loadingMore: Boolean = false,
-    onShowMore: () -> Unit = {}
+    onShowMore: () -> Unit = {},
+    // home-redesign Phase 2 (2026-11-12): recent history for the continue-watching row.
+    continueItems: List<VideoItem> = emptyList()
 ) {
     // Deferred item 1: hoisted scroll state (was recreated per composition inside the else branch).
     val trendListState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -192,6 +194,20 @@ fun HomeEmptyState(
                     FilterChip(selected = false, onClick = { onSearch(q) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp)) }, label = { Text(q) })
                 }
             }
+        } else if (!isSuggestionsTab) {
+            // home-redesign Phase 2 (2026-11-12): Netflix layout (Hero + rows + continue-watching);
+            // the suggestions tab keeps the classic vertical list below.
+            com.mohamedadel.mytube.ui.home.HomeNetflixLayout(
+                items = trendingItems,
+                continueItems = continueItems,
+                onPlay = onPlay,
+                onLongClick = onLongClick,
+                hasMore = hasMore,
+                loadingMore = loadingMore,
+                onShowMore = onShowMore,
+                listState = trendListState,
+                modifier = Modifier.weight(1f)
+            )
         } else {
             LazyColumn(
                 state = trendListState,
