@@ -3971,88 +3971,45 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         }
         if (showSearch) {
-            // home-redesign Phase 1 (2026-11-12): unified bar (chips + recents per source).
-            // All-mode searches run in parallel and render sections below the bar;
-            // single-source chips keep today's flows (close + existing search).
-            val uRecentsBase = if (unifiedSource == null || unifiedSource == com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE) recentSearches else recentMusicSearches
-            val uDropRecents = if (query.isBlank()) uRecentsBase else uRecentsBase.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
-            androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
-                com.mohamedadel.mytube.ui.home.UnifiedSearchBar(
-                    query = query,
-                    loading = loading || scLoading || unifiedLoading,
-                    selected = unifiedSource,
-                    onSelectSource = { unifiedSource = it; uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
-                    onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
-                    onSearch = { q ->
-                        when (unifiedSource) {
-                            null -> { doUnifiedSearch(q); showSuggestions = false }
-                            com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE -> { doSearch(q); showSearch = false }
-                            com.mohamedadel.mytube.data.unified.SearchSource.SOUNDCLoud -> { scQuery = q; doScSearch(q, 0); showSearch = false; showSC = true }
-                            com.mohamedadel.mytube.data.unified.SearchSource.YTMUSIC -> { scQuery = q; doScSearch(q, 1); showSearch = false; showSC = true }
-                        }
-                    },
-                    onClose = { showSearch = false; uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
-                    onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false; uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
-                    dropRecents = uDropRecents,
-                    suggestions = suggestions,
-                    onPickSuggestion = { q ->
-                        query = q; svm.onQueryChange(q); showSuggestions = false
-                        when (unifiedSource) {
-                            null -> doUnifiedSearch(q)
-                            com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE -> { doSearch(q); showSearch = false }
-                            com.mohamedadel.mytube.data.unified.SearchSource.SOUNDCLoud -> { scQuery = q; doScSearch(q, 0); showSearch = false; showSC = true }
-                            com.mohamedadel.mytube.data.unified.SearchSource.YTMUSIC -> { scQuery = q; doScSearch(q, 1); showSearch = false; showSC = true }
-                        }
-                    },
-                    onVoice = { startVoiceSearch() },
-                    showDropdown = showSuggestions,
-                    onClearRecents = {
-                        if (unifiedSource == null || unifiedSource == com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE) {
-                            recentSearches = emptyList()
-                            try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
-                        } else {
-                            recentMusicSearches = emptyList()
-                            try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { }
-                        }
-                    },
-                    onDeleteRecent = { s ->
-                        if (unifiedSource == null || unifiedSource == com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE) {
-                            recentSearches = recentSearches.filter { it != s }
-                            try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
-                        } else {
-                            recentMusicSearches = recentMusicSearches.filter { it != s }
-                            try { prefs.edit().putString("recent_music_searches", recentMusicSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
-                        }
-                    }
-                )
-                // All-mode parallel results (sections) live under the bar; hidden until searched.
-                if (unifiedSource == null && (uYT != null || uSC != null || uYM != null || unifiedLoading)) {
-                    com.mohamedadel.mytube.ui.home.UnifiedResults(
-                        yt = uYT, sc = uSC, ym = uYM,
-                        onRetry = { s -> retryUnifiedSource(query, s) },
-                        expanded = unifiedExpanded,
-                        onExpand = { unifiedExpanded = it },
-                        onCollapse = { unifiedExpanded = null },
-                        onPlay = { v -> showSearch = false; playVideo(v, expand = true, forcePlay = true) },
-                        onLongClick = { optionsFor = it },
-                        rowContent = { v ->
-                            SearchRow(
-                                v = v,
-                                isCurrent = playing?.id == v.id || playing?.url == v.url,
-                                isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
-                                isFav = v.favKey() in favoriteSet,
-                                onClick = { showSearch = false; playVideo(v, expand = true, forcePlay = true) },
-                                onLongClick = { optionsFor = it },
-                                onFav = { toggleFavorite(it) },
-                                pinBadge = pinBadges[v.favKey()],
-                                pinning = pinningKeys.contains(v.favKey()),
-                                pinProgress = pinProgress[v.favKey()]
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
+            // VerifyError fix (2026-11-12): overlay lives in ui.home.UnifiedSearchOverlay.
+            com.mohamedadel.mytube.ui.home.UnifiedSearchOverlay(
+                query = query,
+                loading = loading,
+                scLoading = scLoading,
+                unifiedLoading = unifiedLoading,
+                unifiedSource = unifiedSource,
+                uYT = uYT, uSC = uSC, uYM = uYM,
+                unifiedExpanded = unifiedExpanded,
+                suggestions = suggestions,
+                showSuggestions = showSuggestions,
+                recentSearches = recentSearches,
+                recentMusicSearches = recentMusicSearches,
+                setRecentSearches = { recentSearches = it },
+                setRecentMusicSearches = { recentMusicSearches = it },
+                prefs = prefs,
+                playing = playing,
+                isPlaying = isPlaying,
+                favoriteSet = favoriteSet,
+                pinBadges = pinBadges,
+                pinningKeys = pinningKeys,
+                pinProgress = pinProgress,
+                onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
+                onSelectSource = { unifiedSource = it },
+                doSearch = { q -> doSearch(q) },
+                doScSearch = { q, src -> doScSearch(q, src) },
+                doUnifiedSearch = { q -> doUnifiedSearch(q) },
+                setShowSearch = { showSearch = it },
+                setShowSC = { showSC = it },
+                setScQuery = { scQuery = it },
+                setShowSuggestions = { showSuggestions = it },
+                clearUnifiedResults = { uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
+                retryUnifiedSource = { q, s -> retryUnifiedSource(q, s) },
+                onVoice = { startVoiceSearch() },
+                onPlayItem = { v -> showSearch = false; playVideo(v, expand = true, forcePlay = true) },
+                onShowOptions = { optionsFor = it },
+                onToggleFav = { toggleFavorite(it) },
+                onExpand = { unifiedExpanded = it }
+            )
         }
 
         }
@@ -5147,44 +5104,37 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     com.mohamedadel.mytube.ui.results.VideoListSkeleton(count = 5)
                 }
                 results.isEmpty() && query.isBlank() -> {
-                    HomeEmptyState(
+                    // VerifyError fix (2026-11-12): home branch lives in ui.home.HomeBranches.
+                    com.mohamedadel.mytube.ui.home.HomeBranch(
                         trending = trending,
                         trendTab = trendTab,
-                        onTrendTab = { i ->
-                            // screens-fix Home P1-H5: cancel stale suggestions before switching.
-                            suggestJob?.cancel()
-                            trendTab = i
-                            refreshTrending()
-                        },
                         trendingItems = trendingItems,
                         trendingLoading = trendingLoading,
                         trendingError = trendingError,
-                        onRetryTrending = { refreshTrending(force = true) },
-                        // Deferred item 1: pagination + pull-to-refresh wiring.
-                        hasMore = trendingHasMore,
-                        loadingMore = trendingLoadingMore,
-                        onShowMore = { loadMoreTrending() },
+                        trendingHasMore = trendingHasMore,
+                        trendingLoadingMore = trendingLoadingMore,
                         countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry,
-                        // Official section header (2026-11-12): this tab's own label;
-                        // music tab also badges every track (surface a).
                         sectionTitle = TREND_TABS.getOrNull(trendTab)?.first?.let { ctx.getString(it) },
                         showMusicBadge = TREND_TABS.getOrNull(trendTab)?.second == "trending_music",
-                        onSearch = { q -> query = q; doSearch(q) },
                         isSuggestionsTab = TREND_TABS.getOrNull(trendTab)?.second == "suggestions",
                         suggestionChips = suggestionChips,
-                        onSuggestion = { q -> query = q; doSearch(q) },
-                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
-                        isFav = { v -> v.favKey() in favoriteSet },
-                        onFav = { toggleFavorite(it) },
-                        onLongClick = { optionsFor = it },
+                        continueWatching = continueWatching,
+                        continueProgress = continueProgress,
+                        continueResumeMs = continueResumeMs,
+                        trendingCached = trendingCached,
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        continueItems = continueWatching,
-                        continueProgress = { v -> continueProgress[v.favKey()] },
-                        continueResumeMs = { v -> continueResumeMs[v.favKey()] },
-                        onResumePlay = { v, ms -> pendingSeekMs = ms; pendingSeekKey = v.favKey(); playVideo(v, expand = true, forcePlay = true) },
-                        isCached = trendingCached
+                        pinProgress = pinProgress,
+                        favoriteSet = favoriteSet,
+                        onTrendTab = { i -> suggestJob?.cancel(); trendTab = i; refreshTrending() },
+                        onRetryTrending = { refreshTrending(force = true) },
+                        onShowMore = { loadMoreTrending() },
+                        onSearchQ = { q -> query = q; doSearch(q) },
+                        onSuggestionQ = { q -> query = q; doSearch(q) },
+                        onPlayItem = { playVideo(it, expand = true, forcePlay = true) },
+                        onFavToggle = { toggleFavorite(it) },
+                        onShowOptions = { optionsFor = it },
+                        onResumePlay = { v, ms -> pendingSeekMs = ms; pendingSeekKey = v.favKey(); playVideo(v, expand = true, forcePlay = true) }
                     )
                 }
                 results.isEmpty() && !loading -> {
@@ -5211,109 +5161,39 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 }
                 else -> {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(0.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
-                    ) {
-                        // content filter chips (all/videos/channels/playlists) + count
-                        item {
-                            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("all", "videos", "songs", "channels", "playlists", "albums").forEach { f ->
-                                    androidx.compose.material3.FilterChip(
-                                        selected = prefContentFilter == f,
-                                        onClick = {
-                                            prefContentFilter = f
-                                            try { prefs.edit().putString("pref_content_filter", f).apply() } catch (_: Exception) { }
-                                            if (currentQuery.isNotBlank()) doSearch(currentQuery)
-                                        },
-                                        label = { Text(stringResource(when (f) { "videos" -> R.string.filter_videos; "songs" -> R.string.filter_songs; "channels" -> R.string.filter_channels; "playlists" -> R.string.filter_playlists; "albums" -> R.string.filter_albums; else -> R.string.filter_all })) }
-                                    )
-                                }
-                            }
-                        }
-                        // remote playlists (service playlists for the browsed service)
-                        if (remotePlaylists.isNotEmpty()) {
-                            item {
-                                Text(
-                                    stringResource(R.string.remote_playlists_title),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                )
-                            }
-                            items(items = remotePlaylists, key = { p -> p.url ?: p.title ?: p.hashCode().toString() }) { p ->
-                                com.mohamedadel.mytube.ui.results.PlaylistCard(p = p, onClick = { openRemotePlaylist(p) })
-                            }
-                        }
-                        // search correction (own item: never breaks the list)
-                        // T5: local val instead of searchSuggestion!!.
-                        val ss = searchSuggestion
-                        if (ss != null) {
-                            item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable { doSearch(ss) }.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        if (searchCorrected) stringResource(R.string.did_you_mean_showing_fmt, ss) else stringResource(R.string.did_you_mean_fmt, ss),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.tertiary
-                                    )
-                                }
-                            }
-                        }
-                        item {
-                            Text(stringResource(R.string.results_found_fmt, results.size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp))
-                        }
-                        // screens-fix Home P0-H3: stable keys (no index prefix).
-                        itemsIndexed(items = results, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
-                            SearchRow(
-                                v = v,
-                                isCurrent = playing?.id == v.id || playing?.url == v.url,
-                                isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
-                                isFav = v.favKey() in favoriteSet,
-                                onClick = { playVideo(v, expand = true, forcePlay = true) },
-                                onLongClick = { optionsFor = it },
-                                onFav = { toggleFavorite(it) },
-                                pinBadge = pinBadges[v.favKey()],
-                                pinning = pinningKeys.contains(v.favKey()),
-                                pinProgress = pinProgress[v.favKey()]
-                            )
-                        }
-                        if (loadingMore) {
-                            item {
-                                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                                }
-                            }
-                        } else if (hasMore) {
-                            item {
-                                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                    androidx.compose.material3.Button(onClick = {
-                                        if (loadingMore) return@Button
-                                        val pg = nextPage ?: return@Button
-                                        loadingMore = true
-                                        scope.launch {
-                                            try {
-                                                val page = YouTubeRepo.search(currentQuery, pg, if (prefCountry == "global") null else prefCountry, prefContentFilter)
-                                                val seen = results.mapNotNull { it.url ?: it.id }.toSet()
-                                                val fresh = page.items.filter { (it.url ?: it.id ?: it.title) !in seen }
-                                                results = results + fresh
-                                                nextPage = page.nextPage
-                                                hasMore = page.hasNext && page.nextPage != null
-                                            } catch (_: Exception) {
-                                                hasMore = false
-                                            } finally {
-                                                loadingMore = false
-                                            }
-                                        }
-                                    }) { Text(stringResource(R.string.show_more)) }
-                                }
-                            }
-                        }
-                    }
+                    // VerifyError fix (2026-11-12): results branch lives in ui.home.HomeBranches.
+                    com.mohamedadel.mytube.ui.home.ResultsBranch(
+                        results = results,
+                        playing = playing,
+                        isPlaying = isPlaying,
+                        favoriteSet = favoriteSet,
+                        pinBadges = pinBadges,
+                        pinningKeys = pinningKeys,
+                        pinProgress = pinProgress,
+                        prefContentFilter = prefContentFilter,
+                        currentQuery = currentQuery,
+                        searchSuggestion = searchSuggestion,
+                        searchCorrected = searchCorrected,
+                        searchError = searchError,
+                        remotePlaylists = remotePlaylists,
+                        loadingMore = loadingMore,
+                        hasMore = hasMore,
+                        nextPage = nextPage,
+                        prefCountry = prefCountry,
+                        prefs = prefs,
+                        scope = scope,
+                        listState = listState,
+                        setContentFilter = { prefContentFilter = it },
+                        doSearchText = { q -> doSearch(q) },
+                        setResults = { results = it },
+                        setNextPage = { nextPage = it },
+                        setHasMore = { hasMore = it },
+                        setLoadingMore = { loadingMore = it },
+                        onOpenRemotePlaylist = { openRemotePlaylist(it) },
+                        onPlayItem = { playVideo(it, expand = true, forcePlay = true) },
+                        onShowOptions = { optionsFor = it },
+                        onToggleFav = { toggleFavorite(it) }
+                    )
                 }
             }
             }
