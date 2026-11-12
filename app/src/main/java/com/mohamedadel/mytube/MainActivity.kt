@@ -3721,7 +3721,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("v0.3.8", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.85f))
+                Text("v0.3.9", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.85f))
                 Spacer(Modifier.height(4.dp))
                 Text("© MyTube. All rights reserved.", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
                 Spacer(Modifier.height(2.dp))
