@@ -2247,7 +2247,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = forcePlay) else autoAdvance = false
     }
     // explicit queue building (long-press menu)
-    fun playNowAlone(v: VideoItem) { playVideo(v, inQueue = false, expand = true) }
+    // 2026-11-12 (runtime fix, بأمر محمد): Play Now ALWAYS enables autoplay —
+    // sets + persists prefAutoplay=true, arms radio/auto-advance (related refill
+    // continues after this item), and force-starts this item now. Cold taps
+    // elsewhere still start silent (unchanged).
+    fun playNowAlone(v: VideoItem) {
+        prefAutoplay = true
+        try { prefs.edit().putBoolean("pref_autoplay", true).apply() } catch (_: Exception) { }
+        playVideo(v, inQueue = false, expand = true, forcePlay = true)
+        autoAdvance = true
+        radioOn = true
+    }
     // explicit queue building only: duplicates are refused with a toast (no silent dupes)
     fun isQueued(v: VideoItem): Boolean =
         queue.any { it.favKey() == v.favKey() }
