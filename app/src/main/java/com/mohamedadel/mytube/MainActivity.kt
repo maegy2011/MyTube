@@ -649,6 +649,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var trendingLoading by remember { mutableStateOf(false) }
     // screens-fix 2026-11-11 Home P0-H2: trending error state for retry UI.
     var trendingError by remember { mutableStateOf<String?>(null) }
+    // home-redesign Phase 3 (2026-11-12): 30-min in-memory cache per tab+country.
+    // First page only; paging always goes to network. Serving cache sets trendingCached (badge).
+    var trendingCache by remember { mutableStateOf(mapOf<String, Pair<Long, List<VideoItem>>>()) }
+    var trendingCached by remember { mutableStateOf(false) }
     // screens-fix 2026-11-11 Home P1-H5: cancellable suggestions job.
     var suggestJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // Deferred item 1 (2026-11-11): trending pagination — kiosk next-page + news search page.
@@ -1586,10 +1590,27 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
 
-    fun refreshTrending() {
+    fun refreshTrending(force: Boolean = false) {
         val tab = TREND_TABS.getOrNull(trendTab)
         val kiosk = tab?.second
         val isSearchTab = tab?.third == true
+        // Phase 3: fresh-enough cache wins (tab switches + country toggles skip the network).
+        // Pull-to-refresh / retry button pass force=true and always hit the network.
+        val cacheKey = "$trendTab|$prefCountry"
+        if (!force && kiosk != "suggestions") {
+            val hit = trendingCache[cacheKey]
+            if (hit != null && System.currentTimeMillis() - hit.first < 30 * 60 * 1000L && hit.second.isNotEmpty()) {
+                trendingItems = hit.second
+                trendingHasMore = false
+                trendingNewsNext = null
+                trendingNewsQuery = null
+                trendingError = null
+                trendingCached = true
+                trendingLoading = false
+                return
+            }
+        }
+        trendingCached = false
         trendingLoading = true
         // screens-fix Home P1-H5: cancel in-flight suggestions when switching tabs.
         if (kiosk != "suggestions") suggestJob?.cancel()
@@ -1622,8 +1643,31 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     trendingHasMore = trendingItems.isNotEmpty()
                 }
                 // screens-fix Home P0-H2: empty trending = error surface (was silent).
-                trendingError = if (trendingItems.isEmpty()) ctx.getString(R.string.err_kiosk) else null
-            } catch (_: Exception) { trendingItems = emptyList(); trendingError = ctx.getString(R.string.err_kiosk) }
+                // Phase 3: a failed network with no fresh list falls back to any cached page.
+                if (trendingItems.isEmpty()) {
+                    val stale = trendingCache[cacheKey]?.second.orEmpty()
+                    if (stale.isNotEmpty()) {
+                        trendingItems = stale
+                        trendingCached = true
+                        trendingError = null
+                    } else {
+                        trendingError = ctx.getString(R.string.err_kiosk)
+                    }
+                } else {
+                    trendingError = null
+                    if (kiosk != "suggestions") trendingCache = trendingCache + (cacheKey to (System.currentTimeMillis() to trendingItems))
+                }
+            } catch (_: Exception) {
+                val stale = trendingCache[cacheKey]?.second.orEmpty()
+                if (stale.isNotEmpty()) {
+                    trendingItems = stale
+                    trendingCached = true
+                    trendingError = null
+                } else {
+                    trendingItems = emptyList()
+                    trendingError = ctx.getString(R.string.err_kiosk)
+                }
+            }
             finally { trendingLoading = false }
         }
     }
@@ -5076,7 +5120,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         trendingItems = trendingItems,
                         trendingLoading = trendingLoading,
                         trendingError = trendingError,
-                        onRetryTrending = { refreshTrending() },
+                        onRetryTrending = { refreshTrending(force = true) },
                         // Deferred item 1: pagination + pull-to-refresh wiring.
                         hasMore = trendingHasMore,
                         loadingMore = trendingLoadingMore,
@@ -5097,7 +5141,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
                         progressOf = { k -> pinProgress[k] },
-                        continueItems = continueWatching
+                        continueItems = continueWatching,
+                        isCached = trendingCached
                     )
                 }
                 results.isEmpty() && !loading -> {

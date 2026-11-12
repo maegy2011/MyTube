@@ -95,7 +95,9 @@ fun HomeEmptyState(
     loadingMore: Boolean = false,
     onShowMore: () -> Unit = {},
     // home-redesign Phase 2 (2026-11-12): recent history for the continue-watching row.
-    continueItems: List<VideoItem> = emptyList()
+    continueItems: List<VideoItem> = emptyList(),
+    // home-redesign Phase 3 (2026-11-12): true when the list came from the 30-min cache.
+    isCached: Boolean = false
 ) {
     // Deferred item 1: hoisted scroll state (was recreated per composition inside the else branch).
     val trendListState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -149,6 +151,13 @@ fun HomeEmptyState(
             }
             Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                 Text(countryName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            }
+            // home-redesign Phase 3: cached badge — honest label when the list is served from cache.
+            if (isCached) {
+                Spacer(Modifier.width(6.dp))
+                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
+                    Text(stringResource(R.string.cached_badge), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
             }
             // Deferred item 1: explicit refresh affordance next to the country badge.
             androidx.compose.material3.IconButton(onClick = onRetryTrending, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {

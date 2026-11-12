@@ -652,4 +652,5 @@
     <string name="unified_src_ytm">يوتيوب ميوزك</string>
     <string name="continue_watching">متابعة المشاهدة</string>
     <string name="hero_details">التفاصيل</string>
+    <string name="cached_badge">محفوظ</string>
 </resources>
