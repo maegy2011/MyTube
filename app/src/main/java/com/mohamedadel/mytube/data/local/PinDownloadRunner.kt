@@ -152,7 +152,8 @@ object PinDownloadRunner {
                 if (size < 0 && size != PinManager.PAUSED && retry != null && !PinManager.isCancelRequested(key) && !PinManager.isPaused(key)) {
                     try {
                         val fresh = v.url?.let { YouTubeRepo.streamRouted(it) }
-                        if (fresh != null && !fresh.audioHlsOnly &&
+                        // SoundCloud HLS records to file — allow it through the retry like progressive.
+                        if (fresh != null && (!fresh.audioHlsOnly || v.url?.contains("soundcloud.com") == true) &&
                             (fresh.audioLowestUrl != null || fresh.videoUrlByQuality.isNotEmpty())) {
                             val rebuilt = PinManager.buildPlan(
                                 fresh, retry.quality, retry.audioIdx, retry.subIdxs,

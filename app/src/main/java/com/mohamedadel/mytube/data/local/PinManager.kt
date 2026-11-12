@@ -233,6 +233,94 @@ object PinManager {
         } catch (_: Exception) { try { onErr?.invoke("io") } catch (_: Exception) { }; 1 }
     }
 
+    // SoundCloud HLS pins: VOD m3u8 (fMP4 or TS segments) recorded to one file —
+    // init map + segments concatenated (valid MP4 for fMP4; TS concat plays with broken
+    // seeking). AES-128 segments decrypted via javax.crypto (key URI from the playlist).
+    // Same 0/1/2 codes as getTo. Resume restarts the file (segments re-fetched).
+    // Media-sequence is assumed to start at 0 (true for VOD single playlists).
+    private fun downloadHlsTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, isCancelled: (() -> Boolean)? = null, isPaused: (() -> Boolean)? = null, mimeOut: ((String?) -> Unit)? = null, onErr: ((String) -> Unit)? = null): Int {
+        return try {
+            dest.parentFile?.mkdirs()
+            val tmp = java.io.File(dest.parentFile, dest.name + ".part")
+            try { if (tmp.exists()) tmp.delete() } catch (_: Exception) { }
+            fun attr(line: String, name: String): String? = try {
+                val m = Regex(name + "=(\"([^\"]*)\"|([^,]*))").find(line) ?: return null
+                (m.groups[2]?.value ?: m.groups[3]?.value)?.takeIf { it.isNotEmpty() }
+            } catch (_: Exception) { null }
+            fun getBytes(u: String): ByteArray? = try {
+                http.newCall(Request.Builder().url(u).header("User-Agent", PIN_UA).build()).execute().use { r ->
+                    if (!r.isSuccessful || r.body == null) null else r.body!!.bytes()
+                }
+            } catch (_: Exception) { null }
+            val playlistBytes = getBytes(url) ?: run { try { onErr?.invoke("hls-pl") } catch (_: Exception) { }; return 1 }
+            val playlist = try { String(playlistBytes, Charsets.UTF_8) } catch (_: Exception) { try { onErr?.invoke("hls-pl") } catch (_: Exception) { }; return 1 }
+            var initUri: String? = null
+            var keyMethod = "NONE"
+            var keyUri: String? = null
+            var keyIv: ByteArray? = null
+            val segs = mutableListOf<String>()
+            for (raw in playlist.lines()) {
+                val line = raw.trim()
+                if (line.isEmpty()) continue
+                when {
+                    line.startsWith("#EXT-X-MAP:") -> initUri = attr(line, "URI")
+                    line.startsWith("#EXT-X-KEY:") -> {
+                        keyMethod = attr(line, "METHOD") ?: "NONE"
+                        keyUri = attr(line, "URI")
+                        keyIv = attr(line, "IV")?.let { hex ->
+                            try {
+                                val h = hex.removePrefix("0x").removePrefix("0X")
+                                ByteArray(h.length / 2) { i -> h.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+                            } catch (_: Exception) { null }
+                        }
+                    }
+                    !line.startsWith("#") -> segs.add(line)
+                }
+            }
+            if (segs.isEmpty()) { try { onErr?.invoke("hls-empty") } catch (_: Exception) { }; return 1 }
+            fun resolve(rel: String): String = try { java.net.URL(java.net.URL(url), rel).toString() } catch (_: Exception) { rel }
+            var keyBytes: ByteArray? = null
+            if (keyMethod.equals("AES-128", ignoreCase = true)) {
+                val ku = keyUri ?: run { try { onErr?.invoke("hls-key") } catch (_: Exception) { }; return 1 }
+                keyBytes = getBytes(resolve(ku))
+                if (keyBytes == null || keyBytes.size != 16) { try { onErr?.invoke("hls-key") } catch (_: Exception) { }; return 1 }
+            }
+            val cipher = if (keyBytes != null) try { javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding") } catch (_: Exception) { try { onErr?.invoke("hls-cipher") } catch (_: Exception) { }; return 1 } else null
+            val keySpec = if (keyBytes != null) try { javax.crypto.spec.SecretKeySpec(keyBytes, "AES") } catch (_: Exception) { try { onErr?.invoke("hls-cipher") } catch (_: Exception) { }; return 1 } else null
+            try { mimeOut?.invoke("audio/mp4") } catch (_: Exception) { }
+            var done = 0L
+            var lastReport = 0L
+            var seq = 0L
+            java.io.FileOutputStream(tmp).use { out ->
+                if (initUri != null) {
+                    val b = getBytes(resolve(initUri!!)) ?: run { try { onErr?.invoke("hls-init") } catch (_: Exception) { }; return 1 }
+                    out.write(b); done += b.size
+                }
+                for (s in segs) {
+                    if (isPaused?.invoke() == true) return 2
+                    if (isCancelled?.invoke() == true) return 1
+                    var b = getBytes(resolve(s)) ?: run { try { onErr?.invoke("hls-seg") } catch (_: Exception) { }; return 1 }
+                    if (cipher != null && keySpec != null) {
+                        val iv = keyIv ?: ByteArray(16).also { bb -> for (i in 0..7) bb[15 - i] = ((seq shr (i * 8)) and 0xFF).toByte() }
+                        try {
+                            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, javax.crypto.spec.IvParameterSpec(iv))
+                            b = cipher.doFinal(b)
+                        } catch (_: Exception) { try { onErr?.invoke("hls-dec") } catch (_: Exception) { }; return 1 }
+                    }
+                    out.write(b); done += b.size; seq++
+                    if (onProgress != null && done - lastReport >= 262144) {
+                        lastReport = done
+                        try { onProgress(base + done, -1) } catch (_: Exception) { }
+                    }
+                }
+            }
+            if (onProgress != null) try { onProgress(base + done, -1) } catch (_: Exception) { }
+            if (dest.exists()) dest.delete()
+            tmp.renameTo(dest)
+            return 0
+        } catch (_: Exception) { try { onErr?.invoke("hls-io") } catch (_: Exception) { }; 1 }
+    }
+
     // Downloads plan into travel/<sha>, writes meta.json, upserts the Room row. All-or-nothing.
     // onProgress(doneBytes, totalBytes): total may be -1 when the host hides sizes.
     // F5 resume: .part chunks survive a failed attempt (same staging dir); retry continues via Range.
@@ -267,7 +355,10 @@ object PinManager {
             }
             if (plan.audioUrl != null) {
                 val base = if (plan.videoUrl != null) videoSpan else 0L
-                val rc = getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base, { cancelKeys.contains(key) }, { pauseKeys.contains(key) }, { m -> audioMime = m }, { e -> noteErr(key, e) })
+                // HLS media (SoundCloud transcodings) is a playlist, not bytes — record it.
+                val aHls = plan.audioUrl.contains("m3u8", ignoreCase = true)
+                val rc = if (aHls) downloadHlsTo(plan.audioUrl, aFile, onProgress, base, { cancelKeys.contains(key) }, { pauseKeys.contains(key) }, { m -> audioMime = m }, { e -> noteErr(key, e) })
+                else getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base, { cancelKeys.contains(key) }, { pauseKeys.contains(key) }, { m -> audioMime = m }, { e -> noteErr(key, e) })
                 if (rc != 0) { if (rc == 1 && !cancelKeys.contains(key)) staging.deleteRecursively(); return if (rc == 2) PAUSED else -1L }
             } else if (plan.videoUrl == null && plan.audioUrl == null) {
                 noteErr(key, "plan"); staging.deleteRecursively(); return -1L

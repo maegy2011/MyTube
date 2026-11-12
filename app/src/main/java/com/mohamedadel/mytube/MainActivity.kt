@@ -3404,7 +3404,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 if (sd == null && u.isNullOrBlank()) { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 val s = sd ?: YouTubeRepo.streamRouted(u ?: return@launch) ?: run { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 // pin-deepfix: streaming-only (HLS) audio cannot be pinned as bytes — say so clearly.
-                if (s.audioHlsOnly) { uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
+                // SoundCloud HLS transcodings ARE pinnable: downloadPin records the m3u8 to a file.
+                if (s.audioHlsOnly && !(u?.contains("soundcloud.com") == true)) { uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
                     uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
@@ -3532,8 +3533,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val u = v.url
                 if (sd == null && u.isNullOrBlank()) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 val s = sd ?: YouTubeRepo.streamRouted(u ?: run { pinningKeys = pinningKeys - key; return@launch }) ?: run { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                // pin-deepfix: streaming-only (HLS) audio cannot be pinned as bytes — say so clearly.
-                if (s.audioHlsOnly) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
+                // SoundCloud HLS transcodings record to file (see downloadHlsTo) — only refuse non-SC streaming audio.
+                if (s.audioHlsOnly && !(u?.contains("soundcloud.com") == true)) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
                     pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
