@@ -847,29 +847,43 @@ object YouTubeRepo {
     }
 
     // Open a remote playlist URL (youtube.com / music.youtube.com / soundcloud.com) into playable items.
-    suspend fun fetchPlaylist(url: String): List<VideoItem> = withContext(Dispatchers.IO) {
+    // Returns items + next page (null = no more pages). SoundCloud sets are long — callers page-walk via fetchPlaylistPage.
+    suspend fun fetchPlaylist(url: String): Pair<List<VideoItem>, Page?> = withContext(Dispatchers.IO) {
         try {
             // YTM album links (music.youtube.com) resolve through the www host
             val norm = url.replace("music.youtube.com", "www.youtube.com")
             val sc = norm.contains("soundcloud.com")
             val ext = if (sc) scService().getPlaylistExtractor(norm) else service().getPlaylistExtractor(norm)
             ext.fetchPage()
-            ext.initialPage.items.mapNotNull { info ->
-                try {
-                    val u: String? = try { info.url } catch (_: Exception) { null }
-                    if (u.isNullOrBlank()) return@mapNotNull null
-                    val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
-                    val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
-                    var thumb: String? = null
-                    try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) { }
-                    var dur: Long? = null
-                    try { dur = info.duration } catch (_: Exception) { }
-                    val id: String? = u.substringAfter("v=", "").substringBefore("&").takeIf { it.isNotEmpty() }
-                    var chUrl: String? = null
-                    try { chUrl = info.uploaderUrl } catch (_: Exception) { }
-                    VideoItem(id, name, up, thumb, dur, null, u, null, false, null, false, chUrl)
-                } catch (_: Exception) { null }
-            }
-        } catch (_: Exception) { emptyList() }
+            val lp = ext.initialPage
+            playlistItemsToVideos(lp.items) to try { if (lp.hasNextPage()) lp.nextPage else null } catch (_: Exception) { null }
+        } catch (_: Exception) { emptyList<VideoItem>() to null }
     }
+    // Next page of an opened remote playlist. Fresh extractor per call (extractors are single-use cursors).
+    suspend fun fetchPlaylistPage(url: String, page: Page): Pair<List<VideoItem>, Page?> = withContext(Dispatchers.IO) {
+        try {
+            val norm = url.replace("music.youtube.com", "www.youtube.com")
+            val sc = norm.contains("soundcloud.com")
+            val ext = if (sc) scService().getPlaylistExtractor(norm) else service().getPlaylistExtractor(norm)
+            val lp = try { ext.getPage(page) } catch (_: Exception) { null } ?: return@withContext emptyList<VideoItem>() to null
+            playlistItemsToVideos(lp.items) to try { if (lp.hasNextPage()) lp.nextPage else null } catch (_: Exception) { null }
+        } catch (_: Exception) { emptyList<VideoItem>() to null }
+    }
+    private fun playlistItemsToVideos(items: List<org.schabi.newpipe.extractor.stream.StreamInfoItem>): List<VideoItem> =
+        items.mapNotNull { info ->
+            try {
+                val u: String? = try { info.url } catch (_: Exception) { null }
+                if (u.isNullOrBlank()) return@mapNotNull null
+                val name: String? = try { decodeHtml(info.name) } catch (_: Exception) { info.name }
+                val up: String? = try { decodeHtml(info.uploaderName) } catch (_: Exception) { info.uploaderName }
+                var thumb: String? = null
+                try { thumb = bestThumb(info.thumbnails) } catch (_: Exception) { }
+                var dur: Long? = null
+                try { dur = info.duration } catch (_: Exception) { }
+                val id: String? = u.substringAfter("v=", "").substringBefore("&").takeIf { it.isNotEmpty() }
+                var chUrl: String? = null
+                try { chUrl = info.uploaderUrl } catch (_: Exception) { }
+                VideoItem(id, name, up, thumb, dur, null, u, null, false, null, false, chUrl)
+            } catch (_: Exception) { null }
+        }
 }

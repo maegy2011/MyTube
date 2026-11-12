@@ -607,6 +607,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var openRemote by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.RemotePlaylist?>(null) }
     var openRemoteItems by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
     var openRemoteLoading by remember { mutableStateOf(false) }
+    // remote-playlist paging (SoundCloud sets run long): next page + single-flight guard.
+    var openRemoteNext by remember { mutableStateOf<org.schabi.newpipe.extractor.Page?>(null) }
+    var openRemoteLoadingMore by remember { mutableStateOf(false) }
 
     // Music-tab source: 0 = SoundCloud, 1 = YouTube Music (native music_songs filter).
     // screens-fix Music P1-M5: survive rotation (was remember).
@@ -1073,12 +1076,34 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun openRemotePlaylist(p: com.mohamedadel.mytube.data.youtube.RemotePlaylist) {
         openRemote = p
         openRemoteItems = emptyList()
+        openRemoteNext = null
+        openRemoteLoadingMore = false
         openRemoteLoading = true
         scope.launch {
             try {
-                openRemoteItems = com.mohamedadel.mytube.data.youtube.YouTubeRepo.fetchPlaylist(p.url ?: return@launch)
-            } catch (_: Exception) { openRemoteItems = emptyList() }
+                val (first, next) = com.mohamedadel.mytube.data.youtube.YouTubeRepo.fetchPlaylist(p.url ?: return@launch)
+                openRemoteItems = first
+                openRemoteNext = next
+            } catch (_: Exception) { openRemoteItems = emptyList(); openRemoteNext = null }
             finally { openRemoteLoading = false }
+        }
+    }
+    // page-walk for the opened remote playlist (dedup by canonical key).
+    fun loadMoreRemote() {
+        val rp = openRemote ?: return
+        val nxt = openRemoteNext ?: return
+        if (openRemoteLoading || openRemoteLoadingMore) return
+        openRemoteLoadingMore = true
+        scope.launch {
+            try {
+                val (more, next) = com.mohamedadel.mytube.data.youtube.YouTubeRepo.fetchPlaylistPage(rp.url ?: return@launch, nxt)
+                if (more.isNotEmpty()) {
+                    val seen = openRemoteItems.mapNotNull { it.url ?: it.id }.toSet()
+                    openRemoteItems = openRemoteItems + more.filter { (it.url ?: it.id ?: it.title) !in seen }
+                }
+                openRemoteNext = next
+            } catch (_: Exception) { }
+            finally { openRemoteLoadingMore = false }
         }
     }
     // Title localization: displayed title follows the video's FIRST subtitle language.
@@ -4897,6 +4922,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         // screens-fix Library P1-L5: remote -> local save + pin-all.
                         // screens-fix Library P2 (method-size): body lives in a local fun, not inline.
                         onSave = { list -> saveRemoteList(list) },
+                        // SC sets run long: page-walk the opened playlist instead of first-page-only.
+                        hasMore = openRemoteNext != null,
+                        loadingMore = openRemoteLoadingMore,
+                        onShowMore = { loadMoreRemote() },
                         onPinAll = { list -> scope.launch { for (v in list) { try { quickPin(v, null) } catch (_: Exception) { } } } },
                     ) else { openRemote = null }
                 }
