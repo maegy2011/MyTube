@@ -596,6 +596,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefPitch by remember { mutableStateOf(1.0f) }
     // standalone search screen (YouTube-style) + trending tabs
     var showSearch by remember { mutableStateOf(false) }
+    // home-redesign Phase 1 (2026-11-12): unified search state — source chips + parallel results.
+    var unifiedSource by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SearchSource?>(null) }
+    var uYT by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SourceResult?>(null) }
+    var uSC by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SourceResult?>(null) }
+    var uYM by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SourceResult?>(null) }
+    var unifiedLoading by remember { mutableStateOf(false) }
+    var unifiedExpanded by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SearchSource?>(null) }
+    var unifiedJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // SoundCloud tab (separate): own query/results/loading, reuses SearchScreen + SearchRow.
     var showSC by remember { mutableStateOf(false) }
     var scQuery by remember { mutableStateOf("") }
@@ -3826,29 +3834,126 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Standalone search screen: full search UI lives here, results stay in the main list.
         // The suggestions dropdown lives INSIDE it (it used to sit below this fillMaxSize
         // column, invisible while typing, flashing only after submit).
-        val dropRecents = if (query.isBlank()) recentSearches else recentSearches.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
+        // home-redesign Phase 1 (2026-11-12): unified parallel search (All mode).
+        // One supervisor job, three child launches — each source lands independently,
+        // so a slow/failed source never blocks the others. Same repo calls as doSearch/doScSearch.
+        fun doUnifiedSearch(q: String) {
+            if (q.isBlank()) return
+            unifiedJob?.cancel()
+            uYT = null; uSC = null; uYM = null
+            unifiedExpanded = null
+            unifiedLoading = true
+            if (!recentSearches.contains(q)) {
+                recentSearches = (listOf(q) + recentSearches).take(6)
+                try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
+            }
+            unifiedJob = scope.launch {
+                try {
+                    val region = if (prefCountry == "global") null else prefCountry
+                    kotlinx.coroutines.supervisorScope {
+                        launch { try { uYT = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYouTube(q, region) } catch (_: Exception) { } }
+                        launch { try { uSC = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchSoundCloud(q) } catch (_: Exception) { } }
+                        launch { try { uYM = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYTMusic(q, region) } catch (_: Exception) { } }
+                    }
+                } finally { unifiedLoading = false }
+            }
+        }
+        fun retryUnifiedSource(q: String, s: com.mohamedadel.mytube.data.unified.SearchSource) {
+            if (q.isBlank()) return
+            scope.launch {
+                try {
+                    val region = if (prefCountry == "global") null else prefCountry
+                    when (s) {
+                        com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE -> uYT = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYouTube(q, region)
+                        com.mohamedadel.mytube.data.unified.SearchSource.SOUNDCLoud -> uSC = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchSoundCloud(q)
+                        com.mohamedadel.mytube.data.unified.SearchSource.YTMUSIC -> uYM = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYTMusic(q, region)
+                    }
+                } catch (_: Exception) { }
+            }
+        }
         if (showSearch) {
-            SearchScreen(
-                query = query,
-                loading = loading,
-                onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
-                onSearch = { q -> doSearch(q); showSearch = false },
-                onClose = { showSearch = false },
-                onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false },
-                showDropdown = showSuggestions,
-                dropRecents = dropRecents,
-                suggestions = suggestions,
-                onPickSuggestion = { q -> query = q; svm.onQueryChange(q); showSearch = false; doSearch(q) },
-                onVoice = { startVoiceSearch() },
-                onClearRecents = {
-                    recentSearches = emptyList()
-                    try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
-                },
-                onDeleteRecent = { s ->
-                    recentSearches = recentSearches.filter { it != s }
-                    try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
+            // home-redesign Phase 1 (2026-11-12): unified bar (chips + recents per source).
+            // All-mode searches run in parallel and render sections below the bar;
+            // single-source chips keep today's flows (close + existing search).
+            val uRecentsBase = if (unifiedSource == null || unifiedSource == com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE) recentSearches else recentMusicSearches
+            val uDropRecents = if (query.isBlank()) uRecentsBase else uRecentsBase.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
+            androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
+                com.mohamedadel.mytube.ui.home.UnifiedSearchBar(
+                    query = query,
+                    loading = loading || scLoading || unifiedLoading,
+                    selected = unifiedSource,
+                    onSelectSource = { unifiedSource = it; uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
+                    onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
+                    onSearch = { q ->
+                        when (unifiedSource) {
+                            null -> { doUnifiedSearch(q); showSuggestions = false }
+                            com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE -> { doSearch(q); showSearch = false }
+                            com.mohamedadel.mytube.data.unified.SearchSource.SOUNDCLoud -> { scQuery = q; doScSearch(q, 0); showSearch = false; showSC = true }
+                            com.mohamedadel.mytube.data.unified.SearchSource.YTMUSIC -> { scQuery = q; doScSearch(q, 1); showSearch = false; showSC = true }
+                        }
+                    },
+                    onClose = { showSearch = false; uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
+                    onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false; uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
+                    dropRecents = uDropRecents,
+                    suggestions = suggestions,
+                    onPickSuggestion = { q ->
+                        query = q; svm.onQueryChange(q); showSuggestions = false
+                        when (unifiedSource) {
+                            null -> doUnifiedSearch(q)
+                            com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE -> { doSearch(q); showSearch = false }
+                            com.mohamedadel.mytube.data.unified.SearchSource.SOUNDCLoud -> { scQuery = q; doScSearch(q, 0); showSearch = false; showSC = true }
+                            com.mohamedadel.mytube.data.unified.SearchSource.YTMUSIC -> { scQuery = q; doScSearch(q, 1); showSearch = false; showSC = true }
+                        }
+                    },
+                    onVoice = { startVoiceSearch() },
+                    showDropdown = showSuggestions,
+                    onClearRecents = {
+                        if (unifiedSource == null || unifiedSource == com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE) {
+                            recentSearches = emptyList()
+                            try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
+                        } else {
+                            recentMusicSearches = emptyList()
+                            try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { }
+                        }
+                    },
+                    onDeleteRecent = { s ->
+                        if (unifiedSource == null || unifiedSource == com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE) {
+                            recentSearches = recentSearches.filter { it != s }
+                            try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
+                        } else {
+                            recentMusicSearches = recentMusicSearches.filter { it != s }
+                            try { prefs.edit().putString("recent_music_searches", recentMusicSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
+                        }
+                    }
+                )
+                // All-mode parallel results (sections) live under the bar; hidden until searched.
+                if (unifiedSource == null && (uYT != null || uSC != null || uYM != null || unifiedLoading)) {
+                    com.mohamedadel.mytube.ui.home.UnifiedResults(
+                        yt = uYT, sc = uSC, ym = uYM,
+                        onRetry = { s -> retryUnifiedSource(query, s) },
+                        expanded = unifiedExpanded,
+                        onExpand = { unifiedExpanded = it },
+                        onCollapse = { unifiedExpanded = null },
+                        onPlay = { v -> showSearch = false; playVideo(v, expand = true, forcePlay = true) },
+                        onLongClick = { optionsFor = it },
+                        rowContent = { v ->
+                            SearchRow(
+                                v = v,
+                                isCurrent = playing?.id == v.id || playing?.url == v.url,
+                                isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
+                                isFav = v.favKey() in favoriteSet,
+                                onClick = { showSearch = false; playVideo(v, expand = true, forcePlay = true) },
+                                onLongClick = { optionsFor = it },
+                                onFav = { toggleFavorite(it) },
+                                pinBadge = pinBadges[v.favKey()],
+                                pinning = pinningKeys.contains(v.favKey()),
+                                pinProgress = pinProgress[v.favKey()]
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
-            )
+            }
         }
 
         }

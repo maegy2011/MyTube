@@ -631,4 +631,8 @@
     <string name="pin_err_empty">Resulting file is empty</string>
     <string name="pin_err_io">Network error while writing</string>
     <string name="pin_err_http">Server error (%1$s)</string>
+    <string name="unified_all">All</string>
+    <string name="unified_src_youtube">YouTube</string>
+    <string name="unified_src_sc">SoundCloud</string>
+    <string name="unified_src_ytm">YouTube Music</string>
 </resources>

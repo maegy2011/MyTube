@@ -646,4 +646,8 @@
     <string name="pin_err_empty">الملف الناتج فارغ</string>
     <string name="pin_err_io">خطأ شبكة أثناء الكتابة</string>
     <string name="pin_err_http">خطأ خادم (%1$s)</string>
+    <string name="unified_all">الكل</string>
+    <string name="unified_src_youtube">يوتيوب</string>
+    <string name="unified_src_sc">ساوندكلاود</string>
+    <string name="unified_src_ytm">يوتيوب ميوزك</string>
 </resources>

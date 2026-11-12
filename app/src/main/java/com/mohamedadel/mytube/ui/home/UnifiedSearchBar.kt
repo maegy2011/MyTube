@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.unified.SearchSource
@@ -38,6 +39,7 @@ fun UnifiedSearchBar(
     onClearRecents: () -> Unit = {},
     onDeleteRecent: (String) -> Unit = {},
     onVoice: () -> Unit = {},
+    showDropdown: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -47,10 +49,10 @@ fun UnifiedSearchBar(
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
-            SourceChip(label = "الكل", isSelected = selected == null, onClick = { onSelectSource(null) })
-            SourceChip(label = "YouTube", isSelected = selected == SearchSource.YOUTUBE, onClick = { onSelectSource(SearchSource.YOUTUBE) })
-            SourceChip(label = "SoundCloud", isSelected = selected == SearchSource.SOUNDCLoud, onClick = { onSelectSource(SearchSource.SOUNDCLoud) })
-            SourceChip(label = "YT Music", isSelected = selected == SearchSource.YTMUSIC, onClick = { onSelectSource(SearchSource.YTMUSIC) })
+            SourceChip(label = stringResource(R.string.unified_all), isSelected = selected == null, onClick = { onSelectSource(null) })
+            SourceChip(label = stringResource(R.string.unified_src_youtube), isSelected = selected == SearchSource.YOUTUBE, onClick = { onSelectSource(SearchSource.YOUTUBE) })
+            SourceChip(label = stringResource(R.string.unified_src_sc), isSelected = selected == SearchSource.SOUNDCLoud, onClick = { onSelectSource(SearchSource.SOUNDCLoud) })
+            SourceChip(label = stringResource(R.string.unified_src_ytm), isSelected = selected == SearchSource.YTMUSIC, onClick = { onSelectSource(SearchSource.YTMUSIC) })
         }
         SearchScreen(
             query = query,
@@ -59,7 +61,7 @@ fun UnifiedSearchBar(
             onSearch = onSearch,
             onClose = onClose,
             onClear = onClear,
-            showDropdown = true,
+            showDropdown = showDropdown,
             dropRecents = dropRecents,
             suggestions = suggestions,
             onPickSuggestion = onPickSuggestion,
