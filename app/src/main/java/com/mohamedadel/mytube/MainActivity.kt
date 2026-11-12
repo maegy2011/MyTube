@@ -3958,8 +3958,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     }
                 )
             }
-            // YouTube bottom nav: Home / Library / Settings. Hidden on watch screen, fullscreen, PiP, search.
-            if (!isInPip && !isFullscreen && !playerExpanded && !showSearch && !showSC) {
+            // YouTube bottom nav: Home / SC / Library / Settings. Hidden on watch screen, fullscreen, PiP, search.
+            // SC stays visible: it is a top-level tab with its own nav item, rendered inside Scaffold content.
+            if (!isInPip && !isFullscreen && !playerExpanded && !showSearch) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                     NavigationBarItem(
                         selected = !tabLibrary && !showSettings && !showSC,
