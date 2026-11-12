@@ -60,8 +60,12 @@ fun SearchScreen(
 ) {
     Column(modifier = (if (fillMax) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+            // Standalone (fillMax) has no back button: the header Up button (smartBack)
+            // already covers navigation. Embedded keeps its close button.
+            if (!fillMax) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                }
             }
             OutlinedTextField(
                 value = query,

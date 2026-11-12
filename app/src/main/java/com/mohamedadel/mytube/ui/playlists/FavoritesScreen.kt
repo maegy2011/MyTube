@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
@@ -63,9 +62,6 @@ fun FavoritesScreen(
     var favSort by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) } // 0 newest, 1 oldest, 2 title
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-            }
             Text(
                 if (items.isNotEmpty()) stringResource(R.string.fav_title_fmt, items.size) else stringResource(R.string.nav_favorites),
                 style = MaterialTheme.typography.headlineSmall,

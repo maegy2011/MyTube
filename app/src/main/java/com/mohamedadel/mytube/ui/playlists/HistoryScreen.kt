@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.History
@@ -77,9 +76,6 @@ fun HistoryScreen(
     val paged = remember(activeFlow) { activeFlow }.collectAsLazyPagingItems()
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-            }
             Text(
                 if (totalCount > 0) stringResource(R.string.hist_title_fmt, totalCount) else stringResource(R.string.nav_history),
                 style = MaterialTheme.typography.headlineSmall,

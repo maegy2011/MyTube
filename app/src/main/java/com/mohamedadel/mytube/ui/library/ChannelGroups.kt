@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
@@ -71,9 +70,6 @@ fun GroupsScreen(
     var deleteTarget by remember { mutableStateOf<ChannelGroupEntity?>(null) }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             Text(stringResource(R.string.groups_title), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             IconButton(onClick = { createName = ""; createOpen = true }) {
                 Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.group_create), tint = MaterialTheme.colorScheme.primary)
@@ -183,9 +179,6 @@ fun GroupDetailScreen(
     val subByUrl = remember(subscriptions) { subscriptions.associateBy { it.channelUrl } }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             Text(group.name, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             IconButton(onClick = { addOpen = true }) {
                 Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.group_add), tint = MaterialTheme.colorScheme.primary)

@@ -4551,7 +4551,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         videosLoading = channelScreenLoading,
                         isSubscribed = chUrl != null && subscriptions.any { it.channelUrl == chUrl },
                         onSubscribe = { toggleSubscription(chUrl, channelDetail?.name, channelDetail?.avatar) },
-                        onBack = { channelScreenUrl = null },
+                        onBack = { smartBack() },
                         onPlay = { playVideo(it, expand = true, forcePlay = true) },
                         onLongClick = { optionsFor = it },
                         isFav = { v -> v.favKey() in favoriteSet },
@@ -4875,7 +4875,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         pinBadges = pinBadges,
                         pinningKeys = pinningKeys,
                         progressOf = { k -> pinProgress[k] },
-                        onBack = { openRemote = null; openRemoteItems = emptyList() },
+                        onBack = { smartBack() },
                         onPlayAll = { list ->
                             results = list
                             queue = list
