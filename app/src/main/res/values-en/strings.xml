@@ -46,6 +46,11 @@
     <string name="err_io">Connection lost while loading — check the internet and retry.</string>
     <string name="search_action">Search</string>
     <string name="country_title">Content country (drives trending and search — manual choice only, no tracking)</string>
+    <string name="country_guard_title">Change content country?</string>
+    <string name="country_guard_msg">New country: %1$s. Switching clears cached trending and pages, then reloads the new lists. Continue?</string>
+    <string name="country_guard_apply">Clear and switch</string>
+    <string name="music_badge_label">Music</string>
+    <string name="music_badge_desc">Music content</string>
     <string name="data_note">My data (on this device only — fully erased if the app is deleted)</string>
     <string name="move_down">Move down</string>
     <string name="move_up">Move up</string>
@@ -445,6 +450,9 @@
     <string name="dl_total_fmt">Total: %.1f MB</string>
     <string name="dl_channel">Download progress</string>
     <string name="dl_progress_fmt">%d%%</string>
+    <string name="dl_pause">Pause</string>
+    <string name="dl_resume">Resume</string>
+    <string name="pin_paused">Paused — resume from Downloads</string>
     <string name="keepalive_channel">Battery-killer guard</string>
     <string name="keepalive_channel_desc">Low-importance ongoing notification keeping the app alive in background</string>
     <string name="keepalive_title">MyTube running in background</string>
@@ -599,6 +607,28 @@
     <string name="backup_import_fail">Invalid backup file</string>
     <string name="backup_desc">All playlists, favorites, history, subscriptions and settings in one file</string>
     <string name="update_desc">Compares your build against the latest GitHub Release</string>
+    <!-- mini-player 2026-11-12 (runtime layer): master switch + auto-show + swipe-to-dismiss (tap opens full player — fixed) -->
+    <string name="settings_sec_miniplayer">Mini-player</string>
+    <string name="mini_enabled">Enable mini-player</string>
+    <string name="mini_enabled_desc">Shows a mini bar above all screens except Settings — tapping it opens the full player</string>
+    <string name="mini_autoshow">Auto-show on play</string>
+    <string name="mini_autoshow_desc">When off, new playback opens the full player directly</string>
+    <string name="mini_swipe">Swipe to dismiss</string>
+    <string name="mini_swipe_desc">Swipe the mini bar left or right to close playback</string>
     <string name="autoplay_title">Autoplay</string>
     <string name="autoplay_desc">Auto-advance radio and queues when a track ends — off stops automatic advance</string>
+    <!-- notif 2026-11-12: bell + download-complete (runtime layer) -->
+    <string name="notif_title">Notifications</string>
+    <string name="notif_empty">Nothing new yet — new videos from your channels will show up here</string>
+    <string name="notif_refresh">Refresh</string>
+    <string name="notif_bell">Notifications — new videos from your channels</string>
+    <string name="pin_done_channel">Download complete</string>
+    <string name="pin_done_title">Download finished</string>
+    <string name="pin_fail_title">Download failed</string>
+    <string name="pin_fail_fmt">Reason: %1$s</string>
+    <string name="pin_err_unknown">Unknown reason — check connection and retry</string>
+    <string name="pin_err_short">Download cut off before finishing</string>
+    <string name="pin_err_empty">Resulting file is empty</string>
+    <string name="pin_err_io">Network error while writing</string>
+    <string name="pin_err_http">Server error (%1$s)</string>
 </resources>

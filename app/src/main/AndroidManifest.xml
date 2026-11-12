@@ -81,6 +81,8 @@
         </receiver>
         <!-- L6 (audit P2 2026-11-11): PiP play/pause + close actions (explicit intents only). -->
         <receiver android:name=".playback.PipActionReceiver" android:exported="false" />
+        <!-- pause/stop 2026-11-12: download notification Pause / Resume / Stop actions. -->
+        <receiver android:name=".playback.DownloadActionReceiver" android:exported="false" />
         <service
             android:name=".playback.PlaybackService"
             android:foregroundServiceType="mediaPlayback"

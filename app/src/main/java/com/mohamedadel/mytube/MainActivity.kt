@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Settings
@@ -103,6 +104,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.dash.DashMediaSource
 import com.mohamedadel.mytube.util.BROWSER_UA
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -120,6 +122,7 @@ import com.mohamedadel.mytube.ui.playlists.HistoryScreen
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
+import com.mohamedadel.mytube.ui.library.NotificationsScreen
 import com.mohamedadel.mytube.ui.library.FeedScreen
 import com.mohamedadel.mytube.ui.library.ChannelScreen
 import com.mohamedadel.mytube.ui.library.MusicHomeShelves
@@ -156,10 +159,13 @@ import com.mohamedadel.mytube.data.local.MIGRATION_5_6
 import com.mohamedadel.mytube.data.local.MIGRATION_6_7
 import com.mohamedadel.mytube.data.local.MIGRATION_7_8
 import com.mohamedadel.mytube.data.local.MIGRATION_8_9
+import com.mohamedadel.mytube.data.local.MIGRATION_9_10
 import com.mohamedadel.mytube.data.local.toHistory
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.local.toFavorite
 import com.mohamedadel.mytube.data.local.MyTubeDb
+import com.mohamedadel.mytube.data.local.NotifCenter
+import com.mohamedadel.mytube.data.local.NotificationItemEntity
 import com.mohamedadel.mytube.data.local.PlaylistEntity
 import com.mohamedadel.mytube.data.local.toEntity
 import com.mohamedadel.mytube.data.local.toVideoItem
@@ -200,11 +206,18 @@ private fun restartAppNow(activity: android.app.Activity) {
     try { kotlin.system.exitProcess(0) } catch (_: Exception) { }
 }
 
+// pin-deepfix 2026-11-11 (hoisted 2026-11-12): retry choices for the one fresh-resolve
+// retry in downloads. Was a local class inside MyTubeApp; hoisted to top level so
+// PinDownloadRunner (data/local) can reference it — the composable method sits at
+// the 64KB codegen limit and the download body had to move out (MethodTooLarge).
+data class PinRetry(val quality: String, val audioIdx: Int, val subIdxs: Set<Int>)
+
 class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     val pipMode = androidx.compose.runtime.mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
         pendingSharedIntent = intent
+        try { if (intent?.getBooleanExtra("mytube_expand_player", false) == true) expandPlayerRequest.value++ } catch (_: Exception) { }
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         // theme + ui-language prefs are read here (before composition) so they survive restarts;
@@ -243,11 +256,15 @@ class MainActivity : ComponentActivity() {
         // G-A1 (audit P2 2026-11-11): onCreate/onNewIntent park the shared/viewed intent here;
         // the composition consumes it once playVideo/doSearch are in scope.
         var pendingSharedIntent: android.content.Intent? = null
+        // 2026-11-12 (runtime fix 3b): media-notification tap = explicit tap → open player.
+        // State (not a plain counter) so composition re-fires on every tap.
+        var expandPlayerRequest = androidx.compose.runtime.mutableStateOf(0)
     }
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         try { setIntent(intent) } catch (_: Exception) { }
         pendingSharedIntent = intent
+        try { if (intent.getBooleanExtra("mytube_expand_player", false)) expandPlayerRequest.value++ } catch (_: Exception) { }
     }
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
@@ -391,6 +408,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var queueIndex by rememberSaveable { mutableStateOf(-1) }
     // full player vs mini player: back collapses (keeps audio), X closes (stops audio)
     var playerExpanded by rememberSaveable { mutableStateOf(false) }
+    // 2026-11-12 (runtime fix 3b): media-notification tap = explicit tap → open the player.
+    LaunchedEffect(MainActivity.expandPlayerRequest.value) {
+        if (MainActivity.expandPlayerRequest.value > 0) {
+            playerExpanded = true
+            MainActivity.expandPlayerRequest.value = 0
+        }
+    }
     // fullscreen experiment: native ExoPlayer controls only; follows device rotation via SENSOR
     var isFullscreen by remember { mutableStateOf(false) }
     var recentSearches by remember { mutableStateOf(listOf<String>()) }
@@ -423,7 +447,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // Release safety: destructive fallback ONLY in debug. A shipped schema change
         // without a written migration must crash loudly in testing, never wipe user data.
         val builder = Room.databaseBuilder(ctx.applicationContext, MyTubeDb::class.java, "mytube.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
         if (com.mohamedadel.mytube.BuildConfig.DEBUG) builder.fallbackToDestructiveMigration()
         builder.build()
     }
@@ -471,10 +495,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var prefAudioLang2 by remember { mutableStateOf("original") }
     // content country (manual only, no IP): drives search/trending region. "global" = YouTube default.
     var prefCountry by remember { mutableStateOf("EG") }
+    // Geo-switch cache guard (2026-11-12, runtime layer): the newly picked country
+    // waits here until the user confirms the cache-clear dialog; refuse = null
+    // (old value kept, no partial state), accept = caches cleared then applied.
+    var pendingCountry by remember { mutableStateOf<String?>(null) }
     // app theme: dark (default) | light (large-type friendly) | system
     var prefTheme by remember { mutableStateOf("dark") }
     var prefAccent by remember { mutableStateOf("red") }
     var prefPip by remember { mutableStateOf(true) }
+    // 2026-11-12 (runtime layer): mini-player options — master switch (default ON),
+    // auto-show on play (default ON), swipe-to-dismiss (default ON). Live-apply, no restart.
+    var prefMiniEnabled by remember { mutableStateOf(true) }
+    var prefMiniAutoshow by remember { mutableStateOf(true) }
+    var prefMiniSwipe by remember { mutableStateOf(true) }
     // Audio focus: "all" (pause on any interruption, ExoPlayer handles) vs "calls"
     // (ignore other apps, pause only for phone calls via telephony callback).
     var prefAf by remember { mutableStateOf("all") }
@@ -659,15 +692,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     var pinningKeys by remember { mutableStateOf(setOf<String>()) }
     // F5: in-flight download jobs for cancellation (Job.cancel + PinManager flag).
+    // (PinRetry hoisted to top level — see above.)
     val pinJobs = remember { java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>() }
-    fun cancelPinDownload(key: String) {
-        com.mohamedadel.mytube.data.local.PinManager.requestCancel(key)
-        try { pinJobs.remove(key)?.cancel() } catch (_: Exception) { }
-        try { android.widget.Toast.makeText(ctx, ctx.getString(R.string.cancel), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
-    }
-    // Download-manager state: live per-pin progress + manager screen + keepalive toggle.
     var pinProgress by remember { mutableStateOf(mapOf<String, Float>()) }
     var showDownloads by remember { mutableStateOf(false) }
+    // notif 2026-11-12: bell screen state + live badge count (runtime layer).
+    var showNotifications by remember { mutableStateOf(false) }
+    val notifications by remember { dao.observeNotifications() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val unreadCount by remember { dao.observeUnreadCount() }.collectAsStateWithLifecycle(initialValue = 0)
     var prefKeepalive by remember { mutableStateOf(false) }
     var prefAgeMode by remember { mutableStateOf("block") } // block | warn | allow
     var prefShowComments by remember { mutableStateOf(true) }
@@ -738,6 +770,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(prefCountry) } catch (_: Exception) { }
             prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
             prefPip = try { prefs.getBoolean("pref_pip", true) } catch (_: Exception) { true }
+            prefMiniEnabled = try { prefs.getBoolean("pref_mini_enabled", true) } catch (_: Exception) { true }
+            prefMiniAutoshow = try { prefs.getBoolean("pref_mini_autoshow", true) } catch (_: Exception) { true }
+            prefMiniSwipe = try { prefs.getBoolean("pref_mini_swipe", true) } catch (_: Exception) { true }
             prefAf = try { prefs.getString("pref_audiofocus", "all") ?: "all" } catch (_: Exception) { "all" }
             prefSb = try { prefs.getBoolean("pref_sponsorblock", false) } catch (_: Exception) { false }
             prefAccent = prefs.getString("pref_accent", "red") ?: "red"
@@ -1656,7 +1691,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
             } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
         }
-        if (hlsOnly && q == QUALITY_AUDIO_ONLY) {
+        // 2026-11-12 (runtime fix 1): livestreams expose NO progressive audio —
+        // only a single adaptive URL (NewPipe: getAudioStreams() is empty for lives).
+        // Auto-sniffing via setMediaItem misfires on extensionless googlevideo live
+        // pointers, so route explicitly: .mpd → DASH, everything else → HLS
+        // (NewPipe hands YouTube lives as HLS). Never cached (stale edge), never pinned
+        // (requestPin/quickPin refuse with err_pin_live).
+        if (s.isLive || q == "live") {
+            p.setMediaSource((if (url.lowercase().contains(".mpd")) DashMediaSource.Factory(explicitDsf(true)) else HlsMediaSource.Factory(explicitDsf(true))).createMediaSource(mediaItem))
+            p.prepare()
+        } else if (hlsOnly && q == QUALITY_AUDIO_ONLY) {
             p.setMediaSource(HlsMediaSource.Factory(explicitDsf(local)).createMediaSource(mediaItem))
             p.prepare()
         } else if (q == QUALITY_AUDIO_ONLY || selAudio == null || (isMuxed && !needExternalAudio)) {
@@ -1791,9 +1835,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // tap the mini player to expand. Explicit actions (play-now, queue-when-idle) pass
     // expand = true; queue advances preserve the current state.
     fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null, forcePlay: Boolean = false) {
+        // 2026-11-12 (runtime layer): mini-player prefs — a FRESH play (nothing was playing)
+        // opens the full player when the mini bar is disabled entirely (master OFF) or when
+        // auto-show is OFF, so playback stays reachable; track switches inside a live session
+        // keep the current expanded/collapsed state (no yanking on auto-advance).
+        val hadPlaying = playing != null
         playing = v
         recordHistory(v)
         if (expand) playerExpanded = true
+        else if (!hadPlaying && (!prefMiniEnabled || !prefMiniAutoshow)) playerExpanded = true
         if (!inQueue) {
             // single tap: this video alone is the queue (no implicit follow-up)
             queue = listOf(v)
@@ -2268,13 +2318,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         q.add(at.coerceIn(0, q.size), v)
         queue = q
         toast(ctx.getString(R.string.toast_added_queue))
-        if (playing == null) { queueIndex = 0; playVideo(v, inQueue = true, expand = true) }
+        if (playing == null) { queueIndex = 0; playVideo(v, inQueue = true, expand = true, forcePlay = true) }
     }
     fun enqueueLast(v: VideoItem) {
         if (isQueued(v)) { toast(ctx.getString(R.string.toast_already_queued)); return }
         queue = queue + v
         toast(ctx.getString(R.string.toast_added_queue))
-        if (playing == null) playVideo(v, inQueue = true, expand = true)
+        if (playing == null) playVideo(v, inQueue = true, expand = true, forcePlay = true)
     }
     fun modeLabel(m: String): String = when (m) {
         "repeatAll" -> ctx.getString(R.string.mode_repeat_all)
@@ -2940,6 +2990,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             pats.firstNotNullOfOrNull { r -> r.find(t)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } }
         } catch (_: Exception) { null }
     }
+    fun openPinned(key: String) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val row = try { dao.observePins().first().firstOrNull { it.videoKey == key } } catch (_: Exception) { null }
+                if (row == null) { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                val v = com.mohamedadel.mytube.data.youtube.VideoItem(
+                    id = row.videoId, title = row.title, channel = row.channel, url = row.url
+                )
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    playVideo(v, inQueue = false, expand = true, forcePlay = true)
+                }
+            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
+        }
+    }
     fun handleSharedIntent(inc: android.content.Intent) {
         try {
             val action = inc.action
@@ -2953,7 +3017,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val vid = extractYoutubeId(text)
             if (vid != null) {
                 val url = "https://www.youtube.com/watch?v=" + vid
-                playVideo(VideoItem(id = vid, url = url, title = text.take(120)), inQueue = false, expand = true)
+                playVideo(VideoItem(id = vid, url = url, title = text.take(120)), inQueue = false, expand = true, forcePlay = true)
             } else {
                 doSearch(text.take(200))
             }
@@ -2967,6 +3031,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             if (inc != null) {
                 val a = inc.action
                 if (a == android.content.Intent.ACTION_SEND || a == android.content.Intent.ACTION_VIEW) handleSharedIntent(inc)
+                // notif 2026-11-12: download-complete tap deep-links straight to the player.
+                else if (a == "com.mohamedadel.mytube.OPEN_PIN") {
+                    val k = try { inc.getStringExtra(com.mohamedadel.mytube.data.local.NotifCenter.EXTRA_PIN_KEY) } catch (_: Exception) { null }
+                    if (!k.isNullOrBlank()) openPinned(k)
+                }
             }
         }
     }
@@ -3251,8 +3320,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     } while (added)
                     mixed
                 }
+                // notif 2026-11-12: store newly seen items (Room + read flag; bell badge).
+                try { com.mohamedadel.mytube.data.local.NotifCenter.recordFresh(dao, all) } catch (_: Exception) { }
             } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_feed_fail)) }
             feedLoading = false
+        }
+    }
+    // Geo-switch ACCEPT path (2026-11-12, runtime layer): a plain (non-composable)
+    // local fun declared after refreshTrending/refreshFeed (Kotlin locals: no forward
+    // refs) and before SettingsPane. Refuse path never calls this — old kept.
+    fun confirmCountrySwitch(v: String) {
+        pendingCountry = null
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { com.mohamedadel.mytube.playback.MediaCache.clear(ctx.applicationContext) } catch (_: Exception) { }
+            try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.clearCaches() } catch (_: Exception) { }
+            try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                prefCountry = v
+                try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
+                try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(v, prefUiLang) } catch (_: Exception) { }
+                // L7 (audit P2 2026-11-11): reload both surfaces + announce.
+                refreshTrending()
+                refreshFeed()
+                toast(ctx.getString(R.string.region_changed))
+            } } catch (_: Exception) { }
         }
     }
     fun openGroupFeed(g: com.mohamedadel.mytube.data.local.ChannelGroupEntity, urls: Set<String>) {
@@ -3267,7 +3357,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // pin-deepfix 2026-11-11: retry choices for the one fresh-resolve retry in runPinDownload
     // (googlevideo URLs expire — a stale plan fails even on good networks).
-    data class PinRetry(val quality: String, val audioIdx: Int, val subIdxs: Set<Int>)
     // requestPin: player context passes resolved sd+selection (no re-resolve); list context resolves first.
     fun requestPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?, q: String?, aIdx: Int?, sIdxs: Set<Int>?) {
         if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
@@ -3314,94 +3403,62 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             finally { pinningKeys = pinningKeys - key }
         }
     }
-    fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String, alreadyAdded: Boolean = false, retry: PinRetry? = null) {
-        // F6: callers that added the key optimistically (quickPin) skip the re-add, not the guard.
-        if (pinningKeys.contains(key) && !alreadyAdded) { toast(ctx.getString(R.string.pinning)); return }
-        if (!alreadyAdded) pinningKeys = pinningKeys + key
-        val title = v.title
-        // F5: track the job so DownloadsScreen can cancel it mid-flight (box: the launch
-        // body references the job itself, which a plain val cannot do in its own initializer).
-        val dlJobBox = arrayOfNulls<kotlinx.coroutines.Job>(1)
-        dlJobBox[0] = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                // Storage-permission fix: app-specific dirs need NO runtime permission, but the
-                // external root can be unmounted/missing — fall back to internal LOUDLY, not silently.
-                try {
-                    val pf = com.mohamedadel.mytube.data.local.PinFiles
-                    if (pf.isCurrentLocBroken(ctx.applicationContext)) {
-                        try { prefs.edit().putString("pref_pin_location", "internal").apply() } catch (_: Exception) { }
-                        uiToast(ctx.getString(R.string.pin_ext_fallback))
-                    }
-                    // Free-space guard: refuse early with a clear message instead of a mid-write fail.
-                    val need = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl) + plan.subs.drop(1).map { it.url })
-                    // 2026-11-12 (runtime fix): free bytes on the ACTUAL chosen pin root
-                    // (pinSelLoc) — default-root query read 0 on fresh installs (missing
-                    // travel dir) and cried "no space" though space exists. -1 = unknown = skip.
-                    val free = pf.freeBytes(ctx.applicationContext, pinSelLoc)
-                    if (need > 0 && free >= 0 && need > free) {
-                        uiToast(ctx.getString(R.string.pin_no_space)); return@launch
-                    }
-                } catch (_: Exception) { }
-                val app = ctx.applicationContext
-                val nm = try { app.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager } catch (_: Exception) { null }
-                val dlChannel = "mytube_downloads"
-                try {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        nm?.createNotificationChannel(android.app.NotificationChannel(dlChannel, ctx.getString(R.string.dl_channel), android.app.NotificationManager.IMPORTANCE_LOW))
-                    }
-                } catch (_: Exception) { }
-                val notifId = 2000 + (key.hashCode() and 0xFFF)
-                val progCb: (Long, Long) -> Unit = { done, total ->
-                    val frac = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else -1f
-                    try { pinProgress = pinProgress + (key to frac) } catch (_: Exception) { }
-                    try {
-                        val b = androidx.core.app.NotificationCompat.Builder(app, dlChannel)
-                            .setSmallIcon(android.R.drawable.stat_sys_download)
-                            .setContentTitle(title ?: ctx.getString(R.string.dl_title))
-                            .setOngoing(true).setOnlyAlertOnce(true)
-                        if (frac >= 0) b.setProgress(100, (frac * 100).toInt(), false)
-                            .setContentText(ctx.getString(R.string.dl_progress_fmt, (frac * 100).toInt()))
-                        else b.setProgress(0, 0, true).setContentText(ctx.getString(R.string.pinning))
-                        nm?.notify(notifId, b.build())
-                    } catch (_: Exception) { }
-                }
-                var size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, v, plan, progCb)
-                // pin-deepfix: one fresh-resolve retry — signed googlevideo URLs expire, so a stale
-                // plan fails even on a good network. Rebuild from a fresh resolve with the same choices.
-                if (size < 0 && retry != null && !com.mohamedadel.mytube.data.local.PinManager.isCancelRequested(key)) {
-                    try {
-                        val fresh = v.url?.let { YouTubeRepo.streamRouted(it) }
-                        if (fresh != null && !fresh.audioHlsOnly &&
-                            (fresh.audioLowestUrl != null || fresh.videoUrlByQuality.isNotEmpty())) {
-                            val rebuilt = com.mohamedadel.mytube.data.local.PinManager.buildPlan(
-                                fresh, retry.quality, retry.audioIdx, retry.subIdxs,
-                                ctx.estimatedDownstreamKbps(), maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
-                            if (rebuilt != null) {
-                                size = com.mohamedadel.mytube.data.local.PinManager.downloadPin(app, dao, v, rebuilt, progCb)
-                            }
-                        }
-                    } catch (_: Exception) { }
-                }
-                try { pinProgress = pinProgress - key } catch (_: Exception) { }
-                try { nm?.cancel(notifId) } catch (_: Exception) { }
-                // pin-deepfix: a user-cancelled pin is not a failure — stay silent
-                // (cancelPinDownload already toasted). Clear the consumed flag.
-                if (com.mohamedadel.mytube.data.local.PinManager.isCancelRequested(key)) {
-                    try { com.mohamedadel.mytube.data.local.PinManager.consumeCancel(key) } catch (_: Exception) { }
-                }
-                else if (size >= 0) uiToast(ctx.getString(R.string.toast_pin_done))
-                else uiToast(ctx.getString(R.string.toast_pin_fail))
-            } catch (ce: kotlinx.coroutines.CancellationException) {
-                // pin-deepfix: job-cancel path of cancelPinDownload — silent, then propagate.
-                try { pinProgress = pinProgress - key } catch (_: Exception) { }
-                try { com.mohamedadel.mytube.data.local.PinManager.consumeCancel(key) } catch (_: Exception) { }
-                throw ce
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
-            finally { pinningKeys = pinningKeys - key; try { val j = dlJobBox[0]; if (j != null) pinJobs.remove(key, j) } catch (_: Exception) { } }
-        }
-        try { dlJobBox[0]?.let { pinJobs[key] = it } } catch (_: Exception) { }
+    // pause/stop 2026-11-12: paused keys (job ended, staging kept for Range resume) +
+    // stored plans so resume re-enters without re-resolving (single pinProgress source kept).
+    var pausedKeys by remember { mutableStateOf(setOf<String>()) }
+    val pinPlans = remember { java.util.concurrent.ConcurrentHashMap<String, Triple<com.mohamedadel.mytube.data.youtube.VideoItem, com.mohamedadel.mytube.data.local.PinManager.PinPlan, PinRetry?>>() }
+    // pause/stop 2026-11-12: download-job execution lives in PinDownloadRunner
+    // (data/local) — this composable method sits at the 64KB codegen limit and the
+    // inline body broke compileDebugKotlin (MethodTooLargeException). Thin
+    // forwarders only; every existing call site is untouched.
+    fun pinDeps(): com.mohamedadel.mytube.data.local.PinDownloadRunner.Deps =
+        com.mohamedadel.mytube.data.local.PinDownloadRunner.Deps(
+            scope = scope, act = ctx, app = ctx.applicationContext, dao = dao, prefs = prefs,
+            pinJobs = pinJobs, pinPlans = pinPlans,
+            pinSelLoc = pinSelLoc, allow4k = prefAllow4k,
+            kbps = { ctx.estimatedDownstreamKbps() },
+            uiToast = { m -> uiToast(m) },
+            isPinning = { k -> pinningKeys.contains(k) },
+            addPinning = { k -> pinningKeys = pinningKeys + k },
+            removePinning = { k -> pinningKeys = pinningKeys - k },
+            isPausedKey = { k -> pausedKeys.contains(k) },
+            addPaused = { k -> pausedKeys = pausedKeys + k },
+            removePaused = { k -> pausedKeys = pausedKeys - k },
+            setProgress = { k, f -> try { pinProgress = if (f == null) pinProgress - k else pinProgress + (k to f) } catch (_: Exception) { } }
+        )
+    fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String, alreadyAdded: Boolean = false, retry: PinRetry? = null, resume: Boolean = false) =
+        com.mohamedadel.mytube.data.local.PinDownloadRunner.run(v, plan, key, alreadyAdded, retry, resume, pinDeps())
+    // notif 2026-11-12: POST_NOTIFICATIONS at pin time (API33+) so the terminal
+    // download notification is visible even if the launch-time grant was skipped.
+    // PAUSE: suspends the OkHttp stream (flag; the loop exits at the next 256KB chunk),
+    // keeps staging (.part byte counts = persisted resume offsets) + frozen progress.
+    fun pausePinDownload(key: String) =
+        com.mohamedadel.mytube.data.local.PinDownloadRunner.pause(key, pinDeps())
+    // RESUME: re-enters runPinDownload with resume=true — staging kept, Range continues.
+    fun resumePinDownload(key: String) =
+        com.mohamedadel.mytube.data.local.PinDownloadRunner.resume(key, pinDeps())
+    // STOP: aborts the job, wipes the partial file + temp meta (staging), clears every
+    // tracking key, dismisses the notification — and shows ONLY the cancel toast
+    // (runPinDownload stays silent on the cancel path, no false-failure toast).
+    fun cancelPinDownload(key: String) =
+        com.mohamedadel.mytube.data.local.PinDownloadRunner.stop(key, pinDeps())
+    // Notification Pause / Resume / Stop taps land here (same process static registry).
+    try {
+        com.mohamedadel.mytube.playback.DownloadActions.onPause = { k -> pausePinDownload(k) }
+        com.mohamedadel.mytube.playback.DownloadActions.onResume = { k -> resumePinDownload(k) }
+        com.mohamedadel.mytube.playback.DownloadActions.onStop = { k -> cancelPinDownload(k) }
+    } catch (_: Exception) { }
+    // Download-manager state: live per-pin progress + manager screen + keepalive toggle.
+    fun ensurePinNotifPerm() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } catch (_: Exception) { }
     }
     fun confirmPin() {
+        ensurePinNotifPerm()
         val pc = pinConfirm ?: return
         val sd = pinSd
         val key = pc.v.favKey()
@@ -3424,6 +3481,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Quick pin: one tap, no dialog. Replays the last confirmed choices (quality + subtitle set
     // + location pref); falls back to the same smart defaults as the dialog.
     fun quickPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?) {
+        ensurePinNotifPerm()
         if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
             toast(ctx.getString(R.string.err_pin_live)); return
         }
@@ -3482,6 +3540,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     androidx.compose.runtime.LaunchedEffect(showDownloads, pinKeys) { if (showDownloads) refreshOrphans() }
+    // notif 2026-11-12: opening the screen marks everything read (badge clears).
+    androidx.compose.runtime.LaunchedEffect(showNotifications) {
+        if (showNotifications) { try { dao.markAllNotificationsRead() } catch (_: Exception) { } }
+    }
     fun clearAllPins() {
         try {
             val cur = playing?.favKey()
@@ -3508,6 +3570,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     fun smartBack(): Boolean {
+        if (showNotifications) {
+            showNotifications = false
+            return true
+        }
         if (openGroup != null) {
             openGroup = null
             showGroups = true
@@ -3607,7 +3673,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         return false
     }
-    BackHandler(enabled = showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showDownloads || showGroups || openGroup != null || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
+    BackHandler(enabled = showNotifications || showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showDownloads || showGroups || openGroup != null || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
         // Full-screen solid red splash (same red as the system splash background).
@@ -3662,14 +3728,209 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         showSC = true
     }
     val tabLibrary = showLibrary || showFavorites || showHistory || showPlaylists
+    // method-size 2026-11-12: header region (battery banner + compact header +
+    // standalone search) out of the Scaffold content lambda — same local-fun trick as
+    // PlayerPane/SettingsPane. Pure move, zero behavior change.
+    @Composable
+    fun ContentHeader() {
+        // Battery-exemption banner: visible only while the exemption is missing (never in fullscreen)
+        if (!isFullscreen && !batteryExempt) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.errorContainer
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(R.string.battery_banner),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.Button(onClick = { ensureBatteryExemption() }) {
+                        Text(stringResource(R.string.allow))
+                    }
+                }
+            }
+        }
+        // Search + suggestions are hidden in fullscreen: they stole vertical space and
+        // squeezed the video to "app size" instead of true fullscreen.
+        if (!isFullscreen) {
+        // Compact header: nav + logo + search icon only (YouTube-style).
+        // Tapping search opens a standalone search screen; the inline field is gone.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 2026-11-12 (runtime fix): hierarchical Up on EVERY non-root screen —
+            // pops the nav stack via smartBack(), never jumps home. Root = home feed
+            // with nothing playing and no results. Mirrors the BackHandler enable set.
+            val canGoBack = showNotifications || playerExpanded || playing != null || showPlaylists || showSettings || showSearch || showLibrary || results.isNotEmpty() || showFeed || showDownloads || showFavorites || showHistory || showSC || channelScreenUrl != null || showQueue || showGroups || openGroup != null || openRemote != null || showLocal || openPlaylistId != null
+            if (canGoBack) {
+                IconButton(onClick = { smartBack() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                }
+            }
+            Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.weight(1f))
+            // notif 2026-11-12: bell with unread badge -> Notifications screen.
+            androidx.compose.material3.BadgedBox(
+                badge = { if (unreadCount > 0) androidx.compose.material3.Badge { Text(if (unreadCount > 99) "99+" else unreadCount.toString()) } }
+            ) {
+                IconButton(onClick = { showNotifications = true }) {
+                    Icon(Icons.Rounded.Notifications, contentDescription = stringResource(R.string.notif_bell))
+                }
+            }
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+            }
+            IconButton(onClick = { showSearch = true; showSuggestions = true }) {
+                Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.search_action))
+            }
+        }
+        // Standalone search screen: full search UI lives here, results stay in the main list.
+        // The suggestions dropdown lives INSIDE it (it used to sit below this fillMaxSize
+        // column, invisible while typing, flashing only after submit).
+        val dropRecents = if (query.isBlank()) recentSearches else recentSearches.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
+        if (showSearch) {
+            SearchScreen(
+                query = query,
+                loading = loading,
+                onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
+                onSearch = { q -> doSearch(q); showSearch = false },
+                onClose = { showSearch = false },
+                onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false },
+                showDropdown = showSuggestions,
+                dropRecents = dropRecents,
+                suggestions = suggestions,
+                onPickSuggestion = { q -> query = q; svm.onQueryChange(q); showSearch = false; doSearch(q) },
+                onVoice = { startVoiceSearch() },
+                onClearRecents = {
+                    recentSearches = emptyList()
+                    try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
+                }
+            )
+        }
+
+        }
+    }
+
+    // 2026-11-12 (compile fix): the Scaffold content lambda breached the 64KB JVM
+    // method limit (Method too large). This branch moves to a local @Composable —
+    // captures stay implicit, no signature churn, no behavior change.
+    @Composable
+    fun PlaylistsRoute() {
+        PlaylistsScreen(
+                            playlists = playlists,
+                            openId = openPlaylistId,
+                            items = openItems,
+                            onOpen = { openPlaylistId = it },
+                            onCloseItems = { openPlaylistId = null },
+                            onPlayAll = { pid ->
+                                scope.launch {
+                                    val rows = dao.itemsOnce(pid)
+                                    if (rows.isNotEmpty()) {
+                                        showPlaylists = false
+                                        openPlaylistId = null
+                                        val list = rows.map { it.toVideoItem() }
+                                        results = list
+                                        queue = list
+                                        currentQuery = ""
+                                        radioOn = false
+                                        videoModeQueue = playlists.firstOrNull { it.id == pid }?.mode == "video"
+                                        playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
+                                    }
+                                }
+                            },
+                            onPlayFrom = { idx ->
+                                val list = openItems.map { it.toVideoItem() }
+                                if (idx in list.indices) {
+                                    showPlaylists = false
+                                    results = list
+                                    queue = list
+                                    currentQuery = ""
+                                    radioOn = false
+                                    videoModeQueue = playlists.firstOrNull { it.id == openPlaylistId }?.mode == "video"
+                                    playVideo(list[idx], inQueue = true, expand = true, forcePlay = true)
+                                }
+                            },
+                            onCreate = { name, emoji ->
+                                scope.launch { dao.insertPlaylist(PlaylistEntity(name = name, emoji = emoji)) }
+                            },
+                            onSaveEdits = { pid, name, emoji, mode, orderedIds ->
+                                scope.launch {
+                                    try {
+                                        dao.savePlaylistEdits(pid, name, emoji, mode, orderedIds)
+                                        toast(ctx.getString(R.string.toast_playlist_saved))
+                                    } catch (_: Exception) { toast(ctx.getString(R.string.toast_playlist_save_fail)) }
+                                }
+                            },
+                            onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
+                            onClearItems = { pid -> scope.launch { dao.clearPlaylist(pid) } },
+                            onMoveToPlaylist = { pid, iid, targetPid ->
+                                scope.launch {
+                                    try {
+                                        val row = dao.itemsOnce(pid).firstOrNull { it.id == iid }
+                                        if (row == null) { toast(ctx.getString(R.string.toast_move_fail)); return@launch }
+                                        val v = VideoItem(id = row.videoId, title = row.title, channel = row.channel, thumbnail = row.thumbnail, durationSec = row.durationSec, viewCount = row.viewCount, url = row.url)
+                                        val key = v.favKey()
+                                        val exists = dao.itemsOnce(targetPid).any { e ->
+                                            VideoItem(id = e.videoId, title = e.title, channel = e.channel, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == key
+                                        }
+                                        if (exists) { toast(ctx.getString(R.string.toast_already_target)) }
+                                        else {
+                                            dao.insertItems(listOf(v.toEntity(targetPid, dao.itemCount(targetPid))))
+                                            dao.deleteItem(pid, iid)
+                                            toast(ctx.getString(R.string.toast_moved))
+                                        }
+                                    } catch (_: Exception) { toast(ctx.getString(R.string.toast_move_fail)) }
+                                }
+                            },
+                            // 2026-11-12 (runtime fix): hierarchical pop via smartBack — the old
+                            // inline close dropped fromLibrary and landed on home instead of Library.
+                            onBack = { smartBack() },
+                            pinBadges = pinBadges,
+                            onLongClick = { optionsFor = it },
+                            covers = plCovers,
+                            onQueueItems = { sel ->
+                                val fresh = sel.map { it.toVideoItem() }.filter { !isQueued(it) }
+                                if (fresh.isNotEmpty()) {
+                                    queue = queue + fresh
+                                    if (playing == null) playVideo(fresh[0], inQueue = true)
+                                }
+                            },
+                            onPinItems = { vs -> scope.launch { for (v in vs) { try { quickPin(v, null) } catch (_: Exception) { } } } },
+                            onRemoveItems = { pid, ids -> scope.launch { try { dao.deleteItems(pid, ids) } catch (_: Exception) { } } },
+                            onExport = { pid -> exportPlaylistCsv(pid) },
+                            // screens-fix Library P1-L4: CSV import entry.
+                            onImport = { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } },
+                            tabSort = plTabSort,
+                            onTabSort = { v -> plTabSort = v; try { prefs.edit().putString("pl_tab_sort", v).apply() } catch (_: Exception) { } },
+                            songSort = plSongSort,
+                            onSongSort = { v ->
+                                plSongSort = v
+                                try { openPlaylistId?.let { prefs.edit().putString("pl_sort_" + it, v).apply() } } catch (_: Exception) { }
+                            }
+        )
+    }
+
     Scaffold(
         topBar = { },
         bottomBar = {
             // Mini-player above the bottom nav (YouTube order): Scaffold layering keeps
             // this bar above ALL destinations except Settings (2026-11-12 runtime fix).
-            if (!isInPip && !isFullscreen && playing != null && !playerExpanded && !showSettings) {
+            // Surfaces allowlist (standing rule): Home/Search/Music/Library/Downloads/Queue/
+            // Notifications/Player(collapsed)/Channel/Remote/LocalAudio — everything rendered
+            // inside this Scaffold's content. Excluded: Settings screen, fullscreen video,
+            // expanded player, PiP (system-provided mini UI). Master switch pref_mini_enabled.
+            if (!isInPip && !isFullscreen && prefMiniEnabled && playing != null && !playerExpanded && !showSettings) {
                 MiniPlayer(
                     video = playing!!,
+                    swipeEnabled = prefMiniSwipe,
                     titleOverride = translatedTitle,
                     isPlaying = isPlaying,
                     positionMs = playerPositionMs,
@@ -3749,82 +4010,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             }
         } else {
         Column(Modifier.padding(pad).fillMaxSize()) {
-            // Battery-exemption banner: visible only while the exemption is missing (never in fullscreen)
-            if (!isFullscreen && !batteryExempt) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.errorContainer
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(R.string.battery_banner),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        androidx.compose.material3.Button(onClick = { ensureBatteryExemption() }) {
-                            Text(stringResource(R.string.allow))
-                        }
-                    }
-                }
-            }
-            // Search + suggestions are hidden in fullscreen: they stole vertical space and
-            // squeezed the video to "app size" instead of true fullscreen.
-            if (!isFullscreen) {
-            // Compact header: nav + logo + search icon only (YouTube-style).
-            // Tapping search opens a standalone search screen; the inline field is gone.
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 2026-11-12 (runtime fix): hierarchical Up on EVERY non-root screen —
-                // pops the nav stack via smartBack(), never jumps home. Root = home feed
-                // with nothing playing and no results. Mirrors the BackHandler enable set.
-                val canGoBack = playerExpanded || playing != null || showPlaylists || showSettings || showSearch || showLibrary || results.isNotEmpty() || showFeed || showDownloads || showFavorites || showHistory || showSC || channelScreenUrl != null || showQueue || showGroups || openGroup != null || openRemote != null || showLocal || openPlaylistId != null
-                if (canGoBack) {
-                    IconButton(onClick = { smartBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                }
-                Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(30.dp))
-                Spacer(Modifier.weight(1f))
-                if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = { showSearch = true; showSuggestions = true }) {
-                    Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.search_action))
-                }
-            }
-            // Standalone search screen: full search UI lives here, results stay in the main list.
-            // The suggestions dropdown lives INSIDE it (it used to sit below this fillMaxSize
-            // column, invisible while typing, flashing only after submit).
-            val dropRecents = if (query.isBlank()) recentSearches else recentSearches.filter { r -> r.contains(query, ignoreCase = true) && !suggestions.contains(r) }
-            if (showSearch) {
-                SearchScreen(
-                    query = query,
-                    loading = loading,
-                    onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
-                    onSearch = { q -> doSearch(q); showSearch = false },
-                    onClose = { showSearch = false },
-                    onClear = { query = ""; svm.onQueryChange(""); showSuggestions = false },
-                    showDropdown = showSuggestions,
-                    dropRecents = dropRecents,
-                    suggestions = suggestions,
-                    onPickSuggestion = { q -> query = q; svm.onQueryChange(q); showSearch = false; doSearch(q) },
-                    onVoice = { startVoiceSearch() },
-                    onClearRecents = {
-                        recentSearches = emptyList()
-                        try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
-                    }
-                )
-            }
-
-            }
+            ContentHeader()
 
             val cur = playing
             if (cur != null && (playerExpanded || isFullscreen)) {
@@ -3938,7 +4124,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     isLive = streamData?.isLive == true,
                     // Fix: chapter tap starts playback too — seeking a never-started player left silence.
                     onChapterSeek = { pos -> try { player?.seekTo(pos); playerError = null; player?.play() } catch (_: Exception) { } },
-                    onRelatedPlay = { rv -> playVideo(rv) },
+                    onRelatedPlay = { rv -> playVideo(rv, forcePlay = true) },
                     isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
                     isPinned = pinKeys.contains(cur.favKey()),
                     isPinning = pinningKeys.contains(cur.favKey()),
@@ -4060,15 +4246,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         try { prefs.edit().putString("pref_audio_lang2", v).apply() } catch (_: Exception) { }
                         audioTrackIdx = pickAudioIdx()
                     },
-                    onCountry = { v ->
-                        prefCountry = v
-                        try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
-                        try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(v, prefUiLang) } catch (_: Exception) { }
-                        // L7 (audit P2 2026-11-11): stale region results are invisible — reload both surfaces + announce.
-                        refreshTrending()
-                        refreshFeed()
-                        toast(ctx.getString(R.string.region_changed))
-                    },
+                    // Geo-switch cache guard (2026-11-12): NEVER apply directly — stage
+                    // the pick and show the mandatory cache-clear dialog instead.
+                    onCountry = { v -> if (v != prefCountry) pendingCountry = v },
                     onQuality = { v ->
                         prefQuality = v
                         try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
@@ -4091,6 +4271,25 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onAutoplay = { v ->
                         prefAutoplay = v
                         try { prefs.edit().putBoolean("pref_autoplay", v).apply() } catch (_: Exception) { }
+                    },
+                    // 2026-11-12 (runtime layer): mini-player options, live-apply (no restart).
+                    miniEnabled = prefMiniEnabled,
+                    onMiniEnabled = { v ->
+                        prefMiniEnabled = v
+                        try { prefs.edit().putBoolean("pref_mini_enabled", v).apply() } catch (_: Exception) { }
+                        // turning the bar off while collapsed strands playback behind no UI —
+                        // open the full player so it stays reachable (same as autoshow-OFF rule).
+                        if (!v && playing != null && !playerExpanded) playerExpanded = true
+                    },
+                    miniAutoshow = prefMiniAutoshow,
+                    onMiniAutoshow = { v ->
+                        prefMiniAutoshow = v
+                        try { prefs.edit().putBoolean("pref_mini_autoshow", v).apply() } catch (_: Exception) { }
+                    },
+                    miniSwipe = prefMiniSwipe,
+                    onMiniSwipe = { v ->
+                        prefMiniSwipe = v
+                        try { prefs.edit().putBoolean("pref_mini_swipe", v).apply() } catch (_: Exception) { }
                     },
                     afMode = prefAf,
                     onAf = { v ->
@@ -4325,6 +4524,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         } catch (_: Exception) { }
                     }
                 )
+                // Geo-switch cache guard dialog (2026-11-12, runtime layer): mandatory
+                // confirmation before a content-country switch. REFUSE (dismiss/cancel)
+                // keeps the OLD country — prefCountry untouched, no partial state.
+                // ACCEPT clears extractor + page caches, then applies + reloads.
+                // Extracted to CountryGuardDialog: this host method is at the 64KB limit.
+                val pending = pendingCountry
+                if (pending != null) {
+                    com.mohamedadel.mytube.ui.settings.CountryGuardDialog(
+                        pending = pending,
+                        pendingName = com.mohamedadel.mytube.ui.settings.COUNTRY_OPTIONS.firstOrNull { it.first == pending }?.second?.let { ctx.getString(it) } ?: pending,
+                        onDismiss = { pendingCountry = null },
+                        onConfirm = { v -> confirmCountrySwitch(v) }
+                    )
+                }
             }
 
             when {
@@ -4338,7 +4551,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         isSubscribed = chUrl != null && subscriptions.any { it.channelUrl == chUrl },
                         onSubscribe = { toggleSubscription(chUrl, channelDetail?.name, channelDetail?.avatar) },
                         onBack = { channelScreenUrl = null },
-                        onPlay = { playVideo(it) },
+                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
                         onLongClick = { optionsFor = it },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
@@ -4366,12 +4579,22 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 val m = queue.toMutableList()
                                 val t = m[idx]; m[idx] = m[j]; m[j] = t
                                 queue = m
-                                queueIndex = m.indexOfFirst { it.id == playing?.id || (it.url != null && it.url == playing?.url) }
+                                // 2026-11-12 (runtime fix 3): canonical key (F11) — id/url matching
+                                // let dupes slip the position after reorder.
+                                queueIndex = m.indexOfFirst { it.favKey() == playing?.favKey() }
                             }
                         },
                         onRemove = { idx ->
                             if (idx in queue.indices) {
                                 queue = queue.toMutableList().also { it.removeAt(idx) }
+                                // 2026-11-12 (runtime fix 3): keep the index glued to the
+                                // playing item after a removal ahead of it (was: stale index
+                                // → next/prev + prefetch pointed at the wrong item).
+                                if (queue.isEmpty()) queueIndex = -1
+                                else {
+                                    if (idx < queueIndex) queueIndex--
+                                    queueIndex = queueIndex.coerceIn(0, queue.size - 1)
+                                }
                             }
                         },
                         // Deferred item 3: swipe-to-remove Undo re-inserts at the original index.
@@ -4379,7 +4602,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             val at = idx.coerceIn(0, queue.size)
                             queue = queue.toMutableList().also { it.add(at, v) }
                         },
-                        onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true) },
+                        onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true, expand = true, forcePlay = true) },
                         onOptions = { optionsFor = it },
                         // pin-deepfix 2026-11-11: badges + live % in queue rows.
                         pinBadges = pinBadges,
@@ -4432,7 +4655,21 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         feedCounts = feedCounts,
                         onOpenChannel = { url -> openChannel(url) },
                         topPlayed = topPlayedHome,
-                        onPlayTop = { v -> playVideo(v) }
+                        onPlayTop = { v -> playVideo(v, expand = true, forcePlay = true) }
+                    )
+                }
+                showNotifications -> {
+                    NotificationsScreen(
+                        items = notifications,
+                        loading = feedLoading,
+                        onRefresh = { refreshFeed() },
+                        onPlay = { n ->
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try { dao.markNotificationRead(n.videoKey) } catch (_: Exception) { }
+                            }
+                            // Tapping a notification IS an explicit tap -> forcePlay allowed.
+                            playVideo(with(NotifCenter) { n.toVideoItem() }, inQueue = false, expand = true, forcePlay = true)
+                        }
                     )
                 }
                 showDownloads -> {
@@ -4442,10 +4679,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         pinningKeys = pinningKeys,
                         progressMap = pinProgress,
                         thumbLookup = { k -> try { history.firstOrNull { it.videoKey == k }?.thumbnail } catch (_: Exception) { null } },
-                        onPlay = { v -> showDownloads = false; playVideo(v) },
+                        onPlay = { v -> showDownloads = false; playVideo(v, expand = true, forcePlay = true) },
                         onDelete = { k -> doUnpin(k) },
                         onClearAll = { clearAllPins() },
                         onCancel = { k -> cancelPinDownload(k) },
+                        pausedKeys = pausedKeys,
+                        onPause = { k -> pausePinDownload(k) },
+                        onResume = { k -> resumePinDownload(k) },
                         titleLookup = { k -> try { history.firstOrNull { it.videoKey == k }?.title } catch (_: Exception) { null } },
                         orphanCount = orphanInfo.first,
                         orphanBytes = orphanInfo.second,
@@ -4470,7 +4710,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onRequestPermission = { try { localPermLauncher.launch(localAudioPerm()) } catch (_: Exception) { } },
                         onRescan = { refreshLocalAudio() },
                         onBack = { smartBack() },
-                        onPlay = { v -> showLocal = false; fromLibrary = false; playVideo(v) },
+                        onPlay = { v -> showLocal = false; fromLibrary = false; playVideo(v, expand = true, forcePlay = true) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
                         onLongClick = { optionsFor = it },
@@ -4523,7 +4763,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         pinningKeys = pinningKeys,
                         progressOf = { k -> pinProgress[k] },
                         onLongClick = { optionsFor = it },
-                        onPlay = { playVideo(it) },
+                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
                     )
@@ -4563,8 +4803,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onSourceSelect = { src -> scSource = src; scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, src) },
                         onKindSelect = { k -> if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
                         onTerm = { t -> scQuery = t; doScSearch(t) },
-                        onPlayVideo = { v -> playVideo(v) },
-                        onPlayMix = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v) },
+                        onPlayVideo = { v -> playVideo(v, expand = true, forcePlay = true) },
+                        onPlayMix = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v, expand = true, forcePlay = true) },
                         onOpenChannel = { url -> openChannel(url) },
                         onOptions = { optionsFor = it },
                         onToggleFav = { toggleFavorite(it) },
@@ -4578,7 +4818,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         flowAll = histFlowAll,
                         flowPinned = histFlowPinned,
                         flowUnpinned = histFlowUnpinned,
-                        onPlay = { playVideo(it) },
+                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
                         onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) } } },
                         onClear = { clearHistory() },
                         onBack = { smartBack() },
@@ -4597,7 +4837,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 showFavorites -> {
                     FavoritesScreen(
                         items = favorites,
-                        onPlay = { playVideo(it) },
+                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
                         onToggleFav = { toggleFavorite(it) },
                         onClear = { clearFavorites() },
                         onBack = { smartBack() },
@@ -4609,7 +4849,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             val list = favorites.map { it.toVideoItem() }
                             if (list.isNotEmpty()) {
                                 queue = list
-                                playVideo(list[0], inQueue = true)
+                                playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
                             }
                         },
                         onRadio = {
@@ -4619,98 +4859,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     )
                 }
                 showPlaylists -> {
-                    PlaylistsScreen(
-                        playlists = playlists,
-                        openId = openPlaylistId,
-                        items = openItems,
-                        onOpen = { openPlaylistId = it },
-                        onCloseItems = { openPlaylistId = null },
-                        onPlayAll = { pid ->
-                            scope.launch {
-                                val rows = dao.itemsOnce(pid)
-                                if (rows.isNotEmpty()) {
-                                    showPlaylists = false
-                                    openPlaylistId = null
-                                    val list = rows.map { it.toVideoItem() }
-                                    results = list
-                                    queue = list
-                                    currentQuery = ""
-                                    radioOn = false
-                                    videoModeQueue = playlists.firstOrNull { it.id == pid }?.mode == "video"
-                                    playVideo(list[0], inQueue = true)
-                                }
-                            }
-                        },
-                        onPlayFrom = { idx ->
-                            val list = openItems.map { it.toVideoItem() }
-                            if (idx in list.indices) {
-                                showPlaylists = false
-                                results = list
-                                queue = list
-                                currentQuery = ""
-                                radioOn = false
-                                videoModeQueue = playlists.firstOrNull { it.id == openPlaylistId }?.mode == "video"
-                                playVideo(list[idx], inQueue = true)
-                            }
-                        },
-                        onCreate = { name, emoji ->
-                            scope.launch { dao.insertPlaylist(PlaylistEntity(name = name, emoji = emoji)) }
-                        },
-                        onSaveEdits = { pid, name, emoji, mode, orderedIds ->
-                            scope.launch {
-                                try {
-                                    dao.savePlaylistEdits(pid, name, emoji, mode, orderedIds)
-                                    toast(ctx.getString(R.string.toast_playlist_saved))
-                                } catch (_: Exception) { toast(ctx.getString(R.string.toast_playlist_save_fail)) }
-                            }
-                        },
-                        onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
-                        onClearItems = { pid -> scope.launch { dao.clearPlaylist(pid) } },
-                        onMoveToPlaylist = { pid, iid, targetPid ->
-                            scope.launch {
-                                try {
-                                    val row = dao.itemsOnce(pid).firstOrNull { it.id == iid }
-                                    if (row == null) { toast(ctx.getString(R.string.toast_move_fail)); return@launch }
-                                    val v = VideoItem(id = row.videoId, title = row.title, channel = row.channel, thumbnail = row.thumbnail, durationSec = row.durationSec, viewCount = row.viewCount, url = row.url)
-                                    val key = v.favKey()
-                                    val exists = dao.itemsOnce(targetPid).any { e ->
-                                        VideoItem(id = e.videoId, title = e.title, channel = e.channel, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == key
-                                    }
-                                    if (exists) { toast(ctx.getString(R.string.toast_already_target)) }
-                                    else {
-                                        dao.insertItems(listOf(v.toEntity(targetPid, dao.itemCount(targetPid))))
-                                        dao.deleteItem(pid, iid)
-                                        toast(ctx.getString(R.string.toast_moved))
-                                    }
-                                } catch (_: Exception) { toast(ctx.getString(R.string.toast_move_fail)) }
-                            }
-                        },
-                        // 2026-11-12 (runtime fix): hierarchical pop via smartBack — the old
-                        // inline close dropped fromLibrary and landed on home instead of Library.
-                        onBack = { smartBack() },
-                        pinBadges = pinBadges,
-                        onLongClick = { optionsFor = it },
-                        covers = plCovers,
-                        onQueueItems = { sel ->
-                            val fresh = sel.map { it.toVideoItem() }.filter { !isQueued(it) }
-                            if (fresh.isNotEmpty()) {
-                                queue = queue + fresh
-                                if (playing == null) playVideo(fresh[0], inQueue = true)
-                            }
-                        },
-                        onPinItems = { vs -> scope.launch { for (v in vs) { try { quickPin(v, null) } catch (_: Exception) { } } } },
-                        onRemoveItems = { pid, ids -> scope.launch { try { dao.deleteItems(pid, ids) } catch (_: Exception) { } } },
-                        onExport = { pid -> exportPlaylistCsv(pid) },
-                        // screens-fix Library P1-L4: CSV import entry.
-                        onImport = { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } },
-                        tabSort = plTabSort,
-                        onTabSort = { v -> plTabSort = v; try { prefs.edit().putString("pl_tab_sort", v).apply() } catch (_: Exception) { } },
-                        songSort = plSongSort,
-                        onSongSort = { v ->
-                            plSongSort = v
-                            try { openPlaylistId?.let { prefs.edit().putString("pl_sort_" + it, v).apply() } } catch (_: Exception) { }
-                        }
-                    )
+                    PlaylistsRoute()
                 }
                 openRemote != null -> {
                     // T5: no !! on delegated state — null renders nothing.
@@ -4731,9 +4880,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             queue = list
                             currentQuery = ""
                             openRemote = null
-                            playVideo(list[0], inQueue = true)
+                            playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
                         },
-                        onPlay = { playVideo(it) },
+                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
                         onLongClick = { optionsFor = it },
                         onFav = { toggleFavorite(it) },
                         // screens-fix Library P1-L5: remote -> local save + pin-all.
@@ -4764,11 +4913,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         loadingMore = trendingLoadingMore,
                         onShowMore = { loadMoreTrending() },
                         countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry,
+                        // Official section header (2026-11-12): this tab's own label;
+                        // music tab also badges every track (surface a).
+                        sectionTitle = TREND_TABS.getOrNull(trendTab)?.first?.let { ctx.getString(it) },
+                        showMusicBadge = TREND_TABS.getOrNull(trendTab)?.second == "trending_music",
                         onSearch = { q -> query = q; doSearch(q) },
                         isSuggestionsTab = TREND_TABS.getOrNull(trendTab)?.second == "suggestions",
                         suggestionChips = suggestionChips,
                         onSuggestion = { q -> query = q; doSearch(q) },
-                        onPlay = { playVideo(it) },
+                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
                         isFav = { v -> v.favKey() in favoriteSet },
                         onFav = { toggleFavorite(it) },
                         onLongClick = { optionsFor = it },
@@ -4864,7 +5017,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 isCurrent = playing?.id == v.id || playing?.url == v.url,
                                 isPlaying = isPlaying && (playing?.id == v.id || playing?.url == v.url),
                                 isFav = v.favKey() in favoriteSet,
-                                onClick = { playVideo(v) },
+                                onClick = { playVideo(v, expand = true, forcePlay = true) },
                                 onLongClick = { optionsFor = it },
                                 onFav = { toggleFavorite(it) },
                                 pinBadge = pinBadges[v.favKey()],
@@ -4977,7 +5130,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             agePending?.let { ap ->
                 com.mohamedadel.mytube.ui.library.AgeWarnDialog(
                     title = ap.first.title,
-                    onPlay = { val x = ap; agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true, pre = x.third) },
+                    onPlay = { val x = ap; agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true, pre = x.third, forcePlay = true) },
                     onDismiss = { agePending = null }
                 )
             }

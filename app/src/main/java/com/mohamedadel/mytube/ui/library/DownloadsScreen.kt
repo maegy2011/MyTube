@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -59,6 +60,10 @@ fun DownloadsScreen(
     onClearAll: () -> Unit,
     // F5 (audit P1 2026-11-11): cancel an in-flight download (cooperative; resumes on retry).
     onCancel: (String) -> Unit = {},
+    // pause/stop 2026-11-12: per-download pause (stream suspend, Range resume) + resume.
+    pausedKeys: Set<String> = emptySet(),
+    onPause: (String) -> Unit = {},
+    onResume: (String) -> Unit = {},
     orphanCount: Int = 0,
     orphanBytes: Long = 0L,
     onCleanOrphans: () -> Unit = {}
@@ -174,6 +179,8 @@ fun DownloadsScreen(
                 val pending = pinningKeys.filter { it !in doneKeys }
                 items(pending, key = { "pending:$it" }) { k ->
                     val prog = progressOf(k)
+                    // pause/stop 2026-11-12: paused rows keep frozen progress + paused state.
+                    val paused = pausedKeys.contains(k)
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = MaterialTheme.shapes.small,
@@ -197,12 +204,24 @@ fun DownloadsScreen(
                                             .semantics { progressBarRangeInfo = ProgressBarRangeInfo(prog, 0f..1f) }
                                     )
                                     Text(
-                                        stringResource(R.string.dl_progress_fmt, (prog * 100).toInt()),
+                                        // pause/stop 2026-11-12: paused state in the row (frozen % kept).
+                                        if (paused) stringResource(R.string.dl_pause) + " • " + stringResource(R.string.dl_progress_fmt, (prog * 100).toInt())
+                                        else stringResource(R.string.dl_progress_fmt, (prog * 100).toInt()),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 } else {
                                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                            // pause/stop 2026-11-12: running rows get Pause + Stop; paused rows get Resume + Stop.
+                            if (paused) {
+                                IconButton(onClick = { onResume(k) }) {
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.dl_resume), tint = MaterialTheme.colorScheme.primary)
+                                }
+                            } else {
+                                IconButton(onClick = { onPause(k) }) {
+                                    Icon(Icons.Rounded.Pause, contentDescription = stringResource(R.string.dl_pause), tint = MaterialTheme.colorScheme.primary)
                                 }
                             }
                             IconButton(onClick = { onCancel(k) }) {
@@ -261,7 +280,18 @@ fun DownloadsScreen(
                                 Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play), tint = MaterialTheme.colorScheme.primary)
                             }
                             // F5: cancel replaces delete while in flight (delete is disabled then).
+                            // pause/stop 2026-11-12: + pause/resume on the same row.
                             if (inFlight) {
+                                val paused = pausedKeys.contains(p.videoKey)
+                                if (paused) {
+                                    IconButton(onClick = { onResume(p.videoKey) }) {
+                                        Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.dl_resume), tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                } else {
+                                    IconButton(onClick = { onPause(p.videoKey) }) {
+                                        Icon(Icons.Rounded.Pause, contentDescription = stringResource(R.string.dl_pause), tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                                 IconButton(onClick = { onCancel(p.videoKey) }) {
                                     Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cancel), tint = MaterialTheme.colorScheme.error)
                                 }
@@ -296,6 +326,9 @@ fun DownloadsRoute(
     onDelete: (String) -> Unit,
     onClearAll: () -> Unit,
     onCancel: (String) -> Unit = {},
+    pausedKeys: Set<String> = emptySet(),
+    onPause: (String) -> Unit = {},
+    onResume: (String) -> Unit = {},
     orphanCount: Int = 0,
     orphanBytes: Long = 0L,
     onCleanOrphans: () -> Unit = {}
@@ -310,6 +343,9 @@ fun DownloadsRoute(
         onDelete = onDelete,
         onClearAll = onClearAll,
         onCancel = onCancel,
+        pausedKeys = pausedKeys,
+        onPause = onPause,
+        onResume = onResume,
         titleOf = { k -> try { titleLookup(k) } catch (_: Exception) { null } },
         orphanCount = orphanCount,
         orphanBytes = orphanBytes,

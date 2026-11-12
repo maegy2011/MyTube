@@ -48,6 +48,9 @@ import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.ui.theme.ScrimSoft
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.ui.results.MusicBadgeOverlay
+import com.mohamedadel.mytube.ui.results.MusicSurface
+import com.mohamedadel.mytube.ui.results.shouldShowMusicBadge
 
 // screens-fix Music P1-M7/P2-M12 (2026-11-11): extracted from MyTubeApp to keep the
 // giant when-branch under the 64KB method limit — correction row + albums note.
@@ -91,7 +94,10 @@ fun androidx.compose.foundation.lazy.LazyListScope.MusicHomeShelves(
     onPlay: (VideoItem) -> Unit,
     onPlayMix: (VideoItem) -> Unit,
     onLongClick: (VideoItem) -> Unit,
-    onLongClickMix: (VideoItem) -> Unit
+    onLongClickMix: (VideoItem) -> Unit,
+    // Music badge (2026-11-12): picks + mix shelves are YouTube Music service
+    // surfaces — every card badges unless sacred (MusicBadge.kt denylist).
+    showMusicBadge: Boolean = true
 ) {
     if (profile?.terms?.isNotEmpty() == true) {
         item(key = "sc-terms") {
@@ -118,7 +124,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.MusicHomeShelves(
                 playingUrl = playingUrl,
                 isPlaying = isPlaying,
                 onPlay = onPlay,
-                onLongClick = onLongClick
+                onLongClick = onLongClick,
+                showMusicBadge = showMusicBadge
             )
         }
     }
@@ -139,7 +146,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.MusicHomeShelves(
                     playingUrl = playingUrl,
                     isPlaying = isPlaying,
                     onPlay = onPlayMix,
-                    onLongClick = onLongClickMix
+                    onLongClick = onLongClickMix,
+                    showMusicBadge = showMusicBadge
                 )
             }
         }
@@ -192,7 +200,8 @@ fun MusicCard(
     v: VideoItem,
     isPlaying: Boolean,
     onPlay: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    showMusicBadge: Boolean = false
 ) {
     Column(
         // screens-fix Music P2-M10: card semantics for TalkBack.
@@ -218,6 +227,11 @@ fun MusicCard(
                     // Decorative: the card already carries onClickLabel=title, so the badge stays silent.
                     Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp).size(16.dp))
                 }
+            }
+            // Music badge overlay (2026-11-12): ♪ corner on music-service cards;
+            // sacred content never carries it (see MusicBadge.kt denylist).
+            if (showMusicBadge && shouldShowMusicBadge(v, MusicSurface.YT_MUSIC_SERVICE)) {
+                MusicBadgeOverlay(modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
             }
             val dur = v.durationSec ?: 0L
             if (dur > 0) {
@@ -247,7 +261,8 @@ fun MusicShelf(
     playingUrl: String?,
     isPlaying: Boolean,
     onPlay: (VideoItem) -> Unit,
-    onLongClick: (VideoItem) -> Unit
+    onLongClick: (VideoItem) -> Unit,
+    showMusicBadge: Boolean = false
 ) {
     if (items.isEmpty()) return
     Text(
@@ -263,7 +278,7 @@ fun MusicShelf(
     ) {
         // screens-fix Music P1-M6: stable canonical key (was title-hash-suffixed per shelf).
         items(items = items, key = { v -> v.favKey() }) { v ->
-            MusicCard(v = v, isPlaying = isPlaying && playingUrl == v.url, onPlay = { onPlay(v) }, onLongClick = { onLongClick(v) })
+            MusicCard(v = v, isPlaying = isPlaying && playingUrl == v.url, onPlay = { onPlay(v) }, onLongClick = { onLongClick(v) }, showMusicBadge = showMusicBadge)
         }
     }
     Spacer(Modifier.height(8.dp))

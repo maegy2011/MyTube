@@ -27,8 +27,10 @@ import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.RemotePlaylist
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.ui.results.MusicSurface
 import com.mohamedadel.mytube.ui.results.PlaylistCard
 import com.mohamedadel.mytube.ui.results.SearchRow
+import com.mohamedadel.mytube.ui.results.shouldShowMusicBadge
 import com.mohamedadel.mytube.ui.search.SearchScreen
 import com.mohamedadel.mytube.util.TasteProfile
 
@@ -170,6 +172,9 @@ fun MusicTab(
                 }
             }
             itemsIndexed(items = scResults, key = { _, v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { _, v ->
+                // Music badge (2026-11-12): surface (b) YouTube Music items when scSource==1,
+                // surface (c) SoundCloud tracks when scSource==0; sacred → never.
+                val musicSurface = if (scSource == 1) MusicSurface.YT_MUSIC_SERVICE else MusicSurface.SOUNDCLOUD
                 SearchRow(
                     v = v,
                     isCurrent = playingUrl == v.url,
@@ -181,7 +186,8 @@ fun MusicTab(
                     onFav = onToggleFav,
                     pinBadge = pinBadges[v.favKey()],
                     pinning = pinningKeys.contains(v.favKey()),
-                    pinProgress = progressOf(v.favKey())
+                    pinProgress = progressOf(v.favKey()),
+                    showMusicBadge = shouldShowMusicBadge(v, musicSurface)
                 )
             }
             if (scHasMore || scLoadingMore) {

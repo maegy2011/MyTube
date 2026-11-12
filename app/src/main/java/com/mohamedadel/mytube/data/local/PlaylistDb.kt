@@ -140,6 +140,24 @@ data class PinEntity(
     val pinnedAt: Long = System.currentTimeMillis()
 )
 
+// Notification bell (2026-11-12, runtime layer): new videos from subscribed/followed
+// channels, detected by the feed-refresh path. `read=false` drives the bell badge;
+// opening the Notifications screen or tapping an item marks read.
+@Entity(tableName = "notifications", indices = [Index(value = ["videoKey"], unique = true)])
+data class NotificationItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val videoKey: String,
+    val videoId: String?,
+    val title: String?,
+    val channel: String?,
+    val thumbnail: String?,
+    val url: String?,
+    val durationSec: Long?,
+    val viewCount: Long?,
+    val detectedAt: Long = System.currentTimeMillis(),
+    val read: Boolean = false
+)
+
 // Playlist row + item count for the management screen.
 data class PlaylistWithCount(
     val id: Long,
@@ -343,6 +361,27 @@ interface PlaylistDao {
 
     @Query("DELETE FROM feed_cache")
     suspend fun clearFeedCache()
+    // ---- Notification bell (2026-11-12): collected new-video sightings ----
+    @Query("SELECT * FROM notifications ORDER BY detectedAt DESC LIMIT 300")
+    fun observeNotifications(): Flow<List<NotificationItemEntity>>
+
+    @Query("SELECT COUNT(*) FROM notifications WHERE `read` = 0")
+    fun observeUnreadCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM notifications")
+    suspend fun notificationCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertNotifications(items: List<NotificationItemEntity>): List<Long>
+
+    @Query("UPDATE notifications SET `read` = 1 WHERE `read` = 0")
+    suspend fun markAllNotificationsRead()
+
+    @Query("UPDATE notifications SET `read` = 1 WHERE videoKey = :key")
+    suspend fun markNotificationRead(key: String)
+
+    @Query("DELETE FROM notifications WHERE id NOT IN (SELECT id FROM notifications ORDER BY detectedAt DESC LIMIT 300)")
+    suspend fun trimNotifications()
 }
 // Local taste profile (recommendations without an account): repeat-play ranking.
 // Query-only: no schema change, no migration.
@@ -358,7 +397,7 @@ data class PlayedStat(
 )
 
 
-@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class], version = 9, exportSchema = false)
+@Database(entities = [PlaylistEntity::class, PlaylistItemEntity::class, FavoriteEntity::class, HistoryEntity::class, SubscriptionEntity::class, PinEntity::class, FeedCacheEntity::class, ChannelGroupEntity::class, ChannelGroupMemberEntity::class, NotificationItemEntity::class], version = 10, exportSchema = false)
 abstract class MyTubeDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
 }
@@ -530,6 +569,13 @@ object FeedJson {
                     channelUrl = s("channelUrl"))
             }
         } catch (_: Exception) { emptyList() }
+    }
+}
+
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, videoKey TEXT NOT NULL, videoId TEXT, title TEXT, channel TEXT, thumbnail TEXT, url TEXT, durationSec INTEGER, viewCount INTEGER, detectedAt INTEGER NOT NULL DEFAULT 0, `read` INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_notifications_videoKey ON notifications (videoKey)")
     }
 }
 

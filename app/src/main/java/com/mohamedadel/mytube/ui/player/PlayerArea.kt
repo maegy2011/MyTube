@@ -87,6 +87,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.RepeatModeUtil
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.ForwardingPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.AudioTrackItem
@@ -340,6 +341,11 @@ fun PlayerArea(
                                             .build()
                                 }
                                 this.player = wrapped
+                                // 2026-11-12 (runtime fix 2): FIT = letterbox, never crop/stretch —
+                                // local (pinned) + remote share this surface, and pinned items carry
+                                // their recorded container MIME (PinManager meta → cleanMime) so the
+                                // decoder sizes the frame correctly.
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 useController = true
                                 setShowPreviousButton(true)
                                 setShowNextButton(true)

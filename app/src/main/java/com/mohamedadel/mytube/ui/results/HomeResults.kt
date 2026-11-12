@@ -38,9 +38,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.data.youtube.VideoItem
 
@@ -80,6 +82,11 @@ fun HomeEmptyState(
     pinBadges: Map<String, String> = emptyMap(),
     pinningKeys: Set<String> = emptySet(),
     progressOf: (String) -> Float? = { null },
+    // Official section header (2026-11-12): the extractor kiosk's own section name
+    // for this tab (announced as a heading); null = tabs alone (legacy).
+    sectionTitle: String? = null,
+    // Music surface (a): true only on the official YouTube Music tab.
+    showMusicBadge: Boolean = false,
     // screens-fix Home P0-H2: error surface + retry.
     trendingError: String? = null,
     onRetryTrending: () -> Unit = {},
@@ -127,6 +134,17 @@ fun HomeEmptyState(
             Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.trending_now), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            if (!sectionTitle.isNullOrBlank()) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    sectionTitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { heading() }
+                )
+            }
             Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                 Text(countryName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
@@ -213,7 +231,7 @@ fun HomeEmptyState(
                     }
                 }
                 items(trendingItems, key = { v -> v.id ?: v.url ?: v.title ?: v.hashCode().toString() }) { v ->
-                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()), pinProgress = progressOf(v.favKey()))
+                    SearchRow(v = v, isCurrent = false, isPlaying = false, onClick = { onPlay(v) }, onLongClick = { onLongClick(v) }, isFav = isFav(v), onFav = onFav, pinBadge = pinBadges[v.favKey()], pinning = pinningKeys.contains(v.favKey()), pinProgress = progressOf(v.favKey()), showMusicBadge = showMusicBadge && shouldShowMusicBadge(v, MusicSurface.YT_MUSIC_TAB))
                 }
                 // Deferred item 1: honest pagination — hidden when the kiosk/search has no next page.
                 if (!isSuggestionsTab && (hasMore || loadingMore)) {

@@ -93,6 +93,8 @@ class PlaybackService : MediaSessionService() {
         player = p
         val activityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // 2026-11-12 (runtime fix 3b): notification tap = explicit tap → open the player.
+            putExtra("mytube_expand_player", true)
         }
         val sessionActivity = PendingIntent.getActivity(this, 0, activityIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val sess = MediaSession.Builder(this, p)

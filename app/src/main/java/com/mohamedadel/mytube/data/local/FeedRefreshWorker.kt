@@ -26,11 +26,14 @@ class FeedRefreshWorker(appCtx: Context, params: WorkerParameters) : CoroutineWo
             // builder used to throw (no migration to v9) on EVERY run -> Result.retry()
             // forever: the 15-min worker never succeeded and burned battery/radio.
             val db = Room.databaseBuilder(applicationContext, MyTubeDb::class.java, "mytube.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .build()
             val dao = try { db.playlists() } catch (_: Exception) { return Result.failure() }
             val subs = try { dao.observeSubscriptions().first() } catch (_: Exception) { emptyList() }
             if (subs.isEmpty()) return Result.success()
+            // notif 2026-11-12: collect everything fresh for the bell (polls only when
+            // pref_feed_auto is ON — enforced by schedule(), the 15m rule stays).
+            val seen = mutableListOf<com.mohamedadel.mytube.data.youtube.VideoItem>()
             for (sub in subs) {
                 try {
                     val id = YouTubeRepo.channelIdFor(sub.channelUrl) ?: continue
@@ -39,9 +42,11 @@ class FeedRefreshWorker(appCtx: Context, params: WorkerParameters) : CoroutineWo
                         if (rss.isNotEmpty()) rss else YouTubeRepo.channelVideos(sub.channelUrl).take(15)
                     } catch (_: Exception) { continue }
                     if (fresh.isEmpty()) continue
+                    try { seen.addAll(fresh) } catch (_: Exception) { }
                     try { dao.upsertFeedCache(FeedCacheEntity(id, System.currentTimeMillis(), FeedJson.toJson(fresh))) } catch (_: Exception) { }
                 } catch (_: Exception) { }
             }
+            try { NotifCenter.recordFresh(dao, seen) } catch (_: Exception) { }
             try { db.close() } catch (_: Exception) { }
             Result.success()
         } catch (_: Exception) { Result.retry() }

@@ -62,6 +62,30 @@ object YouTubeRepo {
     private var kioskKey: String? = null
     private var kioskNext: Page? = null
     private var kioskHasMore: Boolean = false
+    // Official kiosk sections exposed by the extractor's own kiosk list
+    // (YoutubeTrendingLinkHandler / KioskList — never a hardcoded fake list).
+    // id + display name pairs for the Home tabs; unknown ids fail closed (empty).
+    fun availableKiosks(): List<Pair<String, String>> {
+        return try {
+            service().kioskList.availableKiosks.mapNotNull { id ->
+                if (id.isNullOrBlank()) null
+                else {
+                    val name = try { service().kioskList.getExtractorById(id, null).name } catch (_: Exception) { id }
+                    Pair(id, name ?: id)
+                }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+    // Geo-switch cache guard: changing content country MUST clear extractor + page
+    // caches first (stale region results are invisible otherwise). Called only after
+    // the user confirms the country-change dialog; refuse = this never runs.
+    fun clearCaches() {
+        try { titleCache.clear() } catch (_: Exception) { }
+        kioskKey = null
+        kioskNext = null
+        kioskHasMore = false
+        try { CommentPager.reset() } catch (_: Exception) { }
+    }
     private fun mapKioskItems(items: List<org.schabi.newpipe.extractor.InfoItem>): List<VideoItem> {
         val out = mutableListOf<VideoItem>()
         for (info in items) {
@@ -95,7 +119,12 @@ object YouTubeRepo {
         return try {
             val svc = service()
             if (kioskId.isNullOrBlank()) svc.kioskList.getDefaultKioskExtractor(null)
-            else svc.kioskList.getExtractorById(kioskId, null)
+            else {
+                // fail closed: only ids the extractor itself exposes; unknown = null (honest empty)
+                val known = try { svc.kioskList.availableKiosks } catch (_: Exception) { null }
+                if (known != null && known.none { it == kioskId }) return null
+                svc.kioskList.getExtractorById(kioskId, null)
+            }
         } catch (_: Exception) { null }
     }
     suspend fun trending(region: String? = null, kioskId: String? = null): List<VideoItem> = withContext(Dispatchers.IO) {
@@ -607,6 +636,7 @@ object YouTubeRepo {
         private var next: org.schabi.newpipe.extractor.Page? = null
         var hasMore: Boolean = false
             private set
+        fun reset() { ext = null; next = null; hasMore = false }
         private fun map(items: List<org.schabi.newpipe.extractor.InfoItem>): List<CommentItem> {
             return items.filterIsInstance<org.schabi.newpipe.extractor.comments.CommentsInfoItem>().mapNotNull { c ->
                 try {

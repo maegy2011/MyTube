@@ -87,6 +87,8 @@ fun MiniPlayer(
     titleOverride: String? = null,
     hasNext: Boolean = false,
     hasPrev: Boolean = false,
+    // 2026-11-12 (runtime layer): pref_mini_swipe gates swipe-to-dismiss (X button always closes).
+    swipeEnabled: Boolean = true,
     castAvailable: Boolean = false,
     // 2026-11-12 (runtime fix): queue reachable straight from the mini-player
     // (was only inside the full player) — remove/reorder/clear live in QueuePanel.
@@ -105,8 +107,8 @@ fun MiniPlayer(
                 Icon(Icons.Rounded.Clear, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 16.dp))
             }
         },
-        enableDismissFromStartToEnd = true,
-        enableDismissFromEndToStart = true
+        enableDismissFromStartToEnd = swipeEnabled,
+        enableDismissFromEndToStart = swipeEnabled
     ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),

@@ -162,6 +162,15 @@ fun SettingsScreen(
     // 2026-11-12 (runtime fix): persisted autoplay toggle, default ON — drives radio auto-advance.
     autoplay: Boolean = true,
     onAutoplay: (Boolean) -> Unit = {},
+    // 2026-11-12 (runtime layer): mini-player options — master switch, auto-show on play,
+    // swipe-to-dismiss. Tap behavior is fixed (tap opens full player) — no pref. Surfaces:
+    // allowlist = every destination except Settings (enforced in Scaffold bottomBar).
+    miniEnabled: Boolean = true,
+    onMiniEnabled: (Boolean) -> Unit = {},
+    miniAutoshow: Boolean = true,
+    onMiniAutoshow: (Boolean) -> Unit = {},
+    miniSwipe: Boolean = true,
+    onMiniSwipe: (Boolean) -> Unit = {},
     subHideAuto: Boolean = false,
     onSubHideAuto: (Boolean) -> Unit = {},
     subFg: String = "white",
@@ -307,6 +316,7 @@ fun SettingsScreen(
     val sSubsT = stringResource(R.string.settings_sec_subs)
     val sAudioT = stringResource(R.string.settings_sec_audio)
     val sPlayerT = stringResource(R.string.settings_sec_player)
+    val sMiniT = stringResource(R.string.settings_sec_miniplayer)
     val sAppearT = stringResource(R.string.settings_sec_appearance)
     val sDlT = stringResource(R.string.settings_sec_downloads)
     val sDataT = stringResource(R.string.settings_sec_data)
@@ -316,6 +326,7 @@ fun SettingsScreen(
     val showSubs = sHit(sSubsT, stringResource(R.string.sub_primary_title), stringResource(R.string.sub_fallback_title), stringResource(R.string.sub_hide_auto), stringResource(R.string.sub_size_title), stringResource(R.string.sub_fg_title), stringResource(R.string.sub_bg_title), stringResource(R.string.sub_edge_title), stringResource(R.string.sub_bold), stringResource(R.string.sub_role_title))
     val showAudio = sHit(sAudioT, stringResource(R.string.audio_primary_title), stringResource(R.string.audio_fallback_title), stringResource(R.string.prefer_original), stringResource(R.string.audio_role_title), stringResource(R.string.skip_silence), stringResource(R.string.speed_title), stringResource(R.string.pitch_title), stringResource(R.string.volume_title), stringResource(R.string.eq_title))
     val showPlayer = sHit(sPlayerT, stringResource(R.string.quality_title), stringResource(R.string.playmode_title), stringResource(R.string.autoplay_title), stringResource(R.string.af_all), stringResource(R.string.sb_title), stringResource(R.string.pip_auto), stringResource(R.string.vis_comments), stringResource(R.string.vis_related), stringResource(R.string.vis_info), stringResource(R.string.vis_subs), stringResource(R.string.vis_4k), stringResource(R.string.keepalive_setting), stringResource(R.string.age_title))
+    val showMini = sHit(sMiniT, stringResource(R.string.mini_enabled), stringResource(R.string.mini_autoshow), stringResource(R.string.mini_swipe))
     val showAppear = sHit(sAppearT, stringResource(R.string.theme_title), stringResource(R.string.accent_title))
     val showDl = sHit(sDlT, stringResource(R.string.update_check), stringResource(R.string.backup_export), stringResource(R.string.backup_import), stringResource(R.string.feed_auto_refresh), stringResource(R.string.offline_mode), stringResource(R.string.perf_parallel), stringResource(R.string.perf_feedcache), stringResource(R.string.perf_preload), stringResource(R.string.clear_pins), stringResource(R.string.clear_cache), stringResource(R.string.diag_copy), stringResource(R.string.cache_title), stringResource(R.string.pin_loc_title))
     val showData = sHit(sDataT, stringResource(R.string.clear_favorites), stringResource(R.string.clear_history))
@@ -631,6 +642,30 @@ fun SettingsScreen(
                 AgeModeRow(mode = "block", sel = ageMode, onPick = onAgeMode)
                 AgeModeRow(mode = "warn", sel = ageMode, onPick = onAgeMode)
                 AgeModeRow(mode = "allow", sel = ageMode, onPick = onAgeMode)
+            }
+        }
+        if (showMini) item {
+            SettingsSection(title = sMiniT, forceExpand = sQ.isNotEmpty()) {
+                SwitchRow(
+                    label = stringResource(R.string.mini_enabled),
+                    desc = stringResource(R.string.mini_enabled_desc),
+                    checked = miniEnabled,
+                    onToggle = { onMiniEnabled(!miniEnabled) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.mini_autoshow),
+                    desc = stringResource(R.string.mini_autoshow_desc),
+                    checked = miniAutoshow,
+                    enabled = miniEnabled,
+                    onToggle = { onMiniAutoshow(!miniAutoshow) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.mini_swipe),
+                    desc = stringResource(R.string.mini_swipe_desc),
+                    checked = miniSwipe,
+                    enabled = miniEnabled,
+                    onToggle = { onMiniSwipe(!miniSwipe) }
+                )
             }
         }
         if (showAppear) item {

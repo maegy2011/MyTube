@@ -66,7 +66,7 @@ import com.mohamedadel.mytube.util.formatViews
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null, pinBadge: String? = null, pinning: Boolean = false, pinProgress: Float? = null) {
+fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit, onLongClick: (VideoItem) -> Unit = {}, isFav: Boolean = false, onFav: (VideoItem) -> Unit = {}, onRemove: ((VideoItem) -> Unit)? = null, pinBadge: String? = null, pinning: Boolean = false, pinProgress: Float? = null, showMusicBadge: Boolean = false) {
     val lctx = LocalContext.current
     val metaHasCheck = v.verified
     val meta = buildString {
@@ -152,6 +152,12 @@ fun SearchRow(v: VideoItem, isCurrent: Boolean, isPlaying: Boolean, onClick: () 
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+                // Music badge (2026-11-12): ♪ pill next to the title on music surfaces;
+                // sacred content never carries it (see MusicBadge.kt denylist).
+                if (showMusicBadge) {
+                    Spacer(Modifier.height(4.dp))
+                    MusicBadge()
                 }
                 // Phase 5: offline-pin badge or in-progress state (pin-deepfix 2026-11-11:
                 // distinctive PinBadge pill + live % bar driven by the single pinProgress source).

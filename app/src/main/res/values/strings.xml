@@ -46,6 +46,11 @@
     <string name="err_io">انقطع الاتصال أثناء التحميل — تحقق من الإنترنت ثم أعد المحاولة.</string>
     <string name="search_action">بحث</string>
     <string name="country_title">بلد المحتوى (يحدد الرائج والبحث — اختيار يدوي فقط، بلا تتبع)</string>
+    <string name="country_guard_title">تغيير بلد المحتوى؟</string>
+    <string name="country_guard_msg">البلد الجديد: %1$s. سيؤدي التغيير إلى مسح ذاكرة الرائج والصفحات المخزنة ثم تحميل القوائم الجديدة. هل تريد المتابعة؟</string>
+    <string name="country_guard_apply">مسح وتغيير</string>
+    <string name="music_badge_label">موسيقى</string>
+    <string name="music_badge_desc">محتوى موسيقي</string>
     <string name="data_note">بياناتي (على هذا الجهاز فقط — تُمسح بالكامل بحذف التطبيق)</string>
     <string name="move_down">تحريك لأسفل</string>
     <string name="move_up">تحريك لأعلى</string>
@@ -445,6 +450,9 @@
     <string name="dl_total_fmt">الإجمالي: %.1f ميجابايت</string>
     <string name="dl_channel">تقدّم التنزيل</string>
     <string name="dl_progress_fmt">%d٪</string>
+    <string name="dl_pause">إيقاف مؤقت</string>
+    <string name="dl_resume">استئناف</string>
+    <string name="pin_paused">متوقف مؤقتًا — الاستئناف من التنزيلات</string>
     <string name="keepalive_channel">الحماية من قاتل البطارية</string>
     <string name="keepalive_channel_desc">إشعار دائم منخفض الأهمية يُبقي التطبيق حيًا في الخلفية</string>
     <string name="keepalive_title">MyTube يعمل في الخلفية</string>
@@ -614,6 +622,28 @@
     <string name="update_repo_owner" translatable="false"></string>
     <string name="update_repo_name" translatable="false"></string>
     <string name="pause">إيقاف مؤقت</string>
+    <!-- mini-player 2026-11-12 (runtime layer): master switch + auto-show + swipe-to-dismiss (tap opens full player — fixed) -->
+    <string name="settings_sec_miniplayer">المشغّل المصغّر</string>
+    <string name="mini_enabled">تفعيل المشغّل المصغّر</string>
+    <string name="mini_enabled_desc">يظهر شريط مصغّر فوق كل الشاشات عدا الإعدادات — الضغط عليه يفتح المشغّل الكامل</string>
+    <string name="mini_autoshow">إظهار تلقائي عند التشغيل</string>
+    <string name="mini_autoshow_desc">عند الإيقاف يفتح التشغيل الجديد المشغّل الكامل مباشرة</string>
+    <string name="mini_swipe">السحب للإغلاق</string>
+    <string name="mini_swipe_desc">اسحب الشريط المصغّر يمينًا أو يسارًا لإغلاق التشغيل</string>
     <string name="autoplay_title">التشغيل التلقائي</string>
     <string name="autoplay_desc">متابعة الراديو والقائمة تلقائيًا بعد انتهاء المقطع — الإيقاف يوقف التقدم التلقائي</string>
+    <!-- notif 2026-11-12: bell + download-complete (runtime layer) -->
+    <string name="notif_title">الإشعارات</string>
+    <string name="notif_empty">لا جديد بعد — الفيديوهات الجديدة من قنواتك ستظهر هنا</string>
+    <string name="notif_refresh">تحديث</string>
+    <string name="notif_bell">الإشعارات — فيديوهات جديدة من قنواتك</string>
+    <string name="pin_done_channel">اكتمال التنزيل</string>
+    <string name="pin_done_title">اكتمل التنزيل</string>
+    <string name="pin_fail_title">فشل التنزيل</string>
+    <string name="pin_fail_fmt">السبب: %1$s</string>
+    <string name="pin_err_unknown">سبب غير معروف — تحقق من الاتصال وحاول مجددًا</string>
+    <string name="pin_err_short">انقطع التنزيل قبل اكتماله</string>
+    <string name="pin_err_empty">الملف الناتج فارغ</string>
+    <string name="pin_err_io">خطأ شبكة أثناء الكتابة</string>
+    <string name="pin_err_http">خطأ خادم (%1$s)</string>
 </resources>

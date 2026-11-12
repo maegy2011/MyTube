@@ -123,6 +123,32 @@ object PinManager {
     // "user cancelled" apart from "download failed" for the right toast.
     fun isCancelRequested(key: String): Boolean = try { cancelKeys.contains(key) } catch (_: Exception) { false }
 
+    // pause/stop 2026-11-12: PAUSE suspends the OkHttp stream mid-chunk and keeps
+    // staging_* (.part + meta) on disk; resume re-enters with Range from the kept
+    // byte count (see getTo/downloadPin). STOP = cancel + staging wipe (no resume).
+    const val PAUSED = -2L
+    private val pauseKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    fun requestPause(key: String) { try { pauseKeys.add(key) } catch (_: Exception) { } }
+    fun clearPause(key: String) { try { pauseKeys.remove(key) } catch (_: Exception) { } }
+    fun isPaused(key: String): Boolean = try { pauseKeys.contains(key) } catch (_: Exception) { false }
+
+    // notif 2026-11-12: per-key failure reason for the download-complete/failure
+    // notification (no silent failures). takeError consumes it once.
+    private val errByKey = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun takeError(key: String): String? = try { errByKey.remove(key) } catch (_: Exception) { null }
+    private fun noteErr(key: String, code: String) { try { errByKey[key] = code } catch (_: Exception) { } }
+    fun clearError(key: String) { try { errByKey.remove(key) } catch (_: Exception) { } }
+
+    fun stagingDir(app: Context, key: String): java.io.File {
+        val root = try { PinFiles.pinDir(app, "__probe__").parentFile } catch (_: Exception) { null }
+        return java.io.File(root, "staging_" + PinFiles.sha(key))
+    }
+    // STOP companion: deletes the partial file + temp meta; the tracking key itself
+    // (pinProgress/pinningKeys) is cleared by the caller on the UI layer.
+    fun deleteStaging(app: Context, key: String) {
+        try { stagingDir(app, key).deleteRecursively() } catch (_: Exception) { }
+    }
+
     // F14 (audit P2 2026-11-11): startup sweep — a killed download leaves staging_* orphans
     // (invisible to existingDir/totalBytes). Called once per launch from MyTubeApp on a worker thread.
     fun sweepOnStartup(app: Context) {
@@ -144,7 +170,9 @@ object PinManager {
 
     // offline fix 2026-11-11: mimeOut receives the response Content-Type so the pin
     // descriptor records the real container (bytes are not always MP4 despite fixed names).
-    private fun getTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, span: Long = 0L, isCancelled: (() -> Boolean)? = null, mimeOut: ((String?) -> Unit)? = null): Boolean {
+    // pause/stop 2026-11-12: returns 0 = bytes complete, 1 = failed/cancelled,
+    // 2 = paused (stream suspended, .part kept for Range resume).
+    private fun getTo(url: String, dest: File, onProgress: ((done: Long, total: Long) -> Unit)? = null, base: Long = 0L, span: Long = 0L, isCancelled: (() -> Boolean)? = null, isPaused: (() -> Boolean)? = null, mimeOut: ((String?) -> Unit)? = null, onErr: ((String) -> Unit)? = null): Int {
         return try {
             dest.parentFile?.mkdirs()
             val tmp = File(dest.parentFile, dest.name + ".part")
@@ -158,9 +186,9 @@ object PinManager {
                     // Host ignored Range (200) or rejected it (416/others): restart clean.
                     done = 0
                     try { tmp.delete() } catch (_: Exception) { }
-                    if (resp.code != 200) return false
+                    if (resp.code != 200) return 1
                 }
-                if (!resp.isSuccessful || resp.body == null) return false
+                if (!resp.isSuccessful || resp.body == null) { try { onErr?.invoke("http" + resp.code) } catch (_: Exception) { }; return 1 }
                 try { mimeOut?.invoke(resp.header("Content-Type")?.substringBefore(";")?.trim()) } catch (_: Exception) { }
                 // F2 (audit P0 2026-11-11): capture the declared size from THIS response —
                 // no extra HEAD round-trip; a short read below is rejected as truncated.
@@ -177,7 +205,10 @@ object PinManager {
                     var lastReport = 0L
                     val input = body.byteStream()
                     while (true) {
-                        if (isCancelled?.invoke() == true) return false
+                        // pause/stop 2026-11-12: pause suspends the stream (keeps .part +
+                        // bytes-downloaded so resume continues via Range); cancel aborts.
+                        if (isPaused?.invoke() == true) return 2
+                        if (isCancelled?.invoke() == true) return 1
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
@@ -193,25 +224,31 @@ object PinManager {
             }
             if (respTotal > 0 && done != respTotal) {
                 // keep .part on disk: a retry resumes via Range instead of restarting.
-                return false
+                try { onErr?.invoke("short") } catch (_: Exception) { }
+                return 1
             }
             if (dest.exists()) dest.delete()
             tmp.renameTo(dest)
-        } catch (_: Exception) { false }
+            return 0
+        } catch (_: Exception) { try { onErr?.invoke("io") } catch (_: Exception) { }; 1 }
     }
 
     // Downloads plan into travel/<sha>, writes meta.json, upserts the Room row. All-or-nothing.
     // onProgress(doneBytes, totalBytes): total may be -1 when the host hides sizes.
     // F5 resume: .part chunks survive a failed attempt (same staging dir); retry continues via Range.
-    suspend fun downloadPin(ctx: Context, dao: PlaylistDao, v: VideoItem, plan: PinPlan, onProgress: ((Long, Long) -> Unit)? = null): Long {
+    suspend fun downloadPin(ctx: Context, dao: PlaylistDao, v: VideoItem, plan: PinPlan, onProgress: ((Long, Long) -> Unit)? = null, resume: Boolean = false): Long {
         val app = ctx.applicationContext
         val key = v.favKey()
         if (consumeCancel(key)) return -1L
         val travelRoot = try { PinFiles.pinDir(app, "__probe__").parentFile } catch (_: Exception) { null }
         if (travelRoot != null) sweepStaleStaging(travelRoot)
         val dir = PinFiles.pinDir(app, key)
-        val staging = File(PinFiles.pinDir(app, "__staging_" + PinFiles.sha(key)).let { it.parentFile }, "staging_" + PinFiles.sha(key))
-        try { if (staging.exists()) staging.deleteRecursively() } catch (_: Exception) { }
+        val staging = stagingDir(app, key)
+        // pause/stop 2026-11-12: resume keeps staging (.part byte counts are the persisted
+        // resume offsets — getTo re-sends Range from the kept length); fresh starts wipe.
+        if (!(resume && staging.exists())) {
+            try { if (staging.exists()) staging.deleteRecursively() } catch (_: Exception) { }
+        }
         try {
             staging.mkdirs()
             val vFile = File(staging, "video.mp4")
@@ -222,19 +259,23 @@ object PinManager {
             val videoSpan = if (plan.audioUrl != null) estTotal / 2 else estTotal
             var videoMime: String? = null
             var audioMime: String? = null
+            // pause/stop 2026-11-12: rc 2 = paused (keep staging for Range resume),
+            // rc 1 + cancel flag = STOP (wipe partial + temp meta, stay silent upstream).
             if (plan.videoUrl != null) {
-                if (!getTo(plan.videoUrl, vFile, onProgress, 0L, videoSpan, { cancelKeys.contains(key) }) { m -> videoMime = m }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
+                val rc = getTo(plan.videoUrl, vFile, onProgress, 0L, videoSpan, { cancelKeys.contains(key) }, { pauseKeys.contains(key) }, { m -> videoMime = m }, { e -> noteErr(key, e) })
+                if (rc != 0) { if (rc == 1 && !cancelKeys.contains(key)) staging.deleteRecursively(); return if (rc == 2) PAUSED else -1L }
             }
             if (plan.audioUrl != null) {
                 val base = if (plan.videoUrl != null) videoSpan else 0L
-                if (!getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base, { cancelKeys.contains(key) }) { m -> audioMime = m }) { if (!cancelKeys.contains(key)) staging.deleteRecursively(); return -1L }
+                val rc = getTo(plan.audioUrl, aFile, onProgress, base, estTotal - base, { cancelKeys.contains(key) }, { pauseKeys.contains(key) }, { m -> audioMime = m }, { e -> noteErr(key, e) })
+                if (rc != 0) { if (rc == 1 && !cancelKeys.contains(key)) staging.deleteRecursively(); return if (rc == 2) PAUSED else -1L }
             } else if (plan.videoUrl == null && plan.audioUrl == null) {
-                staging.deleteRecursively(); return -1L
+                noteErr(key, "plan"); staging.deleteRecursively(); return -1L
             }
             // audio-only pins store the single stream as video.mp4 (player reads one file either way)
             if (plan.videoUrl == null && plan.audioUrl != null) {
                 val only = File(staging, "audio.m4a")
-                if (!only.renameTo(vFile)) { staging.deleteRecursively(); return -1L }
+                if (!only.renameTo(vFile)) { staging.deleteRecursively(); noteErr(key, "io"); return -1L }
             }
             if (!plan.subUrl.isNullOrBlank()) {
                 try { getTo(plan.subUrl, sFile) } catch (_: Exception) { try { sFile.delete() } catch (_: Exception) { } }
@@ -244,7 +285,7 @@ object PinManager {
             val extraNames = mutableListOf<String>()
             extraSubs.forEachIndexed { i, ps ->
                 val f = File(staging, "sub${i + 2}.vtt")
-                try { if (getTo(ps.url, f)) extraNames.add(f.name) else try { f.delete() } catch (_: Exception) { } } catch (_: Exception) { }
+                try { if (getTo(ps.url, f) == 0) extraNames.add(f.name) else try { f.delete() } catch (_: Exception) { } } catch (_: Exception) { }
             }
             // audio-only pins store the single stream as video.mp4: the mime still
             // describes the AUDIO bytes, so playback tags the item correctly.
@@ -280,16 +321,17 @@ object PinManager {
                     dir.mkdirs()
                     staging.listFiles()?.forEach { f -> f.copyTo(File(dir, f.name), overwrite = true) }
                     staging.deleteRecursively()
-                } catch (_: Exception) { staging.deleteRecursively(); return -1L }
+                } catch (_: Exception) { staging.deleteRecursively(); noteErr(key, "io"); return -1L }
                 try { if (staging.exists()) staging.deleteRecursively() } catch (_: Exception) { }
             }
             try { cancelKeys.remove(key) } catch (_: Exception) { }
+            try { errByKey.remove(key) } catch (_: Exception) { }
             val size = PinFiles.dirBytes(app, key)
             // F2 (audit P0 2026-11-11): post-download length check — refuse empty/zero-byte snapshots.
             try {
                 val vf = File(dir, "video.mp4")
-                if (!vf.exists() || vf.length() <= 0L) { try { dir.deleteRecursively() } catch (_: Exception) { }; return -1L }
-                if (estTotal > 0 && size > 0 && size < estTotal / 2) { try { dir.deleteRecursively() } catch (_: Exception) { }; return -1L }
+                if (!vf.exists() || vf.length() <= 0L) { try { dir.deleteRecursively() } catch (_: Exception) { }; noteErr(key, "empty"); return -1L }
+                if (estTotal > 0 && size > 0 && size < estTotal / 2) { try { dir.deleteRecursively() } catch (_: Exception) { }; noteErr(key, "short"); return -1L }
             } catch (_: Exception) { }
             dao.upsertPin(
                 PinEntity(
@@ -299,8 +341,9 @@ object PinManager {
                 )
             )
             return size
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             try { staging.deleteRecursively() } catch (_: Exception) { }
+            try { noteErr(key, "ex:" + (e.message?.take(80) ?: "?")) } catch (_: Exception) { }
             return -1L
         }
     }
