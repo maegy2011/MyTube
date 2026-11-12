@@ -39,7 +39,7 @@ fun UnifiedSearchOverlay(
     favoriteSet: Set<String>,
     pinBadges: Map<String, String>,
     pinningKeys: Set<String>,
-    pinProgress: Map<String, Float?>,
+    pinProgress: Map<String, Float>,
     onQueryChange: (String) -> Unit,
     onSelectSource: (SearchSource?) -> Unit,
     doSearch: (String) -> Unit,

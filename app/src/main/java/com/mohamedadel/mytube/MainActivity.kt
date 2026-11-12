@@ -4114,6 +4114,101 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         )
     }
 
+            val mc_onSubscribeChannel: () -> Unit = { toggleSubscription(channelScreenUrl, channelDetail?.name, channelDetail?.avatar) }
+            val mc_onBack: () -> Unit = { smartBack() }
+            val mc_onPlayVideo: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> playVideo(v, expand = true, forcePlay = true) }
+            val mc_onPlayInQueue: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> playVideo(v, inQueue = true, expand = true, forcePlay = true) }
+            val mc_onPlayFromQueue: (Int) -> Unit = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true, expand = true, forcePlay = true) }
+            val mc_onShowOptions: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { optionsFor = it }
+            val mc_onToggleFav: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { toggleFavorite(it) }
+            val mc_onTabSelect: (Int) -> Unit = { i -> channelScreenUrl?.let { loadChannelTab(i, it) } }
+            val mc_onOpenRemotePlaylist: (com.mohamedadel.mytube.data.youtube.RemotePlaylist) -> Unit = { p -> openRemotePlaylist(p) }
+            val mc_setQueue: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { queue = it }
+            val mc_setQueueIndex: (Int) -> Unit = { queueIndex = it }
+            val mc_setRadioOn: (Boolean) -> Unit = { radioOn = it }
+            val mc_setShowQueue: (Boolean) -> Unit = { showQueue = it }
+                        val mc_playlistsRoute: @Composable () -> Unit = { PlaylistsRoute() }
+            val mc_onTrendTab: (Int) -> Unit = { i -> suggestJob?.cancel(); trendTab = i; refreshTrending() }
+            val mc_onRetryTrending: () -> Unit = { refreshTrending(force = true) }
+            val mc_onShowMoreTrending: () -> Unit = { loadMoreTrending() }
+            val mc_countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry
+            val mc_sectionTitle = TREND_TABS.getOrNull(trendTab)?.first?.let { ctx.getString(it) }
+            val mc_showMusicBadge = TREND_TABS.getOrNull(trendTab)?.second == "trending_music"
+            val mc_isSuggestionsTab = TREND_TABS.getOrNull(trendTab)?.second == "suggestions"
+            val mc_onSearchQ: (String) -> Unit = { q -> query = q; doSearch(q) }
+            val mc_onSuggestionQ: (String) -> Unit = { q -> query = q; doSearch(q) }
+            val mc_onResumePlay: (com.mohamedadel.mytube.data.youtube.VideoItem, Long) -> Unit = { v, ms -> pendingSeekMs = ms; pendingSeekKey = v.favKey(); playVideo(v, expand = true, forcePlay = true) }
+            val mc_setContentFilter: (String) -> Unit = { prefContentFilter = it }
+            val mc_doSearchText: (String) -> Unit = { q -> doSearch(q) }
+            val mc_setResults: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { results = it }
+            val mc_setNextPage: (org.schabi.newpipe.extractor.Page?) -> Unit = { nextPage = it }
+            val mc_setHasMore: (Boolean) -> Unit = { hasMore = it }
+            val mc_setLoadingMore: (Boolean) -> Unit = { loadingMore = it }
+            val mc_setShowLibrary: (Boolean) -> Unit = { showLibrary = it }
+            val mc_setFromLibrary: (Boolean) -> Unit = { fromLibrary = it }
+            val mc_setShowHistory: (Boolean) -> Unit = { showHistory = it }
+            val mc_setShowDownloads: (Boolean) -> Unit = { showDownloads = it }
+            val mc_setShowGroups: (Boolean) -> Unit = { showGroups = it }
+            val mc_setShowFavorites: (Boolean) -> Unit = { showFavorites = it }
+            val mc_setShowPlaylists: (Boolean) -> Unit = { showPlaylists = it }
+            val mc_setShowLocal: (Boolean) -> Unit = { showLocal = it }
+            val mc_setShowFeed: (Boolean) -> Unit = { showFeed = it }
+            val mc_onOpenLocalAudio: () -> Unit = { showLibrary = false; fromLibrary = true; showLocal = true; checkLocalPerm(); refreshLocalAudio() }
+            val mc_onOpenFeed: () -> Unit = { showLibrary = false; fromLibrary = true; showFeed = true; if (feedItems.isEmpty()) refreshFeed() }
+            val mc_onUnsubscribe: (String) -> Unit = { url -> scope.launch { try { dao.deleteSubscription(url) } catch (_: Exception) { } } }
+            val mc_onImportSubs: () -> Unit = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } }
+            val mc_onOpenChannel: (String) -> Unit = { url -> openChannel(url) }
+            val mc_onPlayTop: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> playVideo(v, expand = true, forcePlay = true) }
+            val mc_onRefreshFeed: () -> Unit = { refreshFeed() }
+            val mc_onPlayNotif: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> playVideo(v, inQueue = false, expand = true, forcePlay = true) }
+            val mc_onDeletePin: (String) -> Unit = { k -> doUnpin(k) }
+            val mc_onClearAllPins: () -> Unit = { clearAllPins() }
+            val mc_onCancelPin: (String) -> Unit = { k -> cancelPinDownload(k) }
+            val mc_onPausePin: (String) -> Unit = { k -> pausePinDownload(k) }
+            val mc_onResumePin: (String) -> Unit = { k -> resumePinDownload(k) }
+            val mc_onCleanOrphans: () -> Unit = { cleanOrphans() }
+            val mc_setLocalFolder: (String?) -> Unit = { localFolder = it }
+            val mc_onExcludeFolder: (String) -> Unit = { f -> excludeLocalFolder(f) }
+            val mc_onUnexclude: (String) -> Unit = { f -> unexcludeLocalFolder(f) }
+            val mc_setLocalCompat: (Boolean) -> Unit = { localCompat = it }
+            val mc_onRefreshLocalAudio: () -> Unit = { refreshLocalAudio() }
+            val mc_onRequestLocalPerm: () -> Unit = { try { localPermLauncher.launch(localAudioPerm()) } catch (_: Exception) { } }
+            val mc_playingUrl = playing?.url
+            val mc_setOpenGroup: (com.mohamedadel.mytube.data.local.ChannelGroupEntity?) -> Unit = { openGroup = it }
+            val mc_onCreateGroup: (String) -> Unit = { createGroup(it) }
+            val mc_onRenameGroup: (com.mohamedadel.mytube.data.local.ChannelGroupEntity, String) -> Unit = { g, n -> renameGroup(g, n) }
+            val mc_onDeleteGroup: (com.mohamedadel.mytube.data.local.ChannelGroupEntity) -> Unit = { deleteGroup(it) }
+            val mc_onRemoveFromGroup: (Long, String) -> Unit = { gid, url -> removeFromGroup(gid, url) }
+            val mc_onAddToGroup: (Long, String) -> Unit = { gid, url -> addToGroup(gid, url) }
+            val mc_onOpenGroupFeed: (com.mohamedadel.mytube.data.local.ChannelGroupEntity, Set<String>) -> Unit = { g, urls -> openGroupFeed(g, urls) }
+            val mc_setFeedFilter: (String?) -> Unit = { feedFilter = it }
+            val mc_setFeedGroupUrls: (Set<String>?) -> Unit = { feedGroupUrls = it }
+            val mc_setFeedGroupName: (String?) -> Unit = { feedGroupName = it }
+            val mc_setScQuery: (String) -> Unit = { scQuery = it }
+            val mc_setRecentMusicSearches: (List<String>) -> Unit = { recentMusicSearches = it }
+            val mc_setScSource: (Int) -> Unit = { scSource = it }
+            val mc_setScKind: (String) -> Unit = { scKind = it }
+            val mc_setScResults: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { scResults = it }
+            val mc_setScError: (String?) -> Unit = { scError = it }
+            val mc_setScSuggestion: (String?) -> Unit = { scSuggestion = it }
+            val mc_setRemotePlaylists: (List<com.mohamedadel.mytube.data.youtube.RemotePlaylist>) -> Unit = { remotePlaylists = it }
+            val mc_doScSearch: (String) -> Unit = { q -> doScSearch(q) }
+            val mc_doScSearchSrc: (String, Int) -> Unit = { q, src -> doScSearch(q, src) }
+            val mc_doScSearchKind: (String, Int, String) -> Unit = { q, src, k -> doScSearch(q, src, k) }
+            val mc_onCloseMusic: () -> Unit = { goHome() }
+            val mc_onVoice: () -> Unit = { startVoiceSearch() }
+            val mc_onPlayMix: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v, expand = true, forcePlay = true) }
+            val mc_onLoadMoreSc: () -> Unit = { loadScMore() }
+            val mc_onHistSearch: (String) -> Unit = { runHistSearch(it) }
+            val mc_toast: (String) -> Unit = { toast(it) }
+            val mc_onClearHistory: () -> Unit = { clearHistory() }
+            val mc_onClearFavorites: () -> Unit = { clearFavorites() }
+            val mc_onStartRadio: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> startRadio(v) }
+            val mc_setOpenRemote: (com.mohamedadel.mytube.data.youtube.RemotePlaylist?) -> Unit = { openRemote = it }
+            val mc_setCurrentQuery: (String) -> Unit = { currentQuery = it }
+            val mc_onSaveRemoteList: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { list -> saveRemoteList(list) }
+            val mc_onLoadMoreRemote: () -> Unit = { loadMoreRemote() }
+            val mc_onQuickPin: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> quickPin(v, null) }
     Scaffold(
         topBar = { },
         bottomBar = {
@@ -4195,32 +4290,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     ) { pad ->
         if (isInPip) {
             Box(Modifier.padding(pad).fillMaxSize()) {
-                val cur = playing
-                if (cur != null && quality != QUALITY_AUDIO_ONLY && player != null) {
-                    AndroidView(
-                        factory = { c ->
-                            PlayerView(c).apply {
-                                this.player = player
-                                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                                useController = false
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    AsyncImage(model = cur?.thumbnail, contentDescription = cur?.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                }
-            }
-        } else {
-        Column(Modifier.padding(pad).fillMaxSize()) {
-            ContentHeader()
-
-            val cur = playing
-            if (cur != null && (playerExpanded || isFullscreen)) {
     // screens-fix queue (method-size, 2026-11-11): the 130-line PlayerArea call lived inline
     // in MyTubeApp.invoke and helped breach the 64KB limit — same local-fun trick as SettingsPane.
     @Composable
-    fun PlayerPane(paneMod: Modifier = Modifier) {
+    fun PlayerPane(paneMod: Modifier = Modifier, cur: VideoItem) {
                 PlayerArea(
                     modifier = paneMod,
                     video = cur,
@@ -4361,57 +4434,20 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     storyboards = streamData?.storyboards ?: emptyList()
                 )
     }
-                // 2026-11-12 (runtime fix): bounded height (weight) so the player's
-                // internal ScrollableColumn can scroll — unbounded content clipped before.
-                if (isFullscreen) PlayerPane()
-                else Box(Modifier.weight(1f)) { PlayerPane(paneMod = Modifier.fillMaxSize()) }
-                // comments sheet (real CommentsExtractor, pageless first 30)
-                if (showComments) {
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { showComments = false },
-                        title = { Text(stringResource(R.string.pill_comments)) },
-                        text = {
-                            if (commentsLoading) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                                }
-                            } else if (commentList.isEmpty()) {
-                                Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    items(commentList, key = { c -> (c.author ?: "") + "|" + (c.text?.take(24) ?: "") + "|" + (c.date ?: "") }) { c ->
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            if (!c.avatar.isNullOrBlank()) {
-                                                AsyncImage(model = c.avatar, contentDescription = c.author, modifier = Modifier.size(32.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                                                Spacer(Modifier.width(8.dp))
-                                            }
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    (c.author ?: "") + (if (!c.date.isNullOrBlank()) " • " + c.date else "") + (if (c.likes > 0) " • " + ctx.formatViews(c.likes.toLong()) else ""),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Text(c.text ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                                            }
-                                        }
-                                    }
-                                    // page-walk: reaching the end auto-fetches the next comments page
-                                    if (commentsHasMore || commentsLoadingMore) {
-                                        item {
-                                            androidx.compose.runtime.LaunchedEffect(commentList.size) { loadMoreComments() }
-                                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
-                                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        confirmButton = { },
-                        dismissButton = { androidx.compose.material3.TextButton(onClick = { showComments = false }) { Text(stringResource(R.string.close)) } }
-                    )
-                }
-            }
+            com.mohamedadel.mytube.ui.home.PlayerChrome(
+                cur = playing,
+                playerExpanded = playerExpanded,
+                isFullscreen = isFullscreen,
+                playerPane = { paneMod -> val c = playing; if (c != null) PlayerPane(paneMod, c) },
+                showComments = showComments,
+                setShowComments = { showComments = it },
+                commentsLoading = commentsLoading,
+                commentList = commentList,
+                commentsHasMore = commentsHasMore,
+                commentsLoadingMore = commentsLoadingMore,
+                onLoadMoreComments = { loadMoreComments() },
+                ctx = ctx
+            )
 
             if (!isFullscreen) {
 
@@ -4744,615 +4780,270 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
             }
 
-            when {
-                // Fix 3: full channel screen with tabs (header + Videos/About)
-                channelScreenUrl != null -> {
-                    val chUrl = channelScreenUrl
-                    ChannelScreen(
-                        detail = channelDetail,
-                        videos = channelScreenVideos,
-                        videosLoading = channelScreenLoading,
-                        isSubscribed = chUrl != null && subscriptions.any { it.channelUrl == chUrl },
-                        onSubscribe = { toggleSubscription(chUrl, channelDetail?.name, channelDetail?.avatar) },
-                        onBack = { smartBack() },
-                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
-                        onLongClick = { optionsFor = it },
-                        isFav = { v -> v.favKey() in favoriteSet },
-                        onFav = { toggleFavorite(it) },
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        subsLabel = { n -> if (n != null && n > 0) ctx.getString(R.string.subs_count_fmt, n) else "" },
-                        shorts = channelShorts,
-                        shortsLoading = channelShortsLoading,
-                        live = channelLive,
-                        liveLoading = channelLiveLoading,
-                        channelPlaylists = channelPls,
-                        channelPlaylistsLoading = channelPlsLoading,
-                        onTabSelect = { i -> channelScreenUrl?.let { loadChannelTab(i, it) } },
-                        onOpenPlaylist = { openRemotePlaylist(it) }
-                    )
-                }
-                // queue button opens this panel INSTEAD of the suggestions/results below the video
-                showQueue -> {
-                    QueuePanel(
-                        items = queue,
-                        onMove = { idx, dir ->
-                            val j = idx + dir
-                            if (idx in queue.indices && j in queue.indices) {
-                                val m = queue.toMutableList()
-                                val t = m[idx]; m[idx] = m[j]; m[j] = t
-                                queue = m
-                                // 2026-11-12 (runtime fix 3): canonical key (F11) — id/url matching
-                                // let dupes slip the position after reorder.
-                                queueIndex = m.indexOfFirst { it.favKey() == playing?.favKey() }
-                            }
-                        },
-                        onRemove = { idx ->
-                            if (idx in queue.indices) {
-                                queue = queue.toMutableList().also { it.removeAt(idx) }
-                                // 2026-11-12 (runtime fix 3): keep the index glued to the
-                                // playing item after a removal ahead of it (was: stale index
-                                // → next/prev + prefetch pointed at the wrong item).
-                                if (queue.isEmpty()) queueIndex = -1
-                                else {
-                                    if (idx < queueIndex) queueIndex--
-                                    queueIndex = queueIndex.coerceIn(0, queue.size - 1)
-                                }
-                            }
-                        },
-                        // Deferred item 3: swipe-to-remove Undo re-inserts at the original index.
-                        onInsert = { idx, v ->
-                            val at = idx.coerceIn(0, queue.size)
-                            queue = queue.toMutableList().also { it.add(at, v) }
-                        },
-                        onPlayFrom = { idx -> if (idx in queue.indices) playVideo(queue[idx], inQueue = true, expand = true, forcePlay = true) },
-                        onOptions = { optionsFor = it },
-                        // pin-deepfix 2026-11-11: badges + live % in queue rows.
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        onSave = { name ->
-                            scope.launch {
-                                // new playlist: dedupe the working queue before saving
-                                val seen = mutableSetOf<String>()
-                                val fresh = queue.filter { w -> seen.add(w.id ?: w.url ?: w.title ?: ("#" + w.hashCode())) }
-                                val pid = dao.insertPlaylist(PlaylistEntity(name = name))
-                                dao.insertItems(fresh.mapIndexed { i, w -> w.toEntity(pid, i) })
-                                showQueue = false
-                            }
-                        },
-                        onDismiss = { showQueue = false }
-                        ,
-                        // screens-fix Music P1-M4: visible radio state + stop.
-                        radioOn = radioOn,
-                        onStopRadio = { radioOn = false }
-                        ,
-                        // screens-fix Library P2-L13: clear-all (queue itself is session-only by design).
-                        onClearAll = { queue = emptyList(); queueIndex = 0 }
-                    )
-                }
-                // 2026-11-12 (runtime fix): expanded player fills the screen — plain
-                // destinations hide so the player's ScrollableColumn gets a bounded
-                // height (queue + channel stay visible above for management/back).
-                playerExpanded && !showQueue && channelScreenUrl == null -> { }
-                showLibrary -> {
-                    // screens-fix Library P2-L12: load most-replayed when the hub opens (IO, silent fail).
-                    LaunchedEffect(showLibrary) {
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            try { topPlayedHome = dao.topPlayed(6) } catch (_: Exception) { }
-                        }
-                    }
-                    LibraryScreen(
-                        onHistory = { showLibrary = false; fromLibrary = true; showHistory = true },
-                        onDownloads = { showLibrary = false; fromLibrary = true; showDownloads = true },
-                        onGroups = { showLibrary = false; fromLibrary = true; showGroups = true },
-                        groupCount = groups.size,
-                        pinCount = pins.size,
-                        onFavorites = { showLibrary = false; fromLibrary = true; showFavorites = true },
-                        onPlaylists = { showLibrary = false; fromLibrary = true; showPlaylists = true },
-                        onLocalAudio = { showLibrary = false; fromLibrary = true; showLocal = true; checkLocalPerm(); refreshLocalAudio() },
-                        subscriptions = subscriptions,
-                        onOpenFeed = { showLibrary = false; fromLibrary = true; showFeed = true; if (feedItems.isEmpty()) refreshFeed() },
-                        onUnsubscribe = { url -> scope.launch { try { dao.deleteSubscription(url) } catch (_: Exception) { } } },
-                        onImportSubs = { try { subsImportLauncher.launch("*/*") } catch (_: Exception) { } },
-                        feedCounts = feedCounts,
-                        onOpenChannel = { url -> openChannel(url) },
-                        topPlayed = topPlayedHome,
-                        onPlayTop = { v -> playVideo(v, expand = true, forcePlay = true) }
-                    )
-                }
-                showNotifications -> {
-                    NotificationsScreen(
-                        items = notifications,
-                        loading = feedLoading,
-                        onRefresh = { refreshFeed() },
-                        onPlay = { n ->
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                try { dao.markNotificationRead(n.videoKey) } catch (_: Exception) { }
-                            }
-                            // Tapping a notification IS an explicit tap -> forcePlay allowed.
-                            playVideo(with(NotifCenter) { n.toVideoItem() }, inQueue = false, expand = true, forcePlay = true)
-                        }
-                    )
-                }
-                showDownloads -> {
-                    com.mohamedadel.mytube.ui.library.DownloadsRoute(
-                        pins = pins,
-                        totalBytes = try { com.mohamedadel.mytube.data.local.PinFiles.totalBytes(ctx.applicationContext) } catch (_: Exception) { 0L },
-                        pinningKeys = pinningKeys,
-                        progressMap = pinProgress,
-                        thumbLookup = { k -> try { history.firstOrNull { it.videoKey == k }?.thumbnail } catch (_: Exception) { null } },
-                        onPlay = { v -> showDownloads = false; playVideo(v, expand = true, forcePlay = true) },
-                        onDelete = { k -> doUnpin(k) },
-                        onClearAll = { clearAllPins() },
-                        onCancel = { k -> cancelPinDownload(k) },
-                        pausedKeys = pausedKeys,
-                        onPause = { k -> pausePinDownload(k) },
-                        onResume = { k -> resumePinDownload(k) },
-                        titleLookup = { k -> try { history.firstOrNull { it.videoKey == k }?.title } catch (_: Exception) { null } },
-                        orphanCount = orphanInfo.first,
-                        orphanBytes = orphanInfo.second,
-                        onCleanOrphans = { cleanOrphans() }
-                    )
-                }
-                showLocal -> {
-                    com.mohamedadel.mytube.ui.library.LocalAudioRoute(
-                        tracks = localTracks,
-                        folderFilter = localFolder,
-                        onFolder = { localFolder = it },
-                        onExcludeFolder = { f -> excludeLocalFolder(f) },
-                        excluded = localExcl,
-                        onUnexclude = { f -> unexcludeLocalFolder(f) },
-                        compat = localCompat,
-                        onCompat = { c ->
-                            localCompat = c
-                            try { prefs.edit().putBoolean("local_scan_compat", c).apply() } catch (_: Exception) { }
-                            refreshLocalAudio()
-                        },
-                        needsPermission = !localHasPerm,
-                        onRequestPermission = { try { localPermLauncher.launch(localAudioPerm()) } catch (_: Exception) { } },
-                        onRescan = { refreshLocalAudio() },
-                        onBack = { smartBack() },
-                        onPlay = { v -> showLocal = false; fromLibrary = false; playVideo(v, expand = true, forcePlay = true) },
-                        isFav = { v -> v.favKey() in favoriteSet },
-                        onFav = { toggleFavorite(it) },
-                        onLongClick = { optionsFor = it },
-                        // screens-fix Music P1-M8: highlight the playing track.
-                        playingUrl = playing?.url,
-                        isPlaying = isPlaying
-                    )
-                }
-                showGroups -> {
-                    com.mohamedadel.mytube.ui.library.GroupsScreen(
-                        groups = groups,
-                        counts = groupCounts,
-                        onOpen = { openGroup = it; showGroups = false },
-                        onCreate = { createGroup(it) },
-                        onRename = { g, n -> renameGroup(g, n) },
-                        onDelete = { deleteGroup(it) },
-                        onBack = { smartBack() }
-                    )
-                }
-                openGroup != null -> {
-                    // T5: no !! on delegated state — null falls back to list.
-                    val g = openGroup
-                    if (g != null) com.mohamedadel.mytube.ui.library.GroupDetailScreen(
-                        group = g,
-                        members = groupMembers,
-                        subscriptions = subscriptions,
-                        onRemove = { removeFromGroup(g.id, it) },
-                        onAdd = { addToGroup(g.id, it) },
-                        onOpenChannel = { openChannel(it) },
-                        onOpenFeed = {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                val urls = try { dao.memberUrls(g.id) } catch (_: Exception) { emptyList() }
-                                openGroupFeed(g, urls.toSet())
-                            }
-                        },
-                        onBack = { smartBack() }
-                    )
-                }
-                showFeed -> {
-                    FeedScreen(
-                        items = feedItems,
-                        loading = feedLoading,
-                        onRefresh = { refreshFeed() },
-                        filterChannelUrl = feedFilter,
-                        filterChannelName = feedGroupName ?: feedFilter?.let { u -> subscriptions.firstOrNull { it.channelUrl == u }?.name },
-                        onClearFilter = { feedFilter = null; feedGroupUrls = null; feedGroupName = null },
-                        filterUrls = feedGroupUrls ?: emptySet(),
-                        filterLabel = feedGroupName,
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        onLongClick = { optionsFor = it },
-                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
-                        isFav = { v -> v.favKey() in favoriteSet },
-                        onFav = { toggleFavorite(it) },
-                    )
-                }
-                showSC -> {
-                    com.mohamedadel.mytube.ui.library.MusicTab(
-                        scQuery = scQuery,
-                        scLoading = scLoading,
-                        recentMusicSearches = recentMusicSearches,
-                        scSource = scSource,
-                        scKind = scKind,
-                        scResults = scResults,
-                        scError = scError,
-                        scSuggestion = scSuggestion,
-                        scCorrected = scCorrected,
-                        remotePlaylists = remotePlaylists,
-                        scHasMore = scHasMore,
-                        scLoadingMore = scLoadingMore,
-                        tasteProfile = tasteProfile,
-                        tasteMix = tasteMix,
-                        tasteMixTerm = tasteMixTerm,
-                        tasteMixLoading = tasteMixLoading,
-                        playingUrl = playing?.url,
-                        isPlaying = isPlaying,
-                        favoriteSet = favoriteSet,
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        scListState = scListState,
-                        onQueryChange = { scQuery = it },
-                        onSearch = { q -> doScSearch(q) },
-                        onClose = { goHome() },
-                        onClear = { scQuery = ""; scResults = emptyList(); scError = null },
-                        onPickSuggestion = { picked -> doScSearch(picked) },
-                        onClearRecents = { recentMusicSearches = emptyList(); try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { } },
-                        onDeleteRecent = { s -> recentMusicSearches = recentMusicSearches.filter { it != s }; try { prefs.edit().putString("recent_music_searches", recentMusicSearches.joinToString("\u001f")).apply() } catch (_: Exception) { } },
-                        onVoice = { startVoiceSearch() },
-                        onSourceSelect = { src -> scSource = src; scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, src) },
-                        onKindSelect = { k -> if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },
-                        onTerm = { t -> scQuery = t; doScSearch(t) },
-                        onPlayVideo = { v -> playVideo(v, expand = true, forcePlay = true) },
-                        onPlayMix = { v -> if (v.isChannel) openChannel(v.channelUrl ?: v.url) else playVideo(v, expand = true, forcePlay = true) },
-                        onOpenChannel = { url -> openChannel(url) },
-                        onOptions = { optionsFor = it },
-                        onToggleFav = { toggleFavorite(it) },
-                        onOpenRemotePlaylist = { p -> openRemotePlaylist(p) },
-                        onLoadMore = { loadScMore() }
-                    )
-                }
-                showSettings -> { SettingsPane() }
-                showHistory -> {
-                    HistoryScreen(
-                        flowAll = histFlowAll,
-                        flowPinned = histFlowPinned,
-                        flowUnpinned = histFlowUnpinned,
-                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
-                        onDelete = { scope.launch { try { dao.deleteHistory(it.favKey()) } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) } } },
-                        onClear = { clearHistory() },
-                        onBack = { smartBack() },
-                        onLongClick = { optionsFor = it },
-                        totalCount = histCount,
-                        searchQuery = histSearchQuery,
-                        onSearchQuery = { runHistSearch(it) },
-                        searchResults = histSearchResults,
-                        pinInfo = remember(pins) { pins.associateBy { it.videoKey } },
-                        pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        isFav = { v -> v.favKey() in favoriteSet },
-                        onFav = { toggleFavorite(it) }
-                    )
-                }
-                showFavorites -> {
-                    FavoritesScreen(
-                        items = favorites,
-                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
-                        onToggleFav = { toggleFavorite(it) },
-                        onClear = { clearFavorites() },
-                        onBack = { smartBack() },
-                        onLongClick = { optionsFor = it },
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        onPlayAll = {
-                            val list = favorites.map { it.toVideoItem() }
-                            if (list.isNotEmpty()) {
-                                queue = list
-                                playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
-                            }
-                        },
-                        onRadio = {
-                            val first = favorites.firstOrNull()?.toVideoItem()
-                            if (first != null) startRadio(first)
-                        }
-                    )
-                }
-                showPlaylists -> {
-                    PlaylistsRoute()
-                }
-                openRemote != null -> {
-                    // T5: no !! on delegated state — null renders nothing.
-                    val rp = openRemote
-                    if (rp != null) com.mohamedadel.mytube.ui.results.RemoteRoute(
-                        rp = rp,
-                        loading = openRemoteLoading,
-                        items = openRemoteItems,
-                        playingUrl = playing?.url,
-                        isPlaying = isPlaying,
-                        favSet = favoriteSet,
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        progressOf = { k -> pinProgress[k] },
-                        onBack = { smartBack() },
-                        onPlayAll = { list ->
-                            results = list
-                            queue = list
-                            currentQuery = ""
-                            openRemote = null
-                            playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
-                        },
-                        onPlay = { playVideo(it, expand = true, forcePlay = true) },
-                        onLongClick = { optionsFor = it },
-                        onFav = { toggleFavorite(it) },
-                        // screens-fix Library P1-L5: remote -> local save + pin-all.
-                        // screens-fix Library P2 (method-size): body lives in a local fun, not inline.
-                        onSave = { list -> saveRemoteList(list) },
-                        // SC sets run long: page-walk the opened playlist instead of first-page-only.
-                        hasMore = openRemoteNext != null,
-                        loadingMore = openRemoteLoadingMore,
-                        onShowMore = { loadMoreRemote() },
-                        onPinAll = { list -> scope.launch { for (v in list) { try { quickPin(v, null) } catch (_: Exception) { } } } },
-                    ) else { openRemote = null }
-                }
-                loading -> {
-                    com.mohamedadel.mytube.ui.results.VideoListSkeleton(count = 5)
-                }
-                results.isEmpty() && query.isBlank() -> {
-                    // VerifyError fix (2026-11-12): home branch lives in ui.home.HomeBranches.
-                    com.mohamedadel.mytube.ui.home.HomeBranch(
-                        trending = trending,
-                        trendTab = trendTab,
-                        trendingItems = trendingItems,
-                        trendingLoading = trendingLoading,
-                        trendingError = trendingError,
-                        trendingHasMore = trendingHasMore,
-                        trendingLoadingMore = trendingLoadingMore,
-                        countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry,
-                        sectionTitle = TREND_TABS.getOrNull(trendTab)?.first?.let { ctx.getString(it) },
-                        showMusicBadge = TREND_TABS.getOrNull(trendTab)?.second == "trending_music",
-                        isSuggestionsTab = TREND_TABS.getOrNull(trendTab)?.second == "suggestions",
-                        suggestionChips = suggestionChips,
-                        continueWatching = continueWatching,
-                        continueProgress = continueProgress,
-                        continueResumeMs = continueResumeMs,
-                        trendingCached = trendingCached,
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        pinProgress = pinProgress,
-                        favoriteSet = favoriteSet,
-                        onTrendTab = { i -> suggestJob?.cancel(); trendTab = i; refreshTrending() },
-                        onRetryTrending = { refreshTrending(force = true) },
-                        onShowMore = { loadMoreTrending() },
-                        onSearchQ = { q -> query = q; doSearch(q) },
-                        onSuggestionQ = { q -> query = q; doSearch(q) },
-                        onPlayItem = { playVideo(it, expand = true, forcePlay = true) },
-                        onFavToggle = { toggleFavorite(it) },
-                        onShowOptions = { optionsFor = it },
-                        onResumePlay = { v, ms -> pendingSeekMs = ms; pendingSeekKey = v.favKey(); playVideo(v, expand = true, forcePlay = true) }
-                    )
-                }
-                results.isEmpty() && !loading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                run { val se = searchError; if (se != null) se else stringResource(R.string.no_results) },
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                if (searchError != null) stringResource(R.string.check_connection) else stringResource(R.string.search_try_other),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (searchError != null && currentQuery.isNotBlank()) {
-                                Spacer(Modifier.height(12.dp))
-                                androidx.compose.material3.Button(onClick = { doSearch(currentQuery) }) { Text(stringResource(R.string.retry)) }
-                            }
-                        }
-                    }
-                }
-                else -> {
-                    // VerifyError fix (2026-11-12): results branch lives in ui.home.HomeBranches.
-                    com.mohamedadel.mytube.ui.home.ResultsBranch(
-                        results = results,
-                        playing = playing,
-                        isPlaying = isPlaying,
-                        favoriteSet = favoriteSet,
-                        pinBadges = pinBadges,
-                        pinningKeys = pinningKeys,
-                        pinProgress = pinProgress,
-                        prefContentFilter = prefContentFilter,
-                        currentQuery = currentQuery,
-                        searchSuggestion = searchSuggestion,
-                        searchCorrected = searchCorrected,
-                        searchError = searchError,
-                        remotePlaylists = remotePlaylists,
-                        loadingMore = loadingMore,
-                        hasMore = hasMore,
-                        nextPage = nextPage,
-                        prefCountry = prefCountry,
-                        prefs = prefs,
-                        scope = scope,
-                        listState = listState,
-                        setContentFilter = { prefContentFilter = it },
-                        doSearchText = { q -> doSearch(q) },
-                        setResults = { results = it },
-                        setNextPage = { nextPage = it },
-                        setHasMore = { hasMore = it },
-                        setLoadingMore = { loadingMore = it },
-                        onOpenRemotePlaylist = { openRemotePlaylist(it) },
-                        onPlayItem = { playVideo(it, expand = true, forcePlay = true) },
-                        onShowOptions = { optionsFor = it },
-                        onToggleFav = { toggleFavorite(it) }
-                    )
-                }
-            }
-            }
-            // add-to-playlist picker for a single video
-            pickFor?.let { v ->
-                PlaylistPickerDialog(
-                    video = v,
-                    playlists = playlists,
-                    onCreateAndAdd = { name ->
-                        scope.launch {
-                            try {
-                                val pid = dao.insertPlaylist(PlaylistEntity(name = name))
-                                dao.insertItems(listOf(v.toEntity(pid, 0)))
-                                toast(ctx.getString(R.string.toast_playlist_created))
-                            } catch (_: Exception) { toast(ctx.getString(R.string.toast_playlist_create_fail)) }
-                            pickFor = null
-                        }
-                    },
-                    onAddTo = { pid ->
-                        scope.launch {
-                            // no duplicates (same stable key as favorites): reject LOUDLY, never silently
-                            val key = v.favKey()
-                            val exists = dao.itemsOnce(pid).any { e ->
-                                VideoItem(id = e.videoId, title = e.title, channel = e.channel, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == key
-                            }
-                            if (!exists) {
-                                val pos = dao.itemCount(pid)
-                                dao.insertItems(listOf(v.toEntity(pid, pos)))
-                                toast(ctx.getString(R.string.toast_added_playlist))
-                            } else {
-                                toast(ctx.getString(R.string.toast_already_queued))
-                            }
-                            pickFor = null
-                        }
-                    },
-                    onDismiss = { pickFor = null }
+                com.mohamedadel.mytube.ui.home.MainContent(
+                    channelScreenUrl = channelScreenUrl,
+                    channelDetail = channelDetail,
+                    channelScreenVideos = channelScreenVideos,
+                    channelScreenLoading = channelScreenLoading,
+                    subscriptions = subscriptions,
+                    ctx = ctx,
+                    favoriteSet = favoriteSet,
+                    pinBadges = pinBadges,
+                    pinningKeys = pinningKeys,
+                    pinProgress = pinProgress,
+                    channelShorts = channelShorts,
+                    channelShortsLoading = channelShortsLoading,
+                    channelLive = channelLive,
+                    channelLiveLoading = channelLiveLoading,
+                    channelPls = channelPls,
+                    channelPlsLoading = channelPlsLoading,
+                    onSubscribeChannel = mc_onSubscribeChannel,
+                    onBack = mc_onBack,
+                    onPlayVideo = mc_onPlayVideo,
+                    onPlayInQueue = mc_onPlayInQueue,
+                    onPlayFromQueue = mc_onPlayFromQueue,
+                    onShowOptions = mc_onShowOptions,
+                    onToggleFav = mc_onToggleFav,
+                    onTabSelect = mc_onTabSelect,
+                    onOpenRemotePlaylist = mc_onOpenRemotePlaylist,
+                    queue = queue,
+                    setQueue = mc_setQueue,
+                    queueIndex = queueIndex,
+                    setQueueIndex = mc_setQueueIndex,
+                    playing = playing,
+                    radioOn = radioOn,
+                    setRadioOn = mc_setRadioOn,
+                    setShowQueue = mc_setShowQueue,
+                    scope = scope,
+                    dao = dao,
+                    playerExpanded = playerExpanded,
+                    showQueue = showQueue,
+                    showSettings = showSettings,
+                    settingsPane = { SettingsPane() },
+                    playlistsRoute = mc_playlistsRoute,
+                    trending = trending,
+                    trendTab = trendTab,
+                    onTrendTab = mc_onTrendTab,
+                    trendingItems = trendingItems,
+                    trendingLoading = trendingLoading,
+                    trendingError = trendingError,
+                    onRetryTrending = mc_onRetryTrending,
+                    trendingHasMore = trendingHasMore,
+                    trendingLoadingMore = trendingLoadingMore,
+                    onShowMoreTrending = mc_onShowMoreTrending,
+                    countryName = mc_countryName,
+                    sectionTitle = mc_sectionTitle,
+                    showMusicBadge = mc_showMusicBadge,
+                    isSuggestionsTab = mc_isSuggestionsTab,
+                    suggestionChips = suggestionChips,
+                    onSearchQ = mc_onSearchQ,
+                    onSuggestionQ = mc_onSuggestionQ,
+                    continueWatching = continueWatching,
+                    continueProgress = continueProgress,
+                    continueResumeMs = continueResumeMs,
+                    onResumePlay = mc_onResumePlay,
+                    trendingCached = trendingCached,
+                    searchError = searchError,
+                    currentQuery = currentQuery,
+                    searchSuggestion = searchSuggestion,
+                    searchCorrected = searchCorrected,
+                    remotePlaylists = remotePlaylists,
+                    results = results,
+                    listState = listState,
+                    prefContentFilter = prefContentFilter,
+                    setContentFilter = mc_setContentFilter,
+                    prefs = prefs,
+                    doSearchText = mc_doSearchText,
+                    setResults = mc_setResults,
+                    nextPage = nextPage,
+                    setNextPage = mc_setNextPage,
+                    hasMore = hasMore,
+                    setHasMore = mc_setHasMore,
+                    loadingMore = loadingMore,
+                    setLoadingMore = mc_setLoadingMore,
+                    prefCountry = prefCountry,
+                    showLibrary = showLibrary,
+                    showNotifications = showNotifications,
+                    showDownloads = showDownloads,
+                    showLocal = showLocal,
+                    showGroups = showGroups,
+                    openGroup = openGroup,
+                    showFeed = showFeed,
+                    showSC = showSC,
+                    showHistory = showHistory,
+                    showFavorites = showFavorites,
+                    showPlaylists = showPlaylists,
+                    openRemote = openRemote,
+                    loading = loading,
+                    query = query,
+                    groups = groups,
+                    pins = pins,
+                    feedCounts = feedCounts,
+                    topPlayedHome = topPlayedHome,
+                    setShowLibrary = mc_setShowLibrary,
+                    setFromLibrary = mc_setFromLibrary,
+                    setShowHistory = mc_setShowHistory,
+                    setShowDownloads = mc_setShowDownloads,
+                    setShowGroups = mc_setShowGroups,
+                    setShowFavorites = mc_setShowFavorites,
+                    setShowPlaylists = mc_setShowPlaylists,
+                    setShowLocal = mc_setShowLocal,
+                    setShowFeed = mc_setShowFeed,
+                    onOpenLocalAudio = mc_onOpenLocalAudio,
+                    onOpenFeed = mc_onOpenFeed,
+                    onUnsubscribe = mc_onUnsubscribe,
+                    onImportSubs = mc_onImportSubs,
+                    onOpenChannel = mc_onOpenChannel,
+                    onPlayTop = mc_onPlayTop,
+                    notifications = notifications,
+                    feedLoading = feedLoading,
+                    onRefreshFeed = mc_onRefreshFeed,
+                    onPlayNotif = mc_onPlayNotif,
+                    history = history,
+                    onDeletePin = mc_onDeletePin,
+                    onClearAllPins = mc_onClearAllPins,
+                    onCancelPin = mc_onCancelPin,
+                    pausedKeys = pausedKeys,
+                    onPausePin = mc_onPausePin,
+                    onResumePin = mc_onResumePin,
+                    orphanInfo = orphanInfo,
+                    onCleanOrphans = mc_onCleanOrphans,
+                    localTracks = localTracks,
+                    localFolder = localFolder,
+                    setLocalFolder = mc_setLocalFolder,
+                    onExcludeFolder = mc_onExcludeFolder,
+                    localExcl = localExcl,
+                    onUnexclude = mc_onUnexclude,
+                    localCompat = localCompat,
+                    setLocalCompat = mc_setLocalCompat,
+                    onRefreshLocalAudio = mc_onRefreshLocalAudio,
+                    localHasPerm = localHasPerm,
+                    onRequestLocalPerm = mc_onRequestLocalPerm,
+                    playingUrl = mc_playingUrl,
+                    isPlaying = isPlaying,
+                    groupCounts = groupCounts,
+                    setOpenGroup = mc_setOpenGroup,
+                    onCreateGroup = mc_onCreateGroup,
+                    onRenameGroup = mc_onRenameGroup,
+                    onDeleteGroup = mc_onDeleteGroup,
+                    groupMembers = groupMembers,
+                    onRemoveFromGroup = mc_onRemoveFromGroup,
+                    onAddToGroup = mc_onAddToGroup,
+                    onOpenGroupFeed = mc_onOpenGroupFeed,
+                    feedItems = feedItems,
+                    feedFilter = feedFilter,
+                    feedGroupName = feedGroupName,
+                    feedGroupUrls = feedGroupUrls,
+                    setFeedFilter = mc_setFeedFilter,
+                    setFeedGroupUrls = mc_setFeedGroupUrls,
+                    setFeedGroupName = mc_setFeedGroupName,
+                    scQuery = scQuery,
+                    setScQuery = mc_setScQuery,
+                    scLoading = scLoading,
+                    recentMusicSearches = recentMusicSearches,
+                    setRecentMusicSearches = mc_setRecentMusicSearches,
+                    scSource = scSource,
+                    setScSource = mc_setScSource,
+                    scKind = scKind,
+                    setScKind = mc_setScKind,
+                    scResults = scResults,
+                    setScResults = mc_setScResults,
+                    scError = scError,
+                    setScError = mc_setScError,
+                    scSuggestion = scSuggestion,
+                    setScSuggestion = mc_setScSuggestion,
+                    scCorrected = scCorrected,
+                    setRemotePlaylists = mc_setRemotePlaylists,
+                    scHasMore = scHasMore,
+                    scLoadingMore = scLoadingMore,
+                    tasteProfile = tasteProfile,
+                    tasteMix = tasteMix,
+                    tasteMixTerm = tasteMixTerm,
+                    tasteMixLoading = tasteMixLoading,
+                    scListState = scListState,
+                    doScSearch = mc_doScSearch,
+                    doScSearchSrc = mc_doScSearchSrc,
+                    doScSearchKind = mc_doScSearchKind,
+                    onCloseMusic = mc_onCloseMusic,
+                    onVoice = mc_onVoice,
+                    onPlayMix = mc_onPlayMix,
+                    onLoadMoreSc = mc_onLoadMoreSc,
+                    histFlowAll = histFlowAll,
+                    histFlowPinned = histFlowPinned,
+                    histFlowUnpinned = histFlowUnpinned,
+                    histCount = histCount,
+                    histSearchQuery = histSearchQuery,
+                    onHistSearch = mc_onHistSearch,
+                    histSearchResults = histSearchResults,
+                    toast = mc_toast,
+                    onClearHistory = mc_onClearHistory,
+                    favorites = favorites,
+                    onClearFavorites = mc_onClearFavorites,
+                    onStartRadio = mc_onStartRadio,
+                    setOpenRemote = mc_setOpenRemote,
+                    openRemoteLoading = openRemoteLoading,
+                    openRemoteItems = openRemoteItems,
+                    setCurrentQuery = mc_setCurrentQuery,
+                    onSaveRemoteList = mc_onSaveRemoteList,
+                    openRemoteNext = openRemoteNext,
+                    openRemoteLoadingMore = openRemoteLoadingMore,
+                    onLoadMoreRemote = mc_onLoadMoreRemote,
+                    onQuickPin = mc_onQuickPin,
                 )
             }
-            // sleep timer picker: arms/clears the auto-pause deadline watched by the polling loop
-            if (showSleep) {
-                SleepTimerDialog(
-                    currentLabel = sleepLeft.ifBlank { null },
-                    onPick = { m ->
-                        sleepEndOfTrack = false
-                        sleepTrackKey = null // F12: a fresh timer disarms any track-bound flag
-                        sleepAtMs = if (m == null) null else android.os.SystemClock.uptimeMillis() + m * 60000L
-                        if (m == null) {
-                            sleepLeft = ""
-                            try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
-                            // F1: cancel the service-side deadline too.
-                            try { PlaybackService.cancelSleep() } catch (_: Exception) { }
-                        } else {
-                            try { prefs.edit().putLong("sleep_deadline", sleepAtMs ?: 0L).apply() } catch (_: Exception) { }
-                            // F1: service-side deadline survives Activity death (Compose watcher is UI-only).
-                            try { PlaybackService.scheduleSleep(m * 60000L) } catch (_: Exception) { }
-                        }
-                        showSleep = false
-                    },
-                    onEndOfTrack = {
-                        sleepAtMs = null
-                        try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
-                        sleepTrackKey = playing?.favKey() // F12: bind the flag to this track
-                        sleepEndOfTrack = true
-                        sleepLeft = try { ctx.getString(R.string.sleep_track) } catch (_: Exception) { "..." }
-                        showSleep = false
-                    },
-                    onDismiss = { showSleep = false }
-                )
-            }
-            // age-gate warn dialog lives in the library file (Scaffold content is at the 64KB limit)
-            agePending?.let { ap ->
-                com.mohamedadel.mytube.ui.library.AgeWarnDialog(
-                    title = ap.first.title,
-                    onPlay = { val x = ap; agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true, pre = x.third, forcePlay = true) },
-                    onDismiss = { agePending = null }
-                )
-            }
-            // pin confirm: own file (Scaffold content is at the 64KB method limit)
-            pinConfirm?.let { pc ->
-                com.mohamedadel.mytube.ui.library.PinConfirmDialog(
-                    title = pc.v.title,
-                    sd = pinSd,
-                    selLoc = pinSelLoc,
-                    selQuality = pinSelQuality,
-                    selAudio = pinSelAudio,
-                    selSubs = pinSelSubs,
-                    maxH = if (prefAllow4k) Int.MAX_VALUE else 1080,
-                    estBytes = pinEst,
-                    sizeUnknown = stringResource(R.string.pin_size_unknown),
-                    sizeFmt = { mb -> ctx.getString(R.string.pin_size_fmt, mb) },
-                    extOk = try { com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext) } catch (_: Exception) { false },
-                    onLoc = { loc ->
-                        pinSelLoc = loc
-                        try { prefs.edit().putString("pref_pin_location", loc).apply() } catch (_: Exception) { }
-                    },
-                    onQuality = { pinSelQuality = it },
-                    onAudio = { pinSelAudio = it },
-                    onSubs = { pinSelSubs = it },
-                    onEst = { pinEst = it },
-                    onConfirm = { confirmPin() },
-                    onDismiss = { pinConfirm = null }
-                )
-            }
-            // long-press video options: play now / play next / queue end / add to playlist
-            optionsFor?.let { v ->
-                VideoOptionsDialog(
-                    video = v,
-                    onPlayNow = { playNowAlone(v); optionsFor = null },
-                    onPlayNext = { enqueueNext(v); optionsFor = null },
-                    onQueueEnd = { enqueueLast(v); optionsFor = null },
-                    onAddToPlaylist = { pickFor = v; optionsFor = null },
-                    onPin = {
-                        if (pinKeys.contains(v.favKey())) { doUnpin(v.favKey()); optionsFor = null }
-                        else { optionsFor = null; requestPin(v, null, null, null, null) }
-                    },
-                    onQuickPin = {
-                        if (!pinKeys.contains(v.favKey())) { optionsFor = null; quickPin(v, null) }
-                    },
-                    isPinned = pinKeys.contains(v.favKey()),
-                    isPinning = pinningKeys.contains(v.favKey()),
-                    onSubscribe = if (v.channelUrl != null) ({ toggleSubscription(v.channelUrl, v.channel, v.channelAvatar); optionsFor = null }) else null,
-                    onShare = { try { ctx.shareVideoCtx(v) } catch (_: Exception) { }; optionsFor = null },
-                    onStartRadio = { startRadio(v); optionsFor = null },
-                    isSubscribed = v.channelUrl != null && subscriptions.any { it.channelUrl == v.channelUrl },
-                    onDismiss = { optionsFor = null }
-                )
-            }
-            // Deferred item 6: update dialog — version + changelog + Download (was toast-only).
-            updateInfo?.let { rel ->
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { updateInfo = null },
-                    title = { Text(stringResource(R.string.update_available_fmt, rel.tag, com.mohamedadel.mytube.BuildConfig.VERSION_NAME)) },
-                    text = {
-                        androidx.compose.foundation.layout.Column(modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                            Text(
-                                (rel.body?.take(2000)?.ifBlank { rel.tag } ?: rel.tag),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        androidx.compose.material3.TextButton(onClick = {
-                            try {
-                                val url = rel.htmlUrl
-                                if (!url.isNullOrBlank()) {
-                                    val view = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                                    view.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    ctx.startActivity(view)
-                                } else uiToast(ctx.getString(R.string.update_fail))
-                            } catch (_: Exception) { uiToast(ctx.getString(R.string.update_fail)) }
-                            updateInfo = null
-                        }) { Text(stringResource(R.string.download)) }
-                    },
-                    dismissButton = {
-                        androidx.compose.material3.TextButton(onClick = { updateInfo = null }) { Text(stringResource(R.string.close)) }
-                    }
-                )
-            }
+            // VerifyError fix (2026-11-12): end-of-screen dialogs live in ui.home.HomeDialogs.
+            com.mohamedadel.mytube.ui.home.HomeDialogs(
+                ctx = ctx,
+                prefs = prefs,
+                scope = scope,
+                dao = dao,
+                toast = { toast(it) },
+                uiToast = { uiToast(it) },
+                pickFor = pickFor,
+                setPickFor = { pickFor = it },
+                playlists = playlists,
+                showSleep = showSleep,
+                sleepLeft = sleepLeft,
+                setSleepEndOfTrack = { sleepEndOfTrack = it },
+                setSleepTrackKey = { sleepTrackKey = it },
+                setSleepAtMs = { sleepAtMs = it },
+                setSleepLeft = { sleepLeft = it },
+                setShowSleep = { showSleep = it },
+                playing = playing,
+                agePending = agePending,
+                onAgePlay = { x -> agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true, pre = x.third, forcePlay = true) },
+                setAgePending = { agePending = it },
+                pinConfirm = pinConfirm,
+                pinSd = pinSd,
+                pinSelLoc = pinSelLoc,
+                pinSelQuality = pinSelQuality,
+                pinSelAudio = pinSelAudio,
+                pinSelSubs = pinSelSubs,
+                pinEst = pinEst,
+                prefAllow4k = prefAllow4k,
+                setPinSelLoc = { pinSelLoc = it },
+                setPinSelQuality = { pinSelQuality = it },
+                setPinSelAudio = { pinSelAudio = it },
+                setPinSelSubs = { pinSelSubs = it },
+                setPinEst = { pinEst = it },
+                setPinConfirm = { pinConfirm = it },
+                onConfirmPin = { confirmPin() },
+                optionsFor = optionsFor,
+                setOptionsFor = { optionsFor = it },
+                onPlayNow = { playNowAlone(it) },
+                onPlayNext = { enqueueNext(it) },
+                onQueueEnd = { enqueueLast(it) },
+                onPinToggle = { v -> if (pinKeys.contains(v.favKey())) doUnpin(v.favKey()) else requestPin(v, null, null, null, null) },
+                onQuickPin = { v -> if (!pinKeys.contains(v.favKey())) quickPin(v, null) },
+                isPinned = { v -> pinKeys.contains(v.favKey()) },
+                isPinning = { v -> pinningKeys.contains(v.favKey()) },
+                onSubscribeVideo = { v -> toggleSubscription(v.channelUrl, v.channel, v.channelAvatar) },
+                onShare = { v -> try { ctx.shareVideoCtx(v) } catch (_: Exception) { } },
+                onStartRadio = { startRadio(it) },
+                isSubscribed = { v -> v.channelUrl != null && subscriptions.any { it.channelUrl == v.channelUrl } },
+                updateInfo = updateInfo,
+                setUpdateInfo = { updateInfo = it }
+            )
         }
         }
     }
