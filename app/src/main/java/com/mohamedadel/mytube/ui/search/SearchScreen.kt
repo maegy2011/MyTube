@@ -53,6 +53,7 @@ fun SearchScreen(
     suggestions: List<String> = emptyList(),
     onPickSuggestion: (String) -> Unit = {},
     onClearRecents: () -> Unit = {},
+    onDeleteRecent: (String) -> Unit = {},
     onVoice: () -> Unit = {},
     // embedded header (music tab): wrap content so the source chips + results below stay visible.
     // Standalone (main search): fill the whole screen as before.
@@ -135,7 +136,10 @@ fun SearchScreen(
                         ) {
                             Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(12.dp))
-                            Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                            Text(s, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { onDeleteRecent(s) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Rounded.Clear, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                     suggestions.take(8).forEach { s ->

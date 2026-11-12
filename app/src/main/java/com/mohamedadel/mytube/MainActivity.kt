@@ -3843,6 +3843,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 onClearRecents = {
                     recentSearches = emptyList()
                     try { prefs.edit().remove("recent_searches").apply() } catch (_: Exception) { }
+                },
+                onDeleteRecent = { s ->
+                    recentSearches = recentSearches.filter { it != s }
+                    try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
                 }
             )
         }
@@ -4838,6 +4842,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         onClear = { scQuery = ""; scResults = emptyList(); scError = null },
                         onPickSuggestion = { picked -> doScSearch(picked) },
                         onClearRecents = { recentMusicSearches = emptyList(); try { prefs.edit().remove("recent_music_searches").apply() } catch (_: Exception) { } },
+                        onDeleteRecent = { s -> recentMusicSearches = recentMusicSearches.filter { it != s }; try { prefs.edit().putString("recent_music_searches", recentMusicSearches.joinToString("\u001f")).apply() } catch (_: Exception) { } },
                         onVoice = { startVoiceSearch() },
                         onSourceSelect = { src -> scSource = src; scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, src) },
                         onKindSelect = { k -> if (scKind != k) { scKind = k; remotePlaylists = emptyList(); scResults = emptyList(); scError = null; scSuggestion = null; scope.launch { try { scListState.scrollToItem(0) } catch (_: Exception) { } }; if (scQuery.isNotBlank()) doScSearch(scQuery, 1, k) } },

@@ -68,6 +68,7 @@ fun MusicTab(
     onClear: () -> Unit,
     onPickSuggestion: (String) -> Unit,
     onClearRecents: () -> Unit,
+    onDeleteRecent: (String) -> Unit = {},
     onVoice: () -> Unit,
     onSourceSelect: (Int) -> Unit,
     onKindSelect: (String) -> Unit,
@@ -92,6 +93,7 @@ fun MusicTab(
             dropRecents = if (scQuery.isBlank()) recentMusicSearches else recentMusicSearches.filter { r -> r.contains(scQuery, ignoreCase = true) },
             onPickSuggestion = onPickSuggestion,
             onClearRecents = onClearRecents,
+            onDeleteRecent = onDeleteRecent,
             onVoice = onVoice,
             fillMax = false
         )
