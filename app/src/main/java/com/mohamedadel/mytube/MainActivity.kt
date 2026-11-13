@@ -473,10 +473,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         builder.build()
     }
     val dao = remember { db.playlists() }
+    val csvVm: com.mohamedadel.mytube.ui.library.PlaylistCsvViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val libVm: com.mohamedadel.mytube.ui.library.LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val feedVm: com.mohamedadel.mytube.ui.feed.FeedViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     androidx.compose.runtime.LaunchedEffect(Unit) { feedVm.configure(dao) }
     androidx.compose.runtime.LaunchedEffect(Unit) { libVm.configure(dao) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { csvVm.configure(dao) }
     val playlists by dao.observePlaylists().collectAsStateWithLifecycle(initialValue = emptyList())
     var showPlaylists by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -1146,45 +1148,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // S5+S9 (audit P2 2026-11-11): CSV goes through FileProvider + EXTRA_STREAM —
     // a thousand-row list as EXTRA_TEXT would blow the ~1MB Binder budget (TransactionTooLarge).
     fun exportPlaylistCsv(pid: Long) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val rows = dao.itemsOnce(pid)
-                if (rows.isEmpty()) { uiToast(ctx.getString(R.string.toast_csv_empty)); return@launch }
-                // screens-fix Library P1-L4: video_id column first (round-trips through import).
-                val sb = StringBuilder("video_id,title,channel,url,duration_sec\n")
-                for (r in rows) {
-                    fun q(v: String?): String = "\"" + (v ?: "").replace("\"", "\"\"") + "\""
-                    sb.append(q(r.videoId)).append(',').append(q(r.title)).append(',').append(q(r.channel)).append(',')
-                        .append(q(r.url)).append(',').append(r.durationSec ?: "").append('\n')
-                }
-                val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
-                val f = java.io.File(dir, "mytube_playlist_" + pid + ".csv")
-                f.writeText(sb.toString())
-                val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "com.mohamedadel.mytube.fileprovider", f)
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/csv"
-                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                val chooser = android.content.Intent.createChooser(send, try { ctx.getString(R.string.export_csv) } catch (_: Exception) { "CSV" })
-                chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                ctx.startActivity(chooser)
-            } catch (_: Exception) {
-                // fallback: tiny inline text so an export never hard-fails (may truncate large lists)
-                try {
-                    val rows = dao.itemsOnce(pid).take(50)
-                    val sb = StringBuilder()
-                    for (r in rows) sb.append(r.title ?: r.url ?: "").append('\n')
-                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
-                    }
-                    val chooser = android.content.Intent.createChooser(send, "CSV")
-                    chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    ctx.startActivity(chooser)
-                } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_csv_fail)) }
-            }
-        }
+        csvVm.exportPlaylistCsv(pid)
     }
     androidx.compose.runtime.LaunchedEffect(showPlaylists, openPlaylistId) { if (showPlaylists) loadPlSorts(openPlaylistId) }
     // screens-fix Library P1-L5: remote playlist -> local copy (local fun keeps the when-branch small).
@@ -1194,60 +1158,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // screens-fix Library P1-L4: CSV import (round-trips our own export; header-aware).
     fun importPlaylistCsv(uri: android.net.Uri) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val text = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return@launch
-                val lines = text.lines().filter { it.isNotBlank() }
-                if (lines.size < 2) { uiToast(ctx.getString(R.string.import_invalid)); return@launch }
-                fun splitCsv(line: String): List<String> {
-                    val out = mutableListOf<String>()
-                    val cur = StringBuilder()
-                    var inQ = false
-                    var i = 0
-                    while (i < line.length) {
-                        val c = line[i]
-                        if (inQ) {
-                            if (c == '"') {
-                                if (i + 1 < line.length && line[i + 1] == '"') { cur.append('"'); i++ } else inQ = false
-                            } else cur.append(c)
-                        } else {
-                            if (c == '"') inQ = true else if (c == ',') { out.add(cur.toString()); cur.clear() } else cur.append(c)
-                        }
-                        i++
-                    }
-                    out.add(cur.toString())
-                    return out
-                }
-                val header = splitCsv(lines[0]).map { it.trim().lowercase() }
-                val hasId = header.getOrNull(0) == "video_id"
-                val pid = dao.insertPlaylist(
-                    com.mohamedadel.mytube.data.local.PlaylistEntity(
-                        name = ("CSV " + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())).take(80),
-                        emoji = "\uD83C\uDFB5", mode = "music")
-                )
-                var n = 0
-                val rows = lines.drop(1).mapNotNull { ln ->
-                    try {
-                        val c = splitCsv(ln)
-                        if (c.all { it.isBlank() }) return@mapNotNull null
-                        val (vid, title, channel, url, dur) = if (hasId) {
-                            listOf(c.getOrNull(0), c.getOrNull(1), c.getOrNull(2), c.getOrNull(3), c.getOrNull(4))
-                        } else {
-                            listOf(null, c.getOrNull(0), c.getOrNull(1), c.getOrNull(2), c.getOrNull(3))
-                        }
-                        if (title.isNullOrBlank() && url.isNullOrBlank()) return@mapNotNull null
-                        n++
-                        com.mohamedadel.mytube.data.local.PlaylistItemEntity(
-                            playlistId = pid, videoId = vid?.ifBlank { null },
-                            title = title?.ifBlank { null }, channel = channel?.ifBlank { null },
-                            thumbnail = null, url = url?.ifBlank { null },
-                            durationSec = dur?.trim()?.toLongOrNull(), viewCount = null, position = n)
-                    } catch (_: Exception) { null }
-                }
-                if (rows.isNotEmpty()) dao.insertItems(rows)
-                uiToast(ctx.getString(R.string.toast_csv_imported_fmt, rows.size))
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.backup_import_fail)) }
-        }
+        csvVm.importPlaylistCsv(uri)
     }
     val csvImportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
