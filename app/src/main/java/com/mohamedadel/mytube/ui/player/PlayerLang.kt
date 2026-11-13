@@ -64,9 +64,7 @@ fun PlayerViewModel.buildLangDecision(host: LangHost): LangDecision {
         "commentary" -> C.ROLE_FLAG_COMMENTARY
         else -> 0
     }
-    val pinIdx = if (subTrackIdxNow() >= 0 && !subOff && subTrackForNow() == playingNow()?.let {
-        favKey(it)
-    }) subTrackIdxNow() else null
+    val pinIdx = if (subTrackIdxNow() >= 0 && !subOff && subTrackForNow() == playingNow()?.favKey()) subTrackIdxNow() else null
     return LangDecision(audioLang, subOff, subLang, roleFlag, useCm, p.hideForced, p.undetermined, audioRoleFlag, p.saver, pinIdx)
 }
 
