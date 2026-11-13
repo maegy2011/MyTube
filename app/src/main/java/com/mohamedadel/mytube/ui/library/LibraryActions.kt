@@ -42,10 +42,8 @@ suspend fun LibraryViewModel.moveItem(pid: Long, iid: Long, targetPid: Long): Bo
         val d = dao ?: return false
         val row = d.itemsOnce(pid).firstOrNull { it.id == iid }
         if (row == null) { toastMain(str(com.mohamedadel.mytube.R.string.toast_move_fail)); return false }
-        val v = com.mohamedadel.mytube.data.youtube.VideoItem(id = row.videoId, title = row.title, channel = row.channel, channelUrl = row.channelUrl, thumbnail = row.thumbnail, durationSec = row.durationSec, viewCount = row.viewCount, url = row.url)
-        val exists = d.itemsOnce(targetPid).any { e ->
-            com.mohamedadel.mytube.data.youtube.VideoItem(id = e.videoId, title = e.title, channel = e.channel, channelUrl = e.channelUrl, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == v.favKey()
-        }
+        val v = row.toVideoItem()
+        val exists = d.itemsOnce(targetPid).any { e -> e.toVideoItem().favKey() == v.favKey() }
         if (exists) { toastMain(str(com.mohamedadel.mytube.R.string.toast_already_target)); return false }
         d.insertItems(listOf(v.toEntity(targetPid, d.itemCount(targetPid))))
         d.deleteItem(pid, iid)
