@@ -413,6 +413,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val prefContentFilter by settingsVm.prefContentFilter.collectAsStateWithLifecycle()
     val playerVm: com.mohamedadel.mytube.ui.player.PlayerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val playing by playerVm.playing.collectAsStateWithLifecycle()
+    val playerHostHolder = remember { arrayOfNulls<com.mohamedadel.mytube.ui.player.PlayerHost>(1) }
     val streamData by playerVm.streamData.collectAsStateWithLifecycle()
     // selected dubbed/original audio track (auto-matched to the audio pref once prefs load below)
     val audioTrackIdx by playerVm.audioTrackIdx.collectAsStateWithLifecycle()
@@ -1175,7 +1176,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
     // Gate-1: URL resolution extracted from applyQuality — null = unavailable (caller surfaces the error).
     // Returns (playback url, is it a muxed file, user-picked audio url or null).
-    val playerHostHolder = remember { arrayOfNulls<com.mohamedadel.mytube.ui.player.PlayerHost>(1) }
     fun resolvePlaybackUrl(q: String, s: StreamData): Triple<String, Boolean, String?>? =
         resolvePlaybackUrl(q, s, audioTrackIdx, prefAllow4k, ctx.estimatedDownstreamKbps())
 

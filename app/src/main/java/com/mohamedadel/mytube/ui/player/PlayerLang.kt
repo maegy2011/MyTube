@@ -1,6 +1,7 @@
 package com.mohamedadel.mytube.ui.player
 
 import androidx.media3.common.C
+import com.mohamedadel.mytube.data.local.favKey
 
 /**
  * Phase 2.3 slice 28 (2026-11-13): language/track preference application.
@@ -64,7 +65,7 @@ fun PlayerViewModel.buildLangDecision(host: LangHost): LangDecision {
         else -> 0
     }
     val pinIdx = if (subTrackIdxNow() >= 0 && !subOff && subTrackForNow() == playingNow()?.let {
-        com.mohamedadel.mytube.data.local.favKey(it)
+        favKey(it)
     }) subTrackIdxNow() else null
     return LangDecision(audioLang, subOff, subLang, roleFlag, useCm, p.hideForced, p.undetermined, audioRoleFlag, p.saver, pinIdx)
 }
