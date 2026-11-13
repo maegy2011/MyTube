@@ -475,6 +475,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val dao = remember { db.playlists() }
     val csvVm: com.mohamedadel.mytube.ui.library.PlaylistCsvViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val backupVm: com.mohamedadel.mytube.ui.backup.BackupViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val sysVm: com.mohamedadel.mytube.ui.system.SystemViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val libVm: com.mohamedadel.mytube.ui.library.LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val feedVm: com.mohamedadel.mytube.ui.feed.FeedViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     androidx.compose.runtime.LaunchedEffect(Unit) { feedVm.configure(dao) }
@@ -2078,9 +2079,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun backupInfoText(): String? = backupVm.backupInfoText()
     // Deferred item 8: WorkManager scheduler for the periodic feed refresh (see FeedRefreshWorker).
     fun syncFeedWorker(appCtx: android.content.Context, enable: Boolean) {
-        try {
-            com.mohamedadel.mytube.data.local.FeedRefreshWorker.schedule(appCtx, enable)
-        } catch (_: Exception) { }
+        sysVm.syncFeedWorker(enable)
     }
     fun exportFullBackup() {
         backupVm.exportFullBackup()
@@ -2089,40 +2088,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         backupVm.importFullBackup(uri)
     }
     // Deferred item 6 (2026-11-11): update dialog payload (version + changelog + download URL).
-    var updateInfo by remember { mutableStateOf<com.mohamedadel.mytube.data.UpdateCheck.Release?>(null) }
+    val updateInfo by sysVm.updateInfo.collectAsStateWithLifecycle()
     // G-A2 (audit P2 2026-11-11): compare installed versionName with latest GitHub tag.
     fun checkUpdate() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val owner = try { ctx.getString(R.string.update_repo_owner) } catch (_: Exception) { "" }
-                val repo = try { ctx.getString(R.string.update_repo_name) } catch (_: Exception) { "" }
-                if (owner.isBlank() || repo.isBlank()) { uiToast(ctx.getString(R.string.update_not_configured)); return@launch }
-                uiToast(ctx.getString(R.string.update_checking))
-                val rel = com.mohamedadel.mytube.data.UpdateCheck.latestRelease(owner, repo)
-                if (rel == null) { uiToast(ctx.getString(R.string.update_fail)); return@launch }
-                val cur = com.mohamedadel.mytube.BuildConfig.VERSION_NAME
-                if (!com.mohamedadel.mytube.data.UpdateCheck.isNewer(rel.tag, cur)) uiToast(ctx.getString(R.string.update_latest))
-                // Deferred item 6: dialog with changelog + download (was toast-only).
-                else updateInfo = rel
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.update_fail)) }
-        }
+        sysVm.checkUpdate()
     }
     fun copyDiagnostics() {
-        try {
-            val cm = ctx.getSystemService(android.content.ClipboardManager::class.java) ?: return
-            val clip = android.content.ClipData.newPlainText("MyTube diagnostics", diagnosticsReport())
-            // S6 (audit P2 2026-11-11): diagnostics carry prefs + player errors — keep them
-            // out of the Gboard clipboard history on API33+.
-            try {
-                if (android.os.Build.VERSION.SDK_INT >= 33) {
-                    clip.description.extras = android.os.PersistableBundle().apply {
-                        putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
-                    }
-                }
-            } catch (_: Exception) { }
-            cm.setPrimaryClip(clip)
-            toast(ctx.getString(R.string.diag_copied))
-        } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) }
+        sysVm.copyDiagnostics(diagnosticsReport())
     }
 
     val searchSuggestion by msearchVm.searchSuggestion.collectAsStateWithLifecycle()
@@ -3872,7 +3844,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 onStartRadio = { startRadio(it) },
                 isSubscribed = { v -> v.channelUrl != null && subscriptions.any { it.channelUrl == v.channelUrl } },
                 updateInfo = updateInfo,
-                setUpdateInfo = { updateInfo = it }
+                setUpdateInfo = { sysVm.setUpdateInfo(it) }
             )
         }
         }
