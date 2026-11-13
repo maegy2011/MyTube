@@ -633,12 +633,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showSearch by remember { mutableStateOf(false) }
     // home-redesign Phase 1 (2026-11-12): unified search state — source chips + parallel results.
     var unifiedSource by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SearchSource?>(null) }
-    var uYT by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SourceResult?>(null) }
-    var uSC by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SourceResult?>(null) }
-    var uYM by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SourceResult?>(null) }
-    var unifiedLoading by remember { mutableStateOf(false) }
+    val uniVm: com.mohamedadel.mytube.ui.search.UnifiedSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val uYT by uniVm.uYT.collectAsStateWithLifecycle()
+    val uSC by uniVm.uSC.collectAsStateWithLifecycle()
+    val uYM by uniVm.uYM.collectAsStateWithLifecycle()
+    val unifiedLoading by uniVm.unifiedLoading.collectAsStateWithLifecycle()
     var unifiedExpanded by remember { mutableStateOf<com.mohamedadel.mytube.data.unified.SearchSource?>(null) }
-    var unifiedJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // SoundCloud tab (separate): own query/results/loading, reuses SearchScreen + SearchRow.
     var showSC by remember { mutableStateOf(false) }
     val searchVm: com.mohamedadel.mytube.ui.search.MusicSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "music")
@@ -2548,34 +2548,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         // so a slow/failed source never blocks the others. Same repo calls as doSearch/doScSearch.
         fun doUnifiedSearch(q: String) {
             if (q.isBlank()) return
-            unifiedJob?.cancel()
-            uYT = null; uSC = null; uYM = null
             unifiedExpanded = null
-            unifiedLoading = true
-            msearchVm.rememberRecent(q)
-            unifiedJob = scope.launch {
-                try {
-                    val region = if (prefCountry == "global") null else prefCountry
-                    kotlinx.coroutines.supervisorScope {
-                        launch { try { uYT = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYouTube(q, region) } catch (_: Exception) { } }
-                        launch { try { uSC = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchSoundCloud(q) } catch (_: Exception) { } }
-                        launch { try { uYM = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYTMusic(q, region) } catch (_: Exception) { } }
-                    }
-                } finally { unifiedLoading = false }
-            }
+            uniVm.search(q, if (prefCountry == "global") null else prefCountry) { msearchVm.rememberRecent(it) }
         }
         fun retryUnifiedSource(q: String, s: com.mohamedadel.mytube.data.unified.SearchSource) {
-            if (q.isBlank()) return
-            scope.launch {
-                try {
-                    val region = if (prefCountry == "global") null else prefCountry
-                    when (s) {
-                        com.mohamedadel.mytube.data.unified.SearchSource.YOUTUBE -> uYT = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYouTube(q, region)
-                        com.mohamedadel.mytube.data.unified.SearchSource.SOUNDCLoud -> uSC = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchSoundCloud(q)
-                        com.mohamedadel.mytube.data.unified.SearchSource.YTMUSIC -> uYM = com.mohamedadel.mytube.data.unified.UnifiedSearchRepo.searchYTMusic(q, region)
-                    }
-                } catch (_: Exception) { }
-            }
+            uniVm.retrySource(q, s, if (prefCountry == "global") null else prefCountry)
         }
         if (showSearch) {
             // VerifyError fix (2026-11-12): overlay lives in ui.home.UnifiedSearchOverlay.
@@ -2609,7 +2586,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 setShowSC = { showSC = it },
                 setScQuery = { searchVm.setScQuery(it) },
                 setShowSuggestions = { showSuggestions = it },
-                clearUnifiedResults = { uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
+                clearUnifiedResults = { uniVm.clear(); unifiedExpanded = null },
                 retryUnifiedSource = { q, s -> retryUnifiedSource(q, s) },
                 onVoice = { startVoiceSearch() },
                 onPlayItem = { v -> showSearch = false; playVideo(v, expand = true, forcePlay = true) },
