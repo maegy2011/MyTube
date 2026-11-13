@@ -32,12 +32,12 @@ import kotlinx.coroutines.withContext
  */
 class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
-    private var dao: PlaylistDao? = null
+    internal var dao: PlaylistDao? = null
     private fun ctx() = getApplication<Application>()
-    private fun str(id: Int, vararg a: Any): String =
+    internal fun str(id: Int, vararg a: Any): String =
         try { ctx().getString(id, *a) } catch (_: Exception) { "" }
 
-    private suspend fun toastMain(s: String) = withContext(Dispatchers.Main) {
+    internal suspend fun toastMain(s: String) = withContext(Dispatchers.Main) {
         try { Toast.makeText(ctx(), s, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
     }
 
