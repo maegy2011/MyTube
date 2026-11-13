@@ -19,7 +19,21 @@ interface PlayerHost {
     fun expandedNow(): Boolean
     fun relatedNow(): List<VideoItem>
     fun enableAutoplayPrefs()
+    fun playerVolume(): Float
+    fun setPlayerVolume(f: Float)
+    fun pausePlayer()
+    fun castSnapshot(): CastSnapshot?
+    fun onCastStarted()
 }
+
+data class CastSnapshot(
+    val url: String,
+    val mime: String,
+    val title: String?,
+    val thumb: String?,
+    val positionMs: Long,
+    val autoplay: Boolean
+)
 
 /** Queue navigation + radio, moved from the God-Activity (slice 5). */
 fun PlayerViewModel.isQueued(v: VideoItem): Boolean =
@@ -198,4 +212,32 @@ fun PlayerViewModel.startRadio(v: VideoItem, host: PlayerHost) {
             host.play(v, true, host.expandedNow(), false)
         } catch (_: Exception) { host.toast(R.string.toast_radio_fail) }
     }
+}
+
+private var fadeJob: kotlinx.coroutines.Job? = null
+
+fun PlayerViewModel.fadeOutAndPause(host: PlayerHost) {
+    try { fadeJob?.cancel() } catch (_: Exception) { }
+    fadeJob = viewModelScope.launch {
+        try {
+            val base = try { host.playerVolume().coerceIn(0f, 1f) } catch (_: Exception) { 1f }
+            if (base <= 0f) { host.pausePlayer(); return@launch }
+            repeat(10) { i ->
+                try { host.setPlayerVolume(base * (1f - (i + 1) / 10f)) } catch (_: Exception) { return@repeat }
+                try { kotlinx.coroutines.delay(500) } catch (_: Exception) { return@repeat }
+            }
+            host.pausePlayer()
+            try { host.setPlayerVolume(base) } catch (_: Exception) { }
+        } catch (_: Exception) { try { host.pausePlayer() } catch (_: Exception) { } }
+    }
+}
+
+fun PlayerViewModel.castCurrent(host: PlayerHost, autoplay: Boolean = true) {
+    try {
+        val snap = host.castSnapshot() ?: return
+        val ok = com.mohamedadel.mytube.playback.CastManager.load(
+            snap.url, snap.title, snap.thumb, snap.mime, snap.positionMs, autoplay
+        )
+        if (ok) host.onCastStarted()
+    } catch (_: Exception) { }
 }

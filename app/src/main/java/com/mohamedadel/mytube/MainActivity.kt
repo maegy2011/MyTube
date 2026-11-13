@@ -129,6 +129,8 @@ import com.mohamedadel.mytube.util.resolvePlaybackUrl
 import com.mohamedadel.mytube.ui.player.MiniPlayer
 import com.mohamedadel.mytube.ui.player.PlayerHost
 import com.mohamedadel.mytube.ui.player.enqueueLast
+import com.mohamedadel.mytube.ui.player.castCurrent
+import com.mohamedadel.mytube.ui.player.fadeOutAndPause
 import com.mohamedadel.mytube.ui.player.enqueueNext
 import com.mohamedadel.mytube.ui.player.isQueued
 import com.mohamedadel.mytube.ui.player.playFirstInQueue
@@ -1365,22 +1367,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     // Push the current stream to the Cast receiver at the local position, then pause local.
     // Called on session start and whenever a new video starts while connected.
-    fun castCurrent(autoplay: Boolean = true) {
-        try {
-            val s0 = streamData ?: return
-            val s = cap4k(s0)
-            val triple = try { resolvePlaybackUrl(quality, s) } catch (_: Exception) { null } ?: return
-            val url = triple.first
-            val mime = castMimeFor(url, quality == QUALITY_AUDIO_ONLY)
-            val pos = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }
-            val ok = CastManager.load(url, playing?.title ?: s.title, playing?.thumbnail, mime, pos, autoplay)
-            if (ok) {
-                try { player?.pause() } catch (_: Exception) { }
-                toast(ctx.getString(R.string.toast_cast_started))
-            }
-        } catch (_: Exception) { }
-    }
 
+    val playerHostHolder = remember { arrayOfNulls<com.mohamedadel.mytube.ui.player.PlayerHost>(1) }
+    fun castCurrent(autoplay: Boolean = true) {
+        try { playerHostHolder[0]?.let { playerVm.castCurrent(it, autoplay) } } catch (_: Exception) { }
+    }
     // Chromecast session wiring: push current media on connect, note the handoff on end.
     LaunchedEffect(Unit) {
         CastManager.onSessionStarted = { castCurrent(autoplay = true) }
@@ -1658,7 +1649,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
 
     // Queue navigation (suggestion #3): next/previous within the result list.
-    // Phase 2.3 slice 5: PlayerHost seam — VM owns navigation logic, activity owns player/toasts/streams.
     val playerHost = remember {
         val showToast: (String) -> Unit = { s -> toast(s) }
         object : com.mohamedadel.mytube.ui.player.PlayerHost {
@@ -1672,8 +1662,29 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             override fun relatedNow(): List<VideoItem> =
                 try { streamData?.related ?: emptyList() } catch (_: Exception) { emptyList() }
             override fun enableAutoplayPrefs() { settingsVm.setPrefAutoplay(true) }
+            override fun playerVolume(): Float = try { player?.volume ?: 1f } catch (_: Exception) { 1f }
+            override fun setPlayerVolume(f: Float) { try { player?.volume = f } catch (_: Exception) { } }
+            override fun pausePlayer() { try { player?.pause() } catch (_: Exception) { } }
+            override fun castSnapshot(): com.mohamedadel.mytube.ui.player.CastSnapshot? {
+                return try {
+                    val s0 = streamData ?: return null
+                    val s = cap4k(s0)
+                    val triple = try { resolvePlaybackUrl(quality, s) } catch (_: Exception) { null } ?: return null
+                    val pos = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }
+                    com.mohamedadel.mytube.ui.player.CastSnapshot(
+                        triple.first, com.mohamedadel.mytube.util.castMimeFor(triple.first, quality == com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY),
+                        playing?.title ?: s.title, playing?.thumbnail, pos, true
+                    )
+                } catch (_: Exception) { null }
+            }
+            override fun onCastStarted() {
+                try { player?.pause() } catch (_: Exception) { }
+                toast(ctx.getString(R.string.toast_cast_started))
+            }
         }
     }
+    try { playerHostHolder[0] = playerHost } catch (_: Exception) { }
+    // Phase 2.3 slice 5: PlayerHost seam — VM owns navigation logic, activity owns player/toasts/streams.
     fun startRadio(v: VideoItem) {
         playerVm.startRadio(v, playerHost)
     }
@@ -1682,21 +1693,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val fadeJob = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
     // 5-second fade-out instead of a hard cut; volume is restored after the pause
     fun fadeOutAndPause() {
-        try { fadeJob[0]?.cancel() } catch (_: Exception) { }
-        fadeJob[0] = scope.launch {
-            try {
-                val pl = player ?: return@launch
-                // T5/T10: safe cast instead of (as Float).
-                val base = try { (volumeLive.value as? Float)?.coerceIn(0f, 1f) ?: 1f } catch (_: Exception) { 1f }
-                if (base <= 0f) { try { pl.pause() } catch (_: Exception) { }; return@launch }
-                repeat(10) { i ->
-                    try { pl.volume = base * (1f - (i + 1) / 10f) } catch (_: Exception) { return@repeat }
-                    try { kotlinx.coroutines.delay(500) } catch (_: Exception) { return@repeat }
-                }
-                try { pl.pause() } catch (_: Exception) { }
-                try { pl.volume = base } catch (_: Exception) { }
-            } catch (_: Exception) { try { player?.pause() } catch (_: Exception) { } }
-        }
+        playerVm.fadeOutAndPause(playerHost)
     }
     fun playPrevInQueue() {
         playerVm.playPrevInQueue(playerHost)
