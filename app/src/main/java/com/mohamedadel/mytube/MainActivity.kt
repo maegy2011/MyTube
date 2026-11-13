@@ -133,6 +133,7 @@ import com.mohamedadel.mytube.ui.player.castCurrent
 import com.mohamedadel.mytube.ui.player.fadeOutAndPause
 import com.mohamedadel.mytube.ui.player.applyQuality
 import com.mohamedadel.mytube.ui.player.playVideo
+import com.mohamedadel.mytube.ui.player.applyLangPrefs
 import com.mohamedadel.mytube.ui.player.enqueueNext
 import com.mohamedadel.mytube.ui.player.isQueued
 import com.mohamedadel.mytube.ui.player.playFirstInQueue
@@ -860,58 +861,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Trending loader: defined as a suspend-friendly launcher; the actual scope is
     // passed at call sites (Kotlin locals must precede use, scope lives below).
     fun applyLangPrefs() {
-        try {
-            val p = player ?: return
-            val b = p.trackSelectionParameters.buildUpon()
-                .setPreferredAudioLanguage(resolveLang(prefAudioLang))
-            if (prefSubLang == "off") {
-                // REAL off: disable the text renderer (null preference alone still allows auto captions)
-                b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                b.setPreferredTextLanguage(null)
-            } else {
-                b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                if (prefSubRole == "system") {
-                    b.setPreferredTextLanguageAndRoleFlagsToCaptioningManagerSettings(ctx)
-                } else {
-                    b.setPreferredTextLanguage(resolveLang(prefSubLang))
-                    b.setPreferredTextRoleFlags(when (prefSubRole) {
-                        "caption" -> C.ROLE_FLAG_CAPTION
-                        "descriptive" -> C.ROLE_FLAG_DESCRIBES_VIDEO
-                        else -> C.ROLE_FLAG_SUBTITLE
-                    })
-                }
-            }
-            if (prefHideForced) b.setIgnoredTextSelectionFlags(C.SELECTION_FLAG_FORCED)
-            b.setSelectUndeterminedTextLanguage(prefUndetermined)
-            b.setPreferredAudioRoleFlags(when (prefAudioRole) {
-                "dubbed" -> C.ROLE_FLAG_DUB
-                "original" -> C.ROLE_FLAG_MAIN
-                "commentary" -> C.ROLE_FLAG_COMMENTARY
-                else -> 0
-            })
-            // B1 real data cap: saver = 480p + bitrate ceilings (applies to adaptive + fixed picks)
-            if (prefQuality == "saver") {
-                b.setMaxVideoSize(854, 480)
-                b.setMaxVideoBitrate(1_000_000)
-                b.setMaxAudioBitrate(64_000)
-            } else {
-                b.setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
-                b.setMaxVideoBitrate(Int.MAX_VALUE)
-                b.setMaxAudioBitrate(Int.MAX_VALUE)
-            }
-            // F8 (audit P1 2026-11-11): the user's explicit per-video pick beats language prefs.
-            // Guarded by subTrackFor so a fresh video (auto-matched index) never inherits a stale override.
-            if (subTrackIdx >= 0 && prefSubLang != "off" && subTrackFor == playing?.favKey()) {
-                try {
-                    val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-                    val flat = groups.flatMap { g -> (0 until g.length).map { idx -> g to idx } }
-                    flat.getOrNull(subTrackIdx)?.let { (g, idx) ->
-                        b.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, idx))
-                    }
-                } catch (_: Exception) { }
-            }
-            p.trackSelectionParameters = b.build()
-        } catch (_: Exception) { }
+        try { (playerHostHolder[0] as? com.mohamedadel.mytube.ui.player.LangHost)?.let { playerVm.applyLangPrefs(it) } } catch (_: Exception) { }
     }
     // auto-match the subtitle chip along the fallback chain (primary -> secondary -> device -> en)
     fun matchSubIdxFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Int =
@@ -1297,7 +1247,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Queue navigation (suggestion #3): next/previous within the result list.
     val playerHost = remember {
         val showToast: (String) -> Unit = { s -> toast(s) }
-        object : com.mohamedadel.mytube.ui.player.PlayEngineHost {
+        object : com.mohamedadel.mytube.ui.player.LangHost {
             override fun play(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) {
                 playVideo(v, inQueue, expand, forcePlay = forcePlay)
             }
@@ -1372,6 +1322,58 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 toast(ctx.getString(R.string.toast_pin_fail))
             }
             override fun ageBlocked() { toast(ctx.getString(R.string.err_age_blocked)) }
+            override fun langPrefs(): com.mohamedadel.mytube.ui.player.LangPrefs =
+                com.mohamedadel.mytube.ui.player.LangPrefs(
+                    audioLang = prefAudioLang, subLang = prefSubLang, subRole = prefSubRole,
+                    hideForced = prefHideForced, undetermined = prefUndetermined,
+                    audioRole = prefAudioRole, saver = prefQuality == "saver"
+                )
+            override fun resolveLang(code: String): String? = com.mohamedadel.mytube.util.resolveLang(code)
+            override fun textGroups(): List<com.mohamedadel.mytube.ui.player.TrackGroupInfo> {
+                return try {
+                    val p = player ?: return emptyList()
+                    p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                        .map { g -> com.mohamedadel.mytube.ui.player.TrackGroupInfo(g.mediaTrackGroup, g.length) }
+                } catch (_: Exception) { emptyList() }
+            }
+            override fun applyDecision(d: com.mohamedadel.mytube.ui.player.LangDecision) {
+                val p = player ?: return
+                val b = p.trackSelectionParameters.buildUpon()
+                    .setPreferredAudioLanguage(d.audioLang)
+                if (d.subOff) {
+                    b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    b.setPreferredTextLanguage(null)
+                } else {
+                    b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    if (d.useCaptioningManager) {
+                        b.setPreferredTextLanguageAndRoleFlagsToCaptioningManagerSettings(ctx)
+                    } else {
+                        b.setPreferredTextLanguage(d.subLang)
+                        b.setPreferredTextRoleFlags(d.subRoleFlag)
+                    }
+                }
+                if (d.hideForced) b.setIgnoredTextSelectionFlags(C.SELECTION_FLAG_FORCED)
+                b.setSelectUndeterminedTextLanguage(d.undetermined)
+                b.setPreferredAudioRoleFlags(d.audioRoleFlag)
+                if (d.saver) {
+                    b.setMaxVideoSize(854, 480)
+                    b.setMaxVideoBitrate(1_000_000)
+                    b.setMaxAudioBitrate(64_000)
+                } else {
+                    b.setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+                    b.setMaxVideoBitrate(Int.MAX_VALUE)
+                    b.setMaxAudioBitrate(Int.MAX_VALUE)
+                }
+                d.pinIdx?.let { idx ->
+                    try {
+                        val flat = textGroups().flatMap { g -> (0 until g.length).map { i -> g to i } }
+                        flat.getOrNull(idx)?.let { (g, i) ->
+                            b.setOverrideForType(TrackSelectionOverride(g.token as androidx.media3.common.TrackGroup, i))
+                        }
+                    } catch (_: Exception) { }
+                }
+                p.trackSelectionParameters = b.build()
+            }
             override fun onCastStarted() {
                 try { player?.pause() } catch (_: Exception) { }
                 toast(ctx.getString(R.string.toast_cast_started))
