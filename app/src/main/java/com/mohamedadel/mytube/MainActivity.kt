@@ -673,22 +673,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var tasteMix by remember { mutableStateOf(emptyList<VideoItem>()) }
     var tasteMixTerm by remember { mutableStateOf<String?>(null) }
     var tasteMixLoading by remember { mutableStateOf(false) }
-    var trendTab by remember { mutableStateOf(0) }
-    var trendingItems by remember { mutableStateOf(emptyList<VideoItem>()) }
-    var trendingLoading by remember { mutableStateOf(false) }
+    val trendVm: com.mohamedadel.mytube.ui.trending.TrendingViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val trendTab by trendVm.trendTab.collectAsStateWithLifecycle()
+    val trendingItems by trendVm.trendingItems.collectAsStateWithLifecycle()
+    val trendingLoading by trendVm.trendingLoading.collectAsStateWithLifecycle()
     // screens-fix 2026-11-11 Home P0-H2: trending error state for retry UI.
-    var trendingError by remember { mutableStateOf<String?>(null) }
+    val trendingError by trendVm.trendingError.collectAsStateWithLifecycle()
     // home-redesign Phase 3 (2026-11-12): 30-min in-memory cache per tab+country.
     // First page only; paging always goes to network. Serving cache sets trendingCached (badge).
-    var trendingCache by remember { mutableStateOf(mapOf<String, Pair<Long, List<VideoItem>>>()) }
-    var trendingCached by remember { mutableStateOf(false) }
+    val trendingCached by trendVm.trendingCached.collectAsStateWithLifecycle()
     // screens-fix 2026-11-11 Home P1-H5: cancellable suggestions job.
-    var suggestJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // Deferred item 1 (2026-11-11): trending pagination — kiosk next-page + news search page.
-    var trendingHasMore by remember { mutableStateOf(false) }
-    var trendingLoadingMore by remember { mutableStateOf(false) }
-    var trendingNewsNext by remember { mutableStateOf<Page?>(null) }
-    var trendingNewsQuery by remember { mutableStateOf<String?>(null) }
+    val trendingHasMore by trendVm.trendingHasMore.collectAsStateWithLifecycle()
+    val trendingLoadingMore by trendVm.trendingLoadingMore.collectAsStateWithLifecycle()
     var openPlaylistId by remember { mutableStateOf<Long?>(null) }
     val openItems by remember(openPlaylistId) {
         openPlaylistId?.let { dao.observeItems(it) } ?: flowOf(emptyList())
@@ -706,7 +703,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
     var channelDetail by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.ChannelDetail?>(null) }
 
-    var commentList by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.CommentItem>()) }
+    val cmtVm: com.mohamedadel.mytube.ui.trending.CommentsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val commentList by cmtVm.commentList.collectAsStateWithLifecycle()
     var showFeed by remember { mutableStateOf(false) }
     val feedItems by feedVm.feedItems.collectAsStateWithLifecycle()
     // Low: splash waits for player readiness or first content (cap 3s), not a fixed timer.
@@ -720,7 +718,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val feedLoading by feedVm.feedLoading.collectAsStateWithLifecycle()
     var showComments by remember { mutableStateOf(false) }
-    var commentsLoading by remember { mutableStateOf(false) }
+    val commentsLoading by cmtVm.commentsLoading.collectAsStateWithLifecycle()
 
     var optionsFor by remember { mutableStateOf<VideoItem?>(null) }
     // Phase 3: offline pins (faithful snapshot: current quality + audio + subtitle)
@@ -1054,19 +1052,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     // comments pagination: first page + page-walk with single-flight guard
-    var commentsHasMore by remember { mutableStateOf(false) }
-    var commentsLoadingMore by remember { mutableStateOf(false) }
+    val commentsHasMore by cmtVm.commentsHasMore.collectAsStateWithLifecycle()
+    val commentsLoadingMore by cmtVm.commentsLoadingMore.collectAsStateWithLifecycle()
     fun loadMoreComments() {
-        if (commentsLoadingMore || !commentsHasMore) return
-        commentsLoadingMore = true
-        scope.launch {
-            try {
-                val more = YouTubeRepo.CommentPager.more()
-                if (more.isNotEmpty()) commentList = commentList + more
-                commentsHasMore = YouTubeRepo.CommentPager.hasMore
-            } catch (_: Exception) { commentsHasMore = false }
-            finally { commentsLoadingMore = false }
-        }
+        cmtVm.loadMoreComments()
     }
     // Fix 3: full channel screen with tabs (replaces the dialog sheet)
     var channelScreenUrl by remember { mutableStateOf<String?>(null) }
@@ -1398,138 +1387,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         libVm.recordHistory(v)
     }
     val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
-    var suggestionChips by remember { mutableStateOf(mapOf<String, List<String>>()) }
+    val suggestionChips by trendVm.suggestionChips.collectAsStateWithLifecycle()
     // Suggestions tab: seeds = your recent searches (else trending fallbacks);
     // chips = real NewPipe suggestionList completions, videos = top hits per seed.
     fun refreshSuggestions(region: String?, myTab: Int) {
-        val seeds = (recentSearches.take(3) + trending.take(2)).distinct().take(3)
-        if (seeds.isEmpty()) { if (trendTab == myTab) { suggestionChips = emptyMap(); trendingItems = emptyList() }; return }
-        suggestJob?.cancel()
-        suggestJob = scope.launch {
-            try {
-                val chips = seeds.associateWith { seed ->
-                    try { YouTubeRepo.suggestions(seed).take(4) } catch (_: Exception) { emptyList() }
-                }
-                val vids = seeds.take(2).flatMap { seed ->
-                    try { YouTubeRepo.search(seed, null, region).items.take(6) } catch (_: Exception) { emptyList() }
-                }.distinctBy { it.id ?: it.url ?: it.title }.take(18)
-                if (trendTab == myTab) { suggestionChips = chips; trendingItems = vids; trendingError = null }
-            } catch (_: Exception) { if (trendTab == myTab) { suggestionChips = emptyMap(); trendingItems = emptyList(); trendingError = ctx.getString(R.string.err_kiosk) } }
-            finally { if (trendTab == myTab) trendingLoading = false }
-        }
+        trendVm.refreshSuggestions(region, myTab, recentSearches)
     }
 
     fun refreshTrending(force: Boolean = false) {
-        val tab = TREND_TABS.getOrNull(trendTab)
-        val kiosk = tab?.second
-        val isSearchTab = tab?.third == true
-        // Phase 3: fresh-enough cache wins (tab switches + country toggles skip the network).
-        // Pull-to-refresh / retry button pass force=true and always hit the network.
-        val cacheKey = "$trendTab|$prefCountry"
-        if (!force && kiosk != "suggestions") {
-            val hit = trendingCache[cacheKey]
-            if (hit != null && System.currentTimeMillis() - hit.first < 30 * 60 * 1000L && hit.second.isNotEmpty()) {
-                trendingItems = hit.second
-                trendingHasMore = false
-                trendingNewsNext = null
-                trendingNewsQuery = null
-                trendingError = null
-                trendingCached = true
-                trendingLoading = false
-                return
-            }
-        }
-        trendingCached = false
-        trendingLoading = true
-        // screens-fix Home P1-H5: cancel in-flight suggestions when switching tabs.
-        if (kiosk != "suggestions") suggestJob?.cancel()
-        trendingError = null
-        // Deferred item 1: reset pagination on every fresh load.
-        trendingHasMore = false
-        trendingNewsNext = null
-        trendingNewsQuery = null
-        if (kiosk == "suggestions") {
-            val region = if (prefCountry == "global") null else prefCountry
-            val myTab = trendTab
-            refreshSuggestions(region, myTab)
-            return
-        }
-        scope.launch {
-            try {
-                val region = if (prefCountry == "global") null else prefCountry
-                if (isSearchTab) {
-                    // "news" has no YouTube kiosk: honest region-scoped search instead of a fake list
-                    // Gate-4: news query follows UI language (was hardcoded Arabic for everyone).
-                    // Deferred item 1: keep the SearchPage cursor so "show more" pages the search.
-                    val nq = if (prefUiLang == "ar") "أخبار" else "news"
-                    val page = YouTubeRepo.search(nq, null, region)
-                    trendingItems = page.items
-                    trendingNewsQuery = nq
-                    trendingNewsNext = page.nextPage
-                    trendingHasMore = page.hasNext && page.nextPage != null
-                } else {
-                    trendingItems = YouTubeRepo.trending(region, kiosk)
-                    trendingHasMore = trendingItems.isNotEmpty()
-                }
-                // screens-fix Home P0-H2: empty trending = error surface (was silent).
-                // Phase 3: a failed network with no fresh list falls back to any cached page.
-                if (trendingItems.isEmpty()) {
-                    val stale = trendingCache[cacheKey]?.second.orEmpty()
-                    if (stale.isNotEmpty()) {
-                        trendingItems = stale
-                        trendingCached = true
-                        trendingError = null
-                    } else {
-                        trendingError = ctx.getString(R.string.err_kiosk)
-                    }
-                } else {
-                    trendingError = null
-                    if (kiosk != "suggestions") trendingCache = trendingCache + (cacheKey to (System.currentTimeMillis() to trendingItems))
-                }
-            } catch (_: Exception) {
-                val stale = trendingCache[cacheKey]?.second.orEmpty()
-                if (stale.isNotEmpty()) {
-                    trendingItems = stale
-                    trendingCached = true
-                    trendingError = null
-                } else {
-                    trendingItems = emptyList()
-                    trendingError = ctx.getString(R.string.err_kiosk)
-                }
-            }
-            finally { trendingLoading = false }
-        }
+        trendVm.refreshTrending(force, trendTab, prefCountry, prefUiLang, recentSearches)
     }
     // Deferred item 1 (2026-11-11): "show more" — kiosk next-page, or next search page for news.
     fun loadMoreTrending() {
-        if (trendingLoadingMore || !trendingHasMore) return
-        val tab = TREND_TABS.getOrNull(trendTab)
-        val kiosk = tab?.second
-        val isSearchTab = tab?.third == true
-        trendingLoadingMore = true
-        scope.launch {
-            try {
-                val region = if (prefCountry == "global") null else prefCountry
-                if (isSearchTab) {
-                    val pg = trendingNewsNext
-                    val nq = trendingNewsQuery
-                    if (pg == null || nq == null) { trendingHasMore = false; return@launch }
-                    val page = YouTubeRepo.search(nq, pg, region)
-                    val seen = trendingItems.mapNotNull { it.url ?: it.id }.toSet()
-                    trendingItems = trendingItems + page.items.filter { (it.url ?: it.id ?: it.title) !in seen }
-                    trendingNewsNext = page.nextPage
-                    trendingHasMore = page.hasNext && page.nextPage != null
-                } else {
-                    val (more, hasMore) = YouTubeRepo.trendingMore(region, kiosk)
-                    if (more.isNotEmpty()) {
-                        val seen = trendingItems.mapNotNull { it.url ?: it.id }.toSet()
-                        trendingItems = trendingItems + more.filter { (it.url ?: it.id ?: it.title) !in seen }
-                    }
-                    trendingHasMore = hasMore && more.isNotEmpty()
-                }
-            } catch (_: Exception) { trendingHasMore = false }
-            finally { trendingLoadingMore = false }
-        }
+        trendVm.loadMoreTrending(trendTab, prefCountry)
     }
     LaunchedEffect(prefCountry) { if (results.isEmpty() && query.isBlank()) refreshTrending() }
     // Deferred item 8: apply the periodic worker on startup (toggle changes re-apply it).
@@ -3553,7 +3423,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_setRadioOn: (Boolean) -> Unit = { playerVm.setRadioOn(it) }
             val mc_setShowQueue: (Boolean) -> Unit = { showQueue = it }
                         val mc_playlistsRoute: @Composable () -> Unit = { PlaylistsRoute() }
-            val mc_onTrendTab: (Int) -> Unit = { i -> suggestJob?.cancel(); trendTab = i; refreshTrending() }
+            val mc_onTrendTab: (Int) -> Unit = { i -> trendVm.cancelSuggestions(); trendVm.setTrendTab(i); refreshTrending() }
             val mc_onRetryTrending: () -> Unit = { refreshTrending(force = true) }
             val mc_onShowMoreTrending: () -> Unit = { loadMoreTrending() }
             val mc_countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry
@@ -4066,15 +3936,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onChannelClick = { openChannel(streamData?.channelUrl) },
                     onCommentsClick = {
                         showComments = true
-                        commentsLoading = true
-                        val url = playing?.url
-                        scope.launch {
-                            try {
-                                commentList = YouTubeRepo.comments(url)
-                                commentsHasMore = YouTubeRepo.CommentPager.hasMore
-                            } catch (_: Exception) { }
-                            commentsLoading = false
-                        }
+                        cmtVm.loadComments(playing?.url)
                     },
                     subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubScale, prefSubBold, prefSubBgOpacity),
                     category = streamData?.category,
