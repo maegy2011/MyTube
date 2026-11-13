@@ -85,6 +85,16 @@ class PinViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pinSdNow(): StreamData? = _pinSd.value
 
+    // slice-16 read accessors for PinResolve extensions
+    internal fun getApp(): android.app.Application = getApplication()
+    internal fun ioScope() = viewModelScope
+    internal fun pinningKeysNow(): Set<String> = _pinningKeys.value
+    internal fun pinConfirmNow(): PinManager.PinRequest? = _pinConfirm.value
+    internal fun pinSelQualityNow(): String = _pinSelQuality.value
+    internal fun pinSelAudioNow(): Int = _pinSelAudio.value
+    internal fun pinSelSubsNow(): Set<Int> = _pinSelSubs.value
+    internal fun daoNow(): com.mohamedadel.mytube.data.local.PlaylistDao? = dao
+
     fun setPinning(k: String, on: Boolean) {
         _pinningKeys.value = if (on) _pinningKeys.value + k else _pinningKeys.value - k
     }

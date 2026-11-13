@@ -1,6 +1,11 @@
 package com.mohamedadel.mytube
 
 import android.app.PictureInPictureParams
+import com.mohamedadel.mytube.ui.pins.PinResolveHost
+import com.mohamedadel.mytube.ui.pins.confirmPin
+import com.mohamedadel.mytube.ui.pins.openPinned
+import com.mohamedadel.mytube.ui.pins.quickPin
+import com.mohamedadel.mytube.ui.pins.requestPin
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -2121,19 +2126,37 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             pats.firstNotNullOfOrNull { r -> r.find(t)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } }
         } catch (_: Exception) { null }
     }
-    fun openPinned(key: String) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val row = try { dao.observePins().first().firstOrNull { it.videoKey == key } } catch (_: Exception) { null }
-                if (row == null) { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val v = com.mohamedadel.mytube.data.youtube.VideoItem(
-                    id = row.videoId, title = row.title, channel = row.channel, url = row.url
-                )
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    playVideo(v, inQueue = false, expand = true, forcePlay = true)
-                }
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
+    // Phase 2.3 slice 15: PinHost seam — VM owns registry/runner, activity owns player/toasts/net.
+    val pinHost = remember {
+        object : com.mohamedadel.mytube.ui.pins.PinHost {
+            override fun uiToast(s: String) { uiToast(s) }
+            override fun kbps(): Int = ctx.estimatedDownstreamKbps()
+            override fun allow4k(): Boolean = prefAllow4k
+            override fun playingKey(): String? = try { playing?.favKey() } catch (_: Exception) { null }
+            override fun closePlayer() { closePlayer() }
+            override fun refreshPinsLabel() { refreshPinsLabel() }
+            override fun lastPinQuality(): String? = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
+            override fun lastPinSubs(): Set<Int> = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.toSet() } catch (_: Exception) { emptySet() }
+            override fun rememberPinChoices(q: String, subs: Set<Int>) {
+                try { prefs.edit().putString("pref_pin_last_q", q).putString("pref_pin_last_subs", subs.sorted().joinToString(",")).apply() } catch (_: Exception) { }
+            }
         }
+    }
+    // slice 16: resolve-host (player/picker reads for requestPin/quickPin)
+    val pinResolveHost = remember {
+            object : com.mohamedadel.mytube.ui.pins.PinResolveHost {
+                override fun currentStreamData() = streamData
+                override fun playingFavKey(): String? = try { playing?.favKey() } catch (_: Exception) { null }
+                override fun pinKeysContains(key: String): Boolean = pinKeys.contains(key)
+                override fun ensurePinNotifPerm() { ensurePinNotifPerm() }
+                override fun playPinned(v: VideoItem) { playVideo(v, inQueue = false, expand = true, forcePlay = true) }
+                override fun pickStartQuality(s: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String = pickStartQuality(s, kbps)
+                override fun pickAudioIdxFor(s: com.mohamedadel.mytube.data.youtube.StreamData): Int = pickAudioIdxFor(s)
+                override fun matchSubIdxsFor(s: com.mohamedadel.mytube.data.youtube.StreamData): Set<Int> = matchSubIdxsFor(s)
+            }
+    }
+    fun openPinned(key: String) {
+        pinVm.openPinned(key, pinHost, pinResolveHost)
     }
     fun handleSharedIntent(inc: android.content.Intent) {
         try {
@@ -2328,43 +2351,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // (googlevideo URLs expire — a stale plan fails even on good networks).
     // requestPin: player context passes resolved sd+selection (no re-resolve); list context resolves first.
     fun requestPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?, q: String?, aIdx: Int?, sIdxs: Set<Int>?) {
-        if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
-            toast(ctx.getString(R.string.err_pin_live)); return
-        }
-        val key = v.favKey()
-        if (pinKeys.contains(key) || pinningKeys.contains(key)) return
-        pinVm.setPinning(key, true)
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                // pin-deepfix: a null URL used to exit silently (no toast at all).
-                // pin-runtime 2026-11-11: uiToast (main Looper) — Toast.show() from this
-                // IO thread throws and the catch drops it, so every failure was invisible.
-                val u = v.url
-                if (sd == null && u.isNullOrBlank()) { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val s = sd ?: YouTubeRepo.streamRouted(u ?: return@launch) ?: run { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                // pin-deepfix: streaming-only (HLS) audio cannot be pinned as bytes — say so clearly.
-                // SoundCloud HLS transcodings ARE pinnable: downloadPin records the m3u8 to a file.
-                if (s.audioHlsOnly && !(u?.contains("soundcloud.com") == true)) { uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
-                if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
-                    uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
-                }
-                val kbps = ctx.estimatedDownstreamKbps()
-                // Audio-only sources (e.g. SoundCloud) have no video map: pin the audio directly.
-                val qq = q ?: if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY else pickStartQuality(s, kbps)
-                val ai = aIdx ?: pickAudioIdxFor(s)
-                val si = sIdxs ?: matchSubIdxsFor(s)
-                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
-                if (plan == null) { uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val est = com.mohamedadel.mytube.data.local.PinManager.estimateBytes(listOf(plan.videoUrl, plan.audioUrl, plan.subUrl))
-                // pin-runtime 2026-11-11: dialog state on Main (writes from IO are
-                // silently late/lost on some skins) + loc from the centralized default.
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    val loc = try { com.mohamedadel.mytube.data.local.PinFiles.loc(ctx.applicationContext) } catch (_: Exception) { "internal" }
-                    pinVm.setConfirm(com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est), s, qq, ai, si, loc, est)
-                }
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
-            finally { pinVm.setPinning(key, false) }
-        }
+        pinVm.requestPin(v, sd, q, aIdx, sIdxs, pinHost, pinResolveHost, pinKeys)
     }
     // pause/stop 2026-11-12: paused keys (job ended, staging kept for Range resume) +
     // stored plans so resume re-enters without re-resolving (single pinProgress source kept).
@@ -2373,22 +2360,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // inline body broke compileDebugKotlin (MethodTooLargeException). Thin
     // forwarders only; every existing call site is untouched.
 
-    // Phase 2.3 slice 15: PinHost seam — VM owns registry/runner, activity owns player/toasts/net.
-    val pinHost = remember {
-        object : com.mohamedadel.mytube.ui.pins.PinHost {
-            override fun uiToast(s: String) { uiToast(s) }
-            override fun kbps(): Int = ctx.estimatedDownstreamKbps()
-            override fun allow4k(): Boolean = prefAllow4k
-            override fun playingKey(): String? = try { playing?.favKey() } catch (_: Exception) { null }
-            override fun closePlayer() { closePlayer() }
-            override fun refreshPinsLabel() { refreshPinsLabel() }
-            override fun lastPinQuality(): String? = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
-            override fun lastPinSubs(): Set<Int> = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.toSet() } catch (_: Exception) { emptySet() }
-            override fun rememberPinChoices(q: String, subs: Set<Int>) {
-                try { prefs.edit().putString("pref_pin_last_q", q).putString("pref_pin_last_subs", subs.sorted().joinToString(",")).apply() } catch (_: Exception) { }
-            }
-        }
-    }
     fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String, alreadyAdded: Boolean = false, retry: PinRetry? = null, resume: Boolean = false) =
         pinVm.runPinDownload(v, plan, key, pinHost, alreadyAdded, retry, resume)
     // notif 2026-11-12: POST_NOTIFICATIONS at pin time (API33+) so the terminal
@@ -2421,67 +2392,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { }
     }
     fun confirmPin() {
-        ensurePinNotifPerm()
-        val pc = pinConfirm ?: return
-        val sd = pinVm.pinSdNow()
-        val key = pc.v.favKey()
-        pinVm.clearConfirm()
-        // remember last choices: quick-pin replays them with one tap
-        try {
-            prefs.edit()
-                .putString("pref_pin_last_q", pinSelQuality)
-                .putString("pref_pin_last_subs", pinSelSubs.sorted().joinToString(","))
-                .apply()
-        } catch (_: Exception) { }
-        val plan = if (sd != null) {
-            com.mohamedadel.mytube.data.local.PinManager.buildPlan(sd, pinSelQuality, pinSelAudio, pinSelSubs, ctx.estimatedDownstreamKbps(), maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
-        } else pc.plan
-        if (plan == null) { toast(ctx.getString(R.string.toast_pin_fail)); return }
-        runPinDownload(pc.v, plan, key, retry = PinRetry(pinSelQuality, pinSelAudio, pinSelSubs))
+        pinVm.confirmPin(pinHost, pinResolveHost)
     }
     // Shared download execution (dialog confirm + quick pin): progress card + notification + guards.
     // Quick pin: one tap, no dialog. Replays the last confirmed choices (quality + subtitle set
     // + location pref); falls back to the same smart defaults as the dialog.
     fun quickPin(v: VideoItem, sd: com.mohamedadel.mytube.data.youtube.StreamData?) {
-        ensurePinNotifPerm()
-        if ((sd?.isLive == true) || (streamData?.isLive == true && playing?.favKey() == v.favKey())) {
-            toast(ctx.getString(R.string.err_pin_live)); return
-        }
-        val key = v.favKey()
-        if (pinKeys.contains(key) || pinningKeys.contains(key)) return
-        // F6: optimistic add on the UI thread (mirrors requestPin) —
-        // closes the double-tap race where two launches both passed the check before either added.
-        pinVm.setPinning(key, true)
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                // pin-deepfix: a null URL used to exit silently (no toast at all).
-                // pin-runtime 2026-11-11: uiToast (main Looper) + key ownership: the F6
-                // optimistic add stays until runPinDownload's inner job finishes — the old
-                // outer-finally removal ran the moment the inner job was LAUNCHED, hiding
-                // in-flight pins from Downloads/cancel and reopening the double-tap race.
-                // Early exits below remove the key explicitly; the success path is owned
-                // by runPinDownload(alreadyAdded=true) which removes it when done.
-                val u = v.url
-                if (sd == null && u.isNullOrBlank()) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val s = sd ?: YouTubeRepo.streamRouted(u ?: run { pinVm.setPinning(key, false); return@launch }) ?: run { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                // SoundCloud HLS transcodings record to file (see downloadHlsTo) — only refuse non-SC streaming audio.
-                if (s.audioHlsOnly && !(u?.contains("soundcloud.com") == true)) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
-                if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
-                    pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
-                }
-                val kbps = ctx.estimatedDownstreamKbps()
-                val lastQ = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
-                val qq = if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY
-                    else if (!lastQ.isNullOrBlank() && (lastQ == QUALITY_AUDIO_ONLY || s.videoUrlByQuality.containsKey(lastQ) || lastQ.startsWith("auto"))) lastQ
-                    else pickStartQuality(s, kbps)
-                val ai = pickAudioIdxFor(s)
-                val lastSubs = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.filter { s.subtitles.getOrNull(it) != null }.toSet() } catch (_: Exception) { emptySet() }
-                val si = if (lastSubs.isNotEmpty()) lastSubs else matchSubIdxsFor(s)
-                val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
-                if (plan == null) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                runPinDownload(v, plan, key, alreadyAdded = true, retry = PinRetry(qq, ai, si))
-            } catch (_: Exception) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)) }
-        }
+        pinVm.quickPin(v, sd, pinHost, pinResolveHost, pinKeys)
     }
     // external orphan pins (left after switching location to internal)
     val orphanInfo by pinVm.orphanInfo.collectAsStateWithLifecycle()
