@@ -13,3 +13,6 @@ local.properties
 *.env
 google-services.json
 .kotlin/
+
+# heap dumps (OOM diagnostics, never commit)
+*.hprof
