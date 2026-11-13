@@ -456,6 +456,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         builder.build()
     }
     val dao = remember { db.playlists() }
+    val libVm: com.mohamedadel.mytube.ui.library.LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    androidx.compose.runtime.LaunchedEffect(Unit) { libVm.configure(dao) }
     val playlists by dao.observePlaylists().collectAsStateWithLifecycle(initialValue = emptyList())
     var showPlaylists by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -477,7 +479,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         else dao.observeGroupMembers(og.id)
     }.collectAsStateWithLifecycle(initialValue = emptyList())
     // group member counts refresh alongside pins/history labels
-    var groupCounts by remember { mutableStateOf(mapOf<Long, Int>()) }
+    val groupCounts by libVm.groupCounts.collectAsStateWithLifecycle()
     var feedGroupUrls by remember { mutableStateOf<Set<String>?>(null) }
     var feedGroupName by remember { mutableStateOf<String?>(null) }
     // Channel extra tabs (lazy per tab)
@@ -590,12 +592,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { false }
     }
     val prefetched = remember { java.util.concurrent.ConcurrentHashMap<String, com.mohamedadel.mytube.data.youtube.StreamData>() }
-    var pinsCount by remember { mutableStateOf(0) }
-    var pinsSizeLabel by remember { mutableStateOf("—") }
-    var pinsBytes by remember { mutableStateOf(0L) }
-    var histCount by remember { mutableStateOf(0) }
+    val pinsCount by libVm.pinsCount.collectAsStateWithLifecycle()
+    val pinsSizeLabel by libVm.pinsSizeLabel.collectAsStateWithLifecycle()
+    val pinsBytes by libVm.pinsBytes.collectAsStateWithLifecycle()
+    val histCount by libVm.histCount.collectAsStateWithLifecycle()
 
-    var cacheSizeLabel by remember { mutableStateOf("—") }
+    val cacheSizeLabel by libVm.cacheSizeLabel.collectAsStateWithLifecycle()
     val prefSpeed by settingsVm.prefSpeed.collectAsStateWithLifecycle()
     val prefPitch by settingsVm.prefPitch.collectAsStateWithLifecycle()
     // standalone search screen (YouTube-style) + trending tabs
@@ -1091,49 +1093,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var channelScreenLoading by remember { mutableStateOf(false) }
     // member counts per group (groups are few; one small query each on change)
     fun refreshGroupCounts(gs: List<com.mohamedadel.mytube.data.local.ChannelGroupEntity>) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val m = gs.associate { g ->
-                    g.id to try { dao.memberCount(g.id) } catch (_: Exception) { 0 }
-                }
-                groupCounts = m
-            } catch (_: Exception) { }
-        }
+        libVm.refreshGroupCounts(gs)
     }
     fun createGroup(name: String) {
-        val n = name.trim()
-        if (n.isEmpty()) return
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { dao.insertGroup(com.mohamedadel.mytube.data.local.ChannelGroupEntity(name = n)) } catch (_: Exception) { }
-        }
+        libVm.createGroup(name)
     }
     fun renameGroup(g: com.mohamedadel.mytube.data.local.ChannelGroupEntity, name: String) {
-        val n = name.trim()
-        if (n.isEmpty()) return
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { dao.renameGroup(g.id, n) } catch (_: Exception) { }
-        }
+        libVm.renameGroup(g, name)
     }
     fun deleteGroup(g: com.mohamedadel.mytube.data.local.ChannelGroupEntity) {
         if (openGroup?.id == g.id) openGroup = null
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { dao.deleteGroup(g.id) } catch (_: Exception) { }
-        }
+        libVm.deleteGroup(g.id)
     }
     fun addToGroup(gid: Long, url: String) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                // no UNIQUE(groupId, channelUrl) (would need a v9 migration): check-then-add
-                // also kills the rapid-double-tap duplicate.
-                val exists = try { dao.memberUrls(gid).contains(url) } catch (_: Exception) { true }
-                if (!exists) dao.addMember(com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity(groupId = gid, channelUrl = url))
-            } catch (_: Exception) { }
-        }
+        libVm.addToGroup(gid, url)
     }
     fun removeFromGroup(gid: Long, url: String) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { dao.removeMember(gid, url) } catch (_: Exception) { }
-        }
+        libVm.removeFromGroup(gid, url)
     }
     fun loadChannelTab(i: Int, url: String) {
         if (channelTabsLoaded.contains(i)) return
@@ -1300,21 +1276,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     androidx.compose.runtime.LaunchedEffect(showPlaylists, openPlaylistId) { if (showPlaylists) loadPlSorts(openPlaylistId) }
     // screens-fix Library P1-L5: remote playlist -> local copy (local fun keeps the when-branch small).
     fun saveRemoteList(list: List<VideoItem>) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val rpTitle = try { openRemote?.title } catch (_: Exception) { null }
-                val name = ((rpTitle ?: "Remote").take(80) + " (import)")
-                val pid = dao.insertPlaylist(com.mohamedadel.mytube.data.local.PlaylistEntity(name = name, emoji = "\uD83C\uDFB5", mode = "music"))
-                val rows = list.mapIndexed { i, v ->
-                    com.mohamedadel.mytube.data.local.PlaylistItemEntity(
-                        playlistId = pid, videoId = v.id, title = v.title, channel = v.channel,
-                        thumbnail = v.thumbnail, url = v.url, durationSec = v.durationSec,
-                        viewCount = v.viewCount, position = i)
-                }
-                if (rows.isNotEmpty()) dao.insertItems(rows)
-                uiToast(ctx.getString(R.string.toast_csv_imported_fmt, rows.size))
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_playlist_save_fail)) }
-        }
+        val title = try { openRemote?.title } catch (_: Exception) { null }
+        libVm.saveRemoteList(list, title)
     }
     // screens-fix Library P1-L4: CSV import (round-trips our own export; header-aware).
     fun importPlaylistCsv(uri: android.net.Uri) {
@@ -1407,67 +1370,34 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // data management (reused by the favorites/history screens AND the settings screen)
     fun clearFavorites() {
-        scope.launch {
-            try { dao.clearFavorites(); toast(ctx.getString(R.string.toast_fav_cleared)) }
-            catch (_: Exception) { toast(ctx.getString(R.string.toast_fav_clear_fail)) }
-        }
+        libVm.clearFavorites()
     }
     fun clearHistory() {
-        scope.launch {
-            try { dao.clearHistory(); toast(ctx.getString(R.string.toast_hist_cleared)) }
-            catch (_: Exception) { toast(ctx.getString(R.string.toast_hist_clear_fail)) }
-        }
+        libVm.clearHistory()
     }
     fun refreshPinsLabel() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val n = try { pins.size } catch (_: Exception) { 0 }
-            val bytes = try { dao.pinsTotalSize() } catch (_: Exception) { 0L }
-            val label = try {
-                if (bytes < 1048576) ctx.getString(R.string.db_kb, (bytes / 1024).toInt())
-                else ctx.getString(R.string.db_mb, bytes / 1048576.0)
-            } catch (_: Exception) { "—" }
-            pinsCount = n
-            pinsSizeLabel = label
-            pinsBytes = bytes
-        }
+        libVm.refreshPinsLabel(pins.size)
     }
 
     // R2: history local search (Room LIKE, capped 200, off-main)
-    var histSearchQuery by remember { mutableStateOf("") }
+    val histSearchQuery by libVm.histSearchQuery.collectAsStateWithLifecycle()
     // R3: per-channel feed filter (tap a library row). Counts derive from live feedItems.
     var feedFilter by remember { mutableStateOf<String?>(null) }
     val feedCounts = remember(feedItems) { feedItems.groupingBy { it.channelUrl ?: "" }.eachCount().filterKeys { it.isNotEmpty() } }
-    var histSearchResults by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.local.HistoryEntity>()) }
+    val histSearchResults by libVm.histSearchResults.collectAsStateWithLifecycle()
     fun runHistSearch(q: String) {
-        histSearchQuery = q
-        if (q.isBlank()) { histSearchResults = emptyList(); return }
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { histSearchResults = dao.historySearch("%" + com.mohamedadel.mytube.data.local.escapeLike(q.trim()) + "%") } catch (_: Exception) { }
-        }
+        libVm.runHistSearch(q)
     }
     fun refreshCacheLabel() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val bytes = try { com.mohamedadel.mytube.playback.MediaCache.bytesUsed(ctx.applicationContext) } catch (_: Exception) { 0L }
-            val label = try {
-                if (bytes < 1048576) ctx.getString(R.string.db_kb, (bytes / 1024).toInt())
-                else ctx.getString(R.string.db_mb, bytes / 1048576.0)
-            } catch (_: Exception) { "—" }
-            cacheSizeLabel = label
-        }
+        libVm.refreshCacheLabel()
     }
     fun clearMediaCache() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { com.mohamedadel.mytube.playback.MediaCache.clear(ctx.applicationContext) } catch (_: Exception) { }
-            refreshCacheLabel()
-            toast(ctx.getString(R.string.toast_cache_cleared))
-        }
+        libVm.clearMediaCache()
     }
     LaunchedEffect(showSettings) {
         if (showSettings) {
             refreshCacheLabel(); refreshPinsLabel()
-            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                try { histCount = dao.historyCount() } catch (_: Exception) { }
-            }
+            libVm.loadHistCount()
         }
     }
 
@@ -1480,27 +1410,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { "—" }
     }
     fun toggleFavorite(v: VideoItem) {
-        scope.launch {
-            try {
-                val key = v.favKey()
-                if (dao.favoriteCount(key) > 0) {
-                    dao.deleteFavorite(key)
-                    toast(ctx.getString(R.string.toast_fav_removed))
-                } else {
-                    dao.insertFavorite(v.toFavorite())
-                    toast(ctx.getString(R.string.toast_fav_added))
-                }
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_fav_fail)) }
-        }
+        libVm.toggleFavorite(v)
     }
     // Listening history: every explicit play lands here (dedupe by key, capped at 100).
     fun recordHistory(v: VideoItem) {
-        scope.launch {
-            try {
-                dao.upsertHistory(v.toHistory())
-                dao.trimHistory()
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_hist_fail)) }
-        }
+        libVm.recordHistory(v)
     }
     val trending = remember { listOf("music", "tech reviews", "gaming", "news", "podcasts") }
     var suggestionChips by remember { mutableStateOf(mapOf<String, List<String>>()) }
@@ -3149,18 +3063,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // Smart back: exit fullscreen first; collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
     fun toggleSubscription(url: String?, name: String?, avatar: String?) {
-        if (url.isNullOrBlank()) return
-        scope.launch {
-            try {
-                if (dao.subscriptionCount(url) > 0) {
-                    dao.deleteSubscription(url)
-                    toast(ctx.getString(R.string.sub_removed))
-                } else {
-                    dao.insertSubscription(com.mohamedadel.mytube.data.local.SubscriptionEntity(channelUrl = url, name = name, avatar = avatar))
-                    toast(ctx.getString(R.string.sub_added))
-                }
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) }
-        }
+        libVm.toggleSubscription(url, name, avatar)
     }
     // A3 feed: per-channel fetch with own try (one dead channel never kills the feed), merged newest-first
     // L1+L2: parallel fetch (cap 3) + 6h Room cache. DAO stays off-main; per-channel try (one dead channel never kills the feed).
