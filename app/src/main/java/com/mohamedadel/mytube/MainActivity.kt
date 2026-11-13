@@ -923,11 +923,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     LaunchedEffect(streamData, prefAudioLang, prefAudioLang2) {
         // backup only: playVideo sets both indices synchronously after resolve (no race).
         // Pinned playback keeps its packaged tracks — never auto-rematch those.
-        if (!playingPinned && audioTrackIdx == 0) audioTrackIdx = pickAudioIdx()
+        if (!playingPinned && audioTrackIdx == 0) playerVm.setAudioTrackIdx(pickAudioIdx())
     }
     LaunchedEffect(streamData, prefSubLang, prefSubLang2) {
         // backup only (same reason); off stays off; pinned keeps sub 0.
-        if (!playingPinned) subTrackIdx = matchSubIdx()
+        if (!playingPinned) playerVm.setSubTrackIdx(matchSubIdx())
     }
     // (refreshTrending lives after `scope` below — Kotlin locals must precede use.)
     LaunchedEffect(player, prefSubLang, prefAudioLang, prefQuality, prefSubRole, prefHideForced, prefUndetermined, prefAudioRole) { applyLangPrefs() }
@@ -1527,9 +1527,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             playerVm.setQualityList(qualityEntriesFor(s, kbps))
             val startQ = if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY else pickStartQuality(s, kbps)
             // video-mode playlist: never start audio-only (keeps videos out of the music flow)
-            quality = if (videoModeQueue && startQ == QUALITY_AUDIO_ONLY && s.videoUrlByQuality.isNotEmpty()) {
+            playerVm.setQuality(if (videoModeQueue && startQ == QUALITY_AUDIO_ONLY && s.videoUrlByQuality.isNotEmpty()) {
                 qualityList.firstOrNull { it != QUALITY_AUDIO_ONLY } ?: startQ
-            } else startQ
+            } else startQ)
             applyQuality(startQ, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay)
             if (CastManager.connected.value) castCurrent(autoplay = true)
             // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
@@ -1718,9 +1718,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val queueListener = remember {
         object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                playerLoading = state == Player.STATE_BUFFERING
+                playerVm.setPlayerLoading(state == Player.STATE_BUFFERING)
                 isPlaying = player?.isPlaying == true
-                if (state == Player.STATE_READY) playerError = null
+                if (state == Player.STATE_READY) playerVm.setPlayerError(null)
                 // queue end: repeat one -> replay; shuffle -> random; repeat all -> wrap; order -> next (stops at end)
                 if (state == Player.STATE_ENDED && autoAdvance) {
                     if (sleepEndOfTrack) {
@@ -3102,7 +3102,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     showCommentsPill = prefShowComments,
                     isLive = streamData?.isLive == true,
                     // Fix: chapter tap starts playback too — seeking a never-started player left silence.
-                    onChapterSeek = { pos -> try { player?.seekTo(pos); playerError = null; player?.play() } catch (_: Exception) { } },
+                    onChapterSeek = { pos -> try { player?.seekTo(pos); playerVm.setPlayerError(null); player?.play() } catch (_: Exception) { } },
                     onRelatedPlay = { rv -> playVideo(rv, forcePlay = true) },
                     isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
                     isPinned = pinKeys.contains(cur.favKey()),
@@ -3369,7 +3369,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     subBold = prefSubBold,
                     onSubBold = { v -> settingsVm.setPrefSubBold(v) },
                     preferOriginal = prefPreferOriginal,
-                    onPreferOriginal = { v -> settingsVm.setPrefPreferOriginal(v); audioTrackIdx = pickAudioIdx() },
+                    onPreferOriginal = { v -> settingsVm.setPrefPreferOriginal(v); playerVm.setAudioTrackIdx(pickAudioIdx() },
                     subRole = prefSubRole,
                     onSubRole = { v -> settingsVm.setPrefSubRole(v) },
                     hideForced = prefHideForced,
@@ -3463,8 +3463,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 setShowSleep = { showSleep = it },
                 playing = playing,
                 agePending = agePending,
-                onAgePlay = { x -> agePending = null; playVideo(x.first, inQueue = x.second, ageOk = true, pre = x.third, forcePlay = true) },
-                setAgePending = { agePending = it },
+                onAgePlay = { x -> playerVm.setAgePending(null); playVideo(x.first, inQueue = x.second, ageOk = true, pre = x.third, forcePlay = true) },
+                setAgePending = { playerVm.setAgePending(it) },
                 pinConfirm = pinConfirm,
                 pinSd = pinSd,
                 pinSelLoc = pinSelLoc,
