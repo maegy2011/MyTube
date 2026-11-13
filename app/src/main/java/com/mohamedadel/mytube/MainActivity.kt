@@ -780,34 +780,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // watch-position resume (2026-11-12): throttle twin of lastSessSave.
     var lastPosSave by remember { mutableStateOf(0L) }
     // Simple equalizer state (framework effect; hidden on unsupported devices).
-    var eqEnabled by remember { mutableStateOf(false) }
-    var eqPreset by remember { mutableStateOf(0) } // index, or EqManager.CUSTOM
-    var eqSupported by remember { mutableStateOf(false) }
-    var eqBands by remember { mutableStateOf(0) }
-    var eqLabels by remember { mutableStateOf(emptyList<String>()) }
-    var eqPresetNames by remember { mutableStateOf(emptyList<String>()) }
-    val eqCustom = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
-    fun fmtFreq(hz: Int): String = if (hz <= 0) "?" else if (hz < 1000) "$hz Hz" else "${hz / 1000}.${(hz % 1000) / 100} kHz"
+    val eqVm: com.mohamedadel.mytube.ui.equalizer.EqualizerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val eqEnabled by eqVm.eqEnabled.collectAsStateWithLifecycle()
+    val eqPreset by eqVm.eqPreset.collectAsStateWithLifecycle()
+    val eqSupported by eqVm.eqSupported.collectAsStateWithLifecycle()
+    val eqLabels by eqVm.eqLabels.collectAsStateWithLifecycle()
+    val eqPresetNames by eqVm.eqPresetNames.collectAsStateWithLifecycle()
+    val eqCustom by eqVm.eqCustom.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(Unit) { eqVm.configure(prefs) }
     fun applyEqPrefs() {
-        try {
-            val E = com.mohamedadel.mytube.playback.EqManager
-            if (!E.supported) { eqSupported = false; return }
-            val n = E.bandCount()
-            if (n <= 0) { eqSupported = false; return }
-            eqSupported = true
-            if (eqBands != n) {
-                eqBands = n
-                eqLabels = (0 until n).map { fmtFreq(E.centerFreqHz(it)) }
-                eqPresetNames = E.presets()
-                if (eqCustom.size != n) {
-                    val saved = try { prefs.getString("eq_custom", "") ?: "" } catch (_: Exception) { "" }.split(",").mapNotNull { it.toFloatOrNull() }
-                    eqCustom.clear()
-                    for (b in 0 until n) eqCustom.add(saved.getOrNull(b)?.coerceIn(0f, 1f) ?: E.toSlider(E.bandLevel(b)))
-                }
-            }
-            if (eqPreset >= 0) E.usePreset(eqPreset) else for (b in 0 until n) E.setBand(b, E.toMillibels(eqCustom.getOrNull(b) ?: 0.5f))
-            E.setEnabled(eqEnabled)
-        } catch (_: Exception) { }
+        eqVm.applyEqPrefs()
     }
 
 
@@ -817,8 +799,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try {
             try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.contentLang = prefs.getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { }
             try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(prefCountry) } catch (_: Exception) { }
-            eqEnabled = try { prefs.getBoolean("eq_enabled", false) } catch (_: Exception) { false }
-            eqPreset = try { prefs.getInt("eq_preset", 0) } catch (_: Exception) { 0 }
+            eqVm.loadFromPrefs()
             // 2026-11-12 (runtime fix): autoplay persisted, default ON (بأمر محمد).
             // size migration: legacy s/m/l/xl codes -> scale float (one-time, then pref_sub_scale rules).
             try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
@@ -3814,32 +3795,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     },
                     eqSupported = eqSupported,
                     eqEnabled = eqEnabled,
-                    onEqEnabled = { on ->
-                        eqEnabled = on
-                        try { prefs.edit().putBoolean("eq_enabled", on).apply() } catch (_: Exception) { }
-                        try { applyEqPrefs() } catch (_: Exception) { }
-                    },
+                    onEqEnabled = { on -> eqVm.setEnabled(on) },
                     eqPresetNames = eqPresetNames,
                     eqPreset = eqPreset,
-                    onEqPreset = { i ->
-                        eqPreset = i
-                        try { prefs.edit().putInt("eq_preset", i).apply() } catch (_: Exception) { }
-                        try { applyEqPrefs() } catch (_: Exception) { }
-                    },
+                    onEqPreset = { i -> eqVm.setPreset(i) },
                     eqLabels = eqLabels,
-                    eqBands = eqCustom.toList(),
-                    onEqBand = { b, v ->
-                        try {
-                            while (eqCustom.size <= b) eqCustom.add(0.5f)
-                            eqCustom[b] = v.coerceIn(0f, 1f)
-                            if (eqPreset != com.mohamedadel.mytube.playback.EqManager.CUSTOM) {
-                                eqPreset = com.mohamedadel.mytube.playback.EqManager.CUSTOM
-                                prefs.edit().putInt("eq_preset", eqPreset).apply()
-                            }
-                            prefs.edit().putString("eq_custom", eqCustom.joinToString(",")).apply()
-                            applyEqPrefs()
-                        } catch (_: Exception) { }
-                    }
+                    eqBands = eqCustom,
+                    onEqBand = { b, v -> eqVm.setBand(b, v) },
                 )
                 // Geo-switch cache guard dialog (2026-11-12, runtime layer): mandatory
                 // confirmation before a content-country switch. REFUSE (dismiss/cancel)
