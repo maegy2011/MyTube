@@ -251,7 +251,7 @@ fun MainContent(
                         onRetryTrending = h.home.onRetryTrending,
                         onShowMore = h.home.onShowMoreTrending,
                         onSearchQ = h.home.onSearchQ,
-                        onSuggestionQ = h.home.onSearchQ,
+                        onSuggestionQ = h.home.onSuggestionQ,
                         onPlayItem = h.ch.onPlayVideo,
                         onFavToggle = h.ch.onToggleFav,
                         onShowOptions = h.ch.onShowOptions,

@@ -4503,8 +4503,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { pad ->
-        if (isInPip) {
-            Box(Modifier.padding(pad).fillMaxSize()) {
     // screens-fix queue (method-size, 2026-11-11): the 130-line PlayerArea call lived inline
     // in MyTubeApp.invoke and helped breach the 64KB limit — same local-fun trick as SettingsPane.
     @Composable
@@ -4649,6 +4647,27 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     storyboards = streamData?.storyboards ?: emptyList()
                 )
     }
+        if (isInPip) {
+            Box(Modifier.padding(pad).fillMaxSize()) {
+                val pipCur = playing
+                if (pipCur != null && quality != QUALITY_AUDIO_ONLY && player != null) {
+                    AndroidView(
+                        factory = { c ->
+                            PlayerView(c).apply {
+                                this.player = player
+                                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                                useController = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AsyncImage(model = pipCur?.thumbnail, contentDescription = pipCur?.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+            }
+        } else {
+        Column(Modifier.padding(pad).fillMaxSize()) {
+            ContentHeader()
             com.mohamedadel.mytube.ui.home.PlayerChrome(
                 cur = playing,
                 playerExpanded = playerExpanded,
@@ -5052,8 +5071,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             )
         }
         }
+        }
     }
-}
 
 // Estimated downstream bandwidth in Kbps from the active network (0 = unknown).
 
