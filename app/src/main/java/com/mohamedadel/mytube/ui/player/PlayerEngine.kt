@@ -42,7 +42,6 @@ interface PlayEngineHost : PlayerHost {
     fun pickAudio(s: StreamData): Int
     fun startQuality(s: StreamData, kbps: Int): String
     fun qualityEntries(s: StreamData, kbps: Int): List<String>
-    fun videoModeNow(): Boolean
     fun setExpanded(b: Boolean)
     fun offlinePinFail()
     fun extractFail(detail: String?)
