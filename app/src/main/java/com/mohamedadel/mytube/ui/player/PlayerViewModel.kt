@@ -59,6 +59,55 @@ class PlayerViewModel : ViewModel() {
         setQueueIndex(-1)
     }
 
+    // slice 27a: player playback states (stream/quality/loading/position/pin/age)
+    private val _streamData = MutableStateFlow<com.mohamedadel.mytube.data.youtube.StreamData?>(null)
+    val streamData: StateFlow<com.mohamedadel.mytube.data.youtube.StreamData?> = _streamData.asStateFlow()
+    private val _qualityList = MutableStateFlow(listOf(com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY))
+    val qualityList: StateFlow<List<String>> = _qualityList.asStateFlow()
+    private val _quality = MutableStateFlow(com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY)
+    val quality: StateFlow<String> = _quality.asStateFlow()
+    private val _audioTrackIdx = MutableStateFlow(0)
+    val audioTrackIdx: StateFlow<Int> = _audioTrackIdx.asStateFlow()
+    private val _subTrackIdx = MutableStateFlow(-1)
+    val subTrackIdx: StateFlow<Int> = _subTrackIdx.asStateFlow()
+    private val _subTrackFor = MutableStateFlow<String?>(null)
+    val subTrackFor: StateFlow<String?> = _subTrackFor.asStateFlow()
+    private val _playerLoading = MutableStateFlow(false)
+    val playerLoading: StateFlow<Boolean> = _playerLoading.asStateFlow()
+    private val _playerError = MutableStateFlow<String?>(null)
+    val playerError: StateFlow<String?> = _playerError.asStateFlow()
+    private val _playerPositionMs = MutableStateFlow(0L)
+    val playerPositionMs: StateFlow<Long> = _playerPositionMs.asStateFlow()
+    private val _playerDurationMs = MutableStateFlow(0L)
+    val playerDurationMs: StateFlow<Long> = _playerDurationMs.asStateFlow()
+    private val _playerBufferedPct = MutableStateFlow(0)
+    val playerBufferedPct: StateFlow<Int> = _playerBufferedPct.asStateFlow()
+    private val _playingPinned = MutableStateFlow(false)
+    val playingPinned: StateFlow<Boolean> = _playingPinned.asStateFlow()
+    private val _agePending = MutableStateFlow<Triple<com.mohamedadel.mytube.data.youtube.VideoItem, Boolean, com.mohamedadel.mytube.data.youtube.StreamData?>?>(null)
+    val agePending: StateFlow<Triple<com.mohamedadel.mytube.data.youtube.VideoItem, Boolean, com.mohamedadel.mytube.data.youtube.StreamData?>?> = _agePending.asStateFlow()
+
+    fun setStreamData(s: com.mohamedadel.mytube.data.youtube.StreamData?) { _streamData.value = s }
+    fun streamDataNow(): com.mohamedadel.mytube.data.youtube.StreamData? = _streamData.value
+    fun setQualityList(l: List<String>) { _qualityList.value = l }
+    fun setQuality(q: String) { _quality.value = q }
+    fun qualityNow(): String = _quality.value
+    fun setAudioTrackIdx(i: Int) { _audioTrackIdx.value = i }
+    fun audioTrackIdxNow(): Int = _audioTrackIdx.value
+    fun setSubTrackIdx(i: Int) { _subTrackIdx.value = i }
+    fun subTrackIdxNow(): Int = _subTrackIdx.value
+    fun setSubTrackFor(k: String?) { _subTrackFor.value = k }
+    fun subTrackForNow(): String? = _subTrackFor.value
+    fun setPlayerLoading(b: Boolean) { _playerLoading.value = b }
+    fun setPlayerError(s: String?) { _playerError.value = s }
+    fun playerErrorNow(): String? = _playerError.value
+    fun setPlayerPositionMs(v: Long) { _playerPositionMs.value = v }
+    fun setPlayerDurationMs(v: Long) { _playerDurationMs.value = v }
+    fun setPlayerBufferedPct(v: Int) { _playerBufferedPct.value = v }
+    fun setPlayingPinned(b: Boolean) { _playingPinned.value = b }
+    fun playingPinnedNow(): Boolean = _playingPinned.value
+    fun setAgePending(t: Triple<com.mohamedadel.mytube.data.youtube.VideoItem, Boolean, com.mohamedadel.mytube.data.youtube.StreamData?>?) { _agePending.value = t }
+
     fun saveSession(prefs: android.content.SharedPreferences, positionMs: Long) {
         try {
             val q = queueNow().take(50)
