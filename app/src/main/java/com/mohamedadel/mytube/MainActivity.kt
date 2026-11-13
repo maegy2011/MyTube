@@ -1454,7 +1454,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     playerVm.setQuality(label)
                     playerVm.setAudioTrackIdx(0)
                     playerVm.setSubTrackIdx(if (hasSub) 0 else -1)
-                    playerVm.setSubTrackFor(null // F8: packaged pin track, not an explicit pick)
+                    playerVm.setSubTrackFor(null) // F8: packaged pin track, not an explicit pick)
                     applyQuality(label, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
                     playerVm.setPlayingPinned(true)
                 } catch (_: Exception) {
@@ -1490,7 +1490,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             // applyQuality and played the previous video's dub/subtitle — major #4/#5).
             playerVm.setAudioTrackIdx(pickAudioIdxFor(s))
             playerVm.setSubTrackIdx(matchSubIdxFor(s))
-            playerVm.setSubTrackFor(null // F8: auto-matched, not an explicit pick)
+            playerVm.setSubTrackFor(null) // F8: auto-matched, not an explicit pick)
             if (s.ageLimit >= 18 && !ageOk) {
                 if (prefAgeMode == "block") {
                     playerVm.setPlayerLoading(false)
@@ -3047,7 +3047,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             if (i < 0) {
                                 settingsVm.setPrefSubLang("off")
                                 playerVm.setSubTrackIdx(-1)
-                                playerVm.setSubTrackFor(null // F8: explicit off clears any override owner)
+                                playerVm.setSubTrackFor(null) // F8: explicit off clears any override owner)
                                 toast(ctx.getString(R.string.toast_sub_off))
                             } else {
                                 val t = streamData?.subtitles?.getOrNull(i)
@@ -3057,7 +3057,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 val code = tag ?: "auto"
                                 settingsVm.setPrefSubLang(code)
                                 playerVm.setSubTrackIdx(i)
-                                playerVm.setSubTrackFor(playing?.favKey() // F8: explicit pick owns the override)
+                                playerVm.setSubTrackFor(playing?.favKey()) // F8: explicit pick owns the override)
                                 toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
                             }
                         } catch (_: Exception) { toast(ctx.getString(R.string.toast_sub_fail)) }
