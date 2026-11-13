@@ -2212,12 +2212,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     fun launchVoiceRecognizer() {
         try {
-            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (prefUiLang == "en") "en" else "ar")
-                putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, ctx.getString(R.string.voice_search))
-            }
-            voiceResultLauncher.launch(intent)
+            voiceResultLauncher.launch(sysVm.voiceIntentLang(prefUiLang))
         } catch (_: Exception) {
             toast(ctx.getString(R.string.voice_unavailable))
         }
@@ -2237,8 +2232,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     fun startVoiceSearch() {
         try {
-            val granted = ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-            if (granted) launchVoiceRecognizer() else voicePermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            if (sysVm.hasRecordAudio()) launchVoiceRecognizer() else voicePermLauncher.launch(Manifest.permission.RECORD_AUDIO)
         } catch (_: Exception) { toast(ctx.getString(R.string.voice_unavailable)) }
     }
 
@@ -2407,6 +2401,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             is com.mohamedadel.mytube.ui.navigation.NavAction.ClearOpenRemote -> searchVm.clearOpenRemote()
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseLibrary -> showLibrary = false
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseSC -> showSC = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.GoHome -> { showSC = false; showLibrary = false; fromLibrary = false; showFavorites = false; showHistory = false; showPlaylists = false; openPlaylistId = null; showSettings = false; playerExpanded = false }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.GoLibrary -> { showSC = false; showFavorites = false; showHistory = false; showPlaylists = false; openPlaylistId = null; showSettings = false; playerExpanded = false; fromLibrary = false; showLibrary = true }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.GoSettings -> { showSC = false; showLibrary = false; fromLibrary = false; showFavorites = false; showHistory = false; showPlaylists = false; openPlaylistId = null; playerExpanded = false; showSettings = true }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.GoSC -> { showLibrary = false; fromLibrary = false; showFavorites = false; showHistory = false; showPlaylists = false; openPlaylistId = null; showSettings = false; playerExpanded = false; showSC = true }
             is com.mohamedadel.mytube.ui.navigation.NavAction.ClearResults -> {
                 try {
                     savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -2450,31 +2448,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val isInPip = pipMode.value
     // No top app bar: logo + nav live INSIDE the search row (saves a full 64dp bar).
     // YouTube tab routing (all destinations are existing screens — design only, no new features)
-    fun goHome() {
-        showSC = false
-        showLibrary = false; fromLibrary = false
-        showFavorites = false; showHistory = false; showPlaylists = false
-        openPlaylistId = null; showSettings = false; playerExpanded = false
-    }
-    fun goLibrary() {
-        showSC = false
-        showFavorites = false; showHistory = false; showPlaylists = false
-        openPlaylistId = null; showSettings = false; playerExpanded = false
-        fromLibrary = false; showLibrary = true
-    }
-    fun goSettings() {
-        showSC = false
-        showLibrary = false; fromLibrary = false
-        showFavorites = false; showHistory = false; showPlaylists = false
-        openPlaylistId = null; playerExpanded = false
-        showSettings = true
-    }
-    fun goSC() {
-        showLibrary = false; fromLibrary = false
-        showFavorites = false; showHistory = false; showPlaylists = false
-        openPlaylistId = null; showSettings = false; playerExpanded = false
-        showSC = true
-    }
+    fun goHome() = applyNavAction(com.mohamedadel.mytube.ui.navigation.NavAction.GoHome)
+    fun goLibrary() = applyNavAction(com.mohamedadel.mytube.ui.navigation.NavAction.GoLibrary)
+    fun goSettings() = applyNavAction(com.mohamedadel.mytube.ui.navigation.NavAction.GoSettings)
+    fun goSC() = applyNavAction(com.mohamedadel.mytube.ui.navigation.NavAction.GoSC)
     val tabLibrary = showLibrary || showFavorites || showHistory || showPlaylists
     // method-size 2026-11-12: header region (battery banner + compact header +
     // standalone search) out of the Scaffold content lambda — same local-fun trick as

@@ -57,6 +57,10 @@ sealed interface NavAction {
     data object CloseLibrary : NavAction
     data object CloseSC : NavAction
     data object ClearResults : NavAction
+    data object GoHome : NavAction
+    data object GoLibrary : NavAction
+    data object GoSettings : NavAction
+    data object GoSC : NavAction
 }
 
 object NavStack {

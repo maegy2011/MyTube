@@ -97,6 +97,19 @@ class SystemViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Exception) { "MyTube diagnostics unavailable" }
     }
 
+    fun voiceIntentLang(uiLang: String): android.content.Intent {
+        return android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (uiLang == "en") "en" else "ar")
+            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, str(R.string.voice_search))
+        }
+    }
+
+    fun hasRecordAudio(): Boolean = try {
+        getApplication<Application>().checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    } catch (_: Exception) { false }
+
     fun syncFeedWorker(enable: Boolean) {
         try {
             com.mohamedadel.mytube.data.local.FeedRefreshWorker.schedule(getApplication(), enable)
