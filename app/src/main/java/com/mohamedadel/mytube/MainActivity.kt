@@ -2377,25 +2377,38 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (fromLibrary) { fromLibrary = false; showLibrary = true }
     }
 
-    fun applyNavAction(a: com.mohamedadel.mytube.ui.navigation.NavAction): Boolean {
+    fun applyNavLibrary(a: com.mohamedadel.mytube.ui.navigation.NavAction): Boolean {
         when (a) {
-            is com.mohamedadel.mytube.ui.navigation.NavAction.None -> return false
-            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseNotifications -> showNotifications = false
             is com.mohamedadel.mytube.ui.navigation.NavAction.GroupToGroups -> { openGroup = null; showGroups = true }
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseGroups -> { showGroups = false; backToLibrary() }
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseGroupFeed -> { feedGroupUrls = null; feedGroupName = null; showFeed = false; backToLibrary() }
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseDownloads -> { showDownloads = false; backToLibrary() }
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseLocal -> { showLocal = false; backToLibrary() }
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseFeed -> { showFeed = false; backToLibrary() }
-            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseChannel -> chVm.closeChannel()
-            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseComments -> showComments = false
-            is com.mohamedadel.mytube.ui.navigation.NavAction.ExitFullscreen -> setFullscreen(false)
-            is com.mohamedadel.mytube.ui.navigation.NavAction.CollapsePlayer -> playerExpanded = false
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseHistory -> { showHistory = false; backToLibrary() }
             is com.mohamedadel.mytube.ui.navigation.NavAction.ClosePlaylistDetail -> openPlaylistId = null
             is com.mohamedadel.mytube.ui.navigation.NavAction.ClosePlaylists -> { showPlaylists = false; backToLibrary() }
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseFavorites -> { showFavorites = false; backToLibrary() }
+            else -> return false
+        }
+        return true
+    }
+
+    fun applyNavPlayer(a: com.mohamedadel.mytube.ui.navigation.NavAction): Boolean {
+        when (a) {
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseChannel -> chVm.closeChannel()
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseComments -> showComments = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.ExitFullscreen -> setFullscreen(false)
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CollapsePlayer -> playerExpanded = false
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseQueue -> showQueue = false
+            else -> return false
+        }
+        return true
+    }
+
+    fun applyNavRoot(a: com.mohamedadel.mytube.ui.navigation.NavAction): Boolean {
+        when (a) {
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseNotifications -> showNotifications = false
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseSearch -> showSearch = false
             is com.mohamedadel.mytube.ui.navigation.NavAction.CloseSettings -> showSettings = false
             is com.mohamedadel.mytube.ui.navigation.NavAction.ClearOpenRemote -> searchVm.clearOpenRemote()
@@ -2412,8 +2425,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 msearchVm.clearResults()
                 query = ""
             }
+            else -> return false
         }
         return true
+    }
+
+    fun applyNavAction(a: com.mohamedadel.mytube.ui.navigation.NavAction): Boolean {
+        if (a is com.mohamedadel.mytube.ui.navigation.NavAction.None) return false
+        if (applyNavLibrary(a)) return true
+        if (applyNavPlayer(a)) return true
+        if (applyNavRoot(a)) return true
+        return false
     }
 
     fun smartBack(): Boolean = applyNavAction(
