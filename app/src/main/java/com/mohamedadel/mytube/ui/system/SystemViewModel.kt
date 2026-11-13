@@ -70,6 +70,33 @@ class SystemViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun modeLabel(m: String): String = when (m) {
+        "repeatAll" -> str(R.string.mode_repeat_all)
+        "repeatOne" -> str(R.string.mode_repeat_one)
+        else -> str(R.string.mode_order)
+    }
+
+    fun diagnosticsReport(
+        playerError: String?,
+        searchError: String?,
+        playingId: String?,
+        quality: String,
+        offline: Boolean,
+        country: String
+    ): String {
+        return try {
+            buildString {
+                appendLine("MyTube v" + com.mohamedadel.mytube.BuildConfig.VERSION_NAME + " (vc" + com.mohamedadel.mytube.BuildConfig.VERSION_CODE + ")")
+                appendLine("playerError=" + (playerError ?: "none"))
+                appendLine("searchError=" + (searchError ?: "none"))
+                appendLine("playing=" + (playingId ?: "none"))
+                appendLine("quality=" + quality)
+                appendLine("offline=" + offline + " country=" + country)
+                appendLine("castAvailable=" + com.mohamedadel.mytube.playback.CastManager.available.value + " castConnected=" + com.mohamedadel.mytube.playback.CastManager.connected.value + " castErr=" + (com.mohamedadel.mytube.playback.CastManager.lastError ?: "none"))
+            }
+        } catch (_: Exception) { "MyTube diagnostics unavailable" }
+    }
+
     fun syncFeedWorker(enable: Boolean) {
         try {
             com.mohamedadel.mytube.data.local.FeedRefreshWorker.schedule(getApplication(), enable)

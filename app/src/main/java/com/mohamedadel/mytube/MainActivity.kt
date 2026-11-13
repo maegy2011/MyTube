@@ -365,7 +365,7 @@ class MainActivity : ComponentActivity() {
 // VideoItem is not Parcelable, so it is encoded as one \u001F-joined string of
 // Uri-encoded fields (Bundle-safe); the queue saver caps at 50 items (Binder ~1MB).
 private fun encodeVideoItem(v: VideoItem): String {
-    fun s(x: String?): String = try { android.net.Uri.encode(x ?: "") } catch (_: Exception) { "" }
+    fun s(x: String?): String = com.mohamedadel.mytube.util.uriEncode(x)
     return listOf(s(v.id), s(v.title), s(v.channel), s(v.thumbnail),
         v.durationSec?.toString() ?: "", v.viewCount?.toString() ?: "",
         s(v.url), s(v.channelAvatar), if (v.verified) "1" else "",
@@ -1736,11 +1736,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun enqueueLast(v: VideoItem) {
         playerVm.enqueueLast(v, playerHost)
     }
-    fun modeLabel(m: String): String = when (m) {
-        "repeatAll" -> ctx.getString(R.string.mode_repeat_all)
-        "repeatOne" -> ctx.getString(R.string.mode_repeat_one)
-        else -> ctx.getString(R.string.mode_order)
-    }
+    fun modeLabel(m: String): String = sysVm.modeLabel(m)
     fun cycleMode() = setMode(playerVm.cycleMode())
 
     // Connect to PlaybackService for notification/lock-screen controls
@@ -2024,19 +2020,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val searchError by msearchVm.searchError.collectAsStateWithLifecycle()
     // 2.2 diagnostics: user-triggered report copy (no auto-upload — local-only app, no accounts).
     // Call site: settings button. Includes current visible errors + versions only.
-    fun diagnosticsReport(): String {
-        return try {
-            buildString {
-                appendLine("MyTube v" + com.mohamedadel.mytube.BuildConfig.VERSION_NAME + " (vc" + com.mohamedadel.mytube.BuildConfig.VERSION_CODE + ")")
-                appendLine("playerError=" + (playerError ?: "none"))
-                appendLine("searchError=" + (searchError ?: "none"))
-                appendLine("playing=" + (playing?.id ?: "none"))
-                appendLine("quality=" + quality)
-                appendLine("offline=" + prefOffline + " country=" + prefCountry)
-                appendLine("castAvailable=" + com.mohamedadel.mytube.playback.CastManager.available.value + " castConnected=" + com.mohamedadel.mytube.playback.CastManager.connected.value + " castErr=" + (com.mohamedadel.mytube.playback.CastManager.lastError ?: "none"))
-            }
-        } catch (_: Exception) { "MyTube diagnostics unavailable" }
-    }
+    fun diagnosticsReport(): String = sysVm.diagnosticsReport(
+        playerError, searchError, playing?.id, quality, prefOffline, prefCountry
+    )
     // G-A4 (audit P2 2026-11-11): full export/import — every list, fav, history row
     // (capped 500), subscription, group + all prefs in one JSON file shared via FileProvider.
     // Pins are descriptors only: bytes stay on the old device (re-pin after moving).

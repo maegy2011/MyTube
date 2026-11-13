@@ -222,6 +222,8 @@ fun autoKeyFor(sd0: StreamData, kbps: Int, allow4k: Boolean): String {
     } ?: "auto"
 }
 
+fun uriEncode(x: String?): String = try { android.net.Uri.encode(x ?: "") } catch (_: Exception) { "" }
+
 fun castMimeFor(url: String, audioOnly: Boolean): String {
     return try {
         val q = android.net.Uri.parse(url).getQueryParameter("mime")?.let {
