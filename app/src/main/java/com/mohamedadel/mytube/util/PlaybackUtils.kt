@@ -222,6 +222,18 @@ fun autoKeyFor(sd0: StreamData, kbps: Int, allow4k: Boolean): String {
     } ?: "auto"
 }
 
+fun extractYoutubeId(t: String?): String? {
+    return try {
+        if (t.isNullOrBlank()) return null
+        val pats = listOf(
+            Regex("[?&]v=([A-Za-z0-9_-]{6,})"),
+            Regex("youtu\\.be/([A-Za-z0-9_-]{6,})"),
+            Regex("/(?:shorts|embed|live)/([A-Za-z0-9_-]{6,})")
+        )
+        pats.firstNotNullOfOrNull { r -> r.find(t)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } }
+    } catch (_: Exception) { null }
+}
+
 fun uriEncode(x: String?): String = try { android.net.Uri.encode(x ?: "") } catch (_: Exception) { "" }
 
 fun castMimeFor(url: String, audioOnly: Boolean): String {

@@ -51,6 +51,14 @@ class PlayerViewModel : ViewModel() {
     fun queueNow(): List<VideoItem> = _queue.value
     fun queueIndexNow(): Int = _queueIndex.value
 
+    fun closePlayer(stopAndClear: () -> Unit) {
+        try { stopAndClear() } catch (_: Exception) { }
+        setPlaying(null)
+        setAutoAdvance(false)
+        setRadioOn(false)
+        setQueueIndex(-1)
+    }
+
     fun saveSession(prefs: android.content.SharedPreferences, positionMs: Long) {
         try {
             val q = queueNow().take(50)

@@ -2062,16 +2062,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Companion-parked by onCreate/onNewIntent; consumed on resume (covers cold start +
     // share-while-alive via singleTop). A bare video URL plays like a tapped result;
     // anything else becomes a search query.
-    fun extractYoutubeId(t: String): String? {
-        return try {
-            val pats = listOf(
-                Regex("[?&]v=([A-Za-z0-9_-]{6,})"),
-                Regex("youtu\\.be/([A-Za-z0-9_-]{6,})"),
-                Regex("/(?:shorts|embed|live)/([A-Za-z0-9_-]{6,})")
-            )
-            pats.firstNotNullOfOrNull { r -> r.find(t)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } }
-        } catch (_: Exception) { null }
-    }
+    fun extractYoutubeId(t: String): String? = com.mohamedadel.mytube.util.extractYoutubeId(t)
     // Phase 2.3 slice 15: PinHost seam — VM owns registry/runner, activity owns player/toasts/net.
     val pinHost = remember {
         object : com.mohamedadel.mytube.ui.pins.PinHost {
@@ -2239,16 +2230,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     // Explicit close: stops audio and clears the player (X button only).
     fun closePlayer() {
-        // stop + drop the loaded item: otherwise the MediaSession notification keeps
-        // showing the last video's data after close (stale notification bug).
-        try { player?.stop() } catch (_: Exception) { }
-        try { player?.clearMediaItems() } catch (_: Exception) { }
-        playerVm.setPlaying(null)
+        playerVm.closePlayer({ try { player?.stop() } catch (_: Exception) { }; try { player?.clearMediaItems() } catch (_: Exception) { } })
         streamData = null
         playerExpanded = false
-        playerVm.setAutoAdvance(false)
-        playerVm.setRadioOn(false)
-        playerVm.setQueueIndex(-1)
     }
     // Smart back: exit fullscreen first; collapse full player (audio keeps playing, mini player appears); results cleared next; playlists navigated. Never stops audio.
     fun toggleSubscription(url: String?, name: String?, avatar: String?) {
@@ -2264,18 +2248,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // refs) and before SettingsPane. Refuse path never calls this — old kept.
     fun confirmCountrySwitch(v: String) {
         pendingCountry = null
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try { com.mohamedadel.mytube.playback.MediaCache.clear(ctx.applicationContext) } catch (_: Exception) { }
-            try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.clearCaches() } catch (_: Exception) { }
-            try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                settingsVm.setPrefCountry(v)
-                try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(v, prefUiLang) } catch (_: Exception) { }
-                // L7 (audit P2 2026-11-11): reload both surfaces + announce.
-                refreshTrending()
-                refreshFeed()
-                toast(ctx.getString(R.string.region_changed))
-            } } catch (_: Exception) { }
-        }
+        sysVm.confirmCountrySwitch(v, prefUiLang,
+            clearCaches = {
+                com.mohamedadel.mytube.playback.MediaCache.clear(ctx.applicationContext)
+                com.mohamedadel.mytube.data.youtube.YouTubeRepo.clearCaches()
+            },
+            setCountry = { settingsVm.setPrefCountry(it) },
+            applyRegion = { c, l -> com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(c, l) },
+            refreshAll = { refreshTrending(); refreshFeed() },
+            announce = { toast(ctx.getString(R.string.region_changed)) }
+        )
     }
     fun openGroupFeed(g: com.mohamedadel.mytube.data.local.ChannelGroupEntity, urls: Set<String>) {
         fromLibrary = true

@@ -110,6 +110,28 @@ class SystemViewModel(app: Application) : AndroidViewModel(app) {
             android.content.pm.PackageManager.PERMISSION_GRANTED
     } catch (_: Exception) { false }
 
+    fun confirmCountrySwitch(
+        v: String,
+        uiLang: String,
+        clearCaches: () -> Unit,
+        setCountry: (String) -> Unit,
+        applyRegion: (String, String) -> Unit,
+        refreshAll: () -> Unit,
+        announce: () -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try { clearCaches() } catch (_: Exception) { }
+            try {
+                withContext(Dispatchers.Main) {
+                    setCountry(v)
+                    try { applyRegion(v, uiLang) } catch (_: Exception) { }
+                    refreshAll()
+                    announce()
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
     fun syncFeedWorker(enable: Boolean) {
         try {
             com.mohamedadel.mytube.data.local.FeedRefreshWorker.schedule(getApplication(), enable)
