@@ -374,12 +374,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Survive rotation: the query text and current query live in saved state,
     // results refetch via LaunchedEffect below (ViewModel owns suggestions already).
     var query by rememberSaveable { mutableStateOf("") }
-    var currentQuery by rememberSaveable { mutableStateOf("") }
-    var results by remember { mutableStateOf(emptyList<VideoItem>()) }
-    var loading by remember { mutableStateOf(false) }
-    var loadingMore by remember { mutableStateOf(false) }
-    var hasMore by remember { mutableStateOf(false) }
-    var nextPage by remember { mutableStateOf<Page?>(null) }
+    val msearchVm: com.mohamedadel.mytube.ui.search.MainSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "main")
+    val currentQuery by msearchVm.currentQuery.collectAsStateWithLifecycle()
+    val results by msearchVm.results.collectAsStateWithLifecycle()
+    val loading by msearchVm.loading.collectAsStateWithLifecycle()
+    val loadingMore by msearchVm.loadingMore.collectAsStateWithLifecycle()
+    val hasMore by msearchVm.hasMore.collectAsStateWithLifecycle()
+    val nextPage by msearchVm.nextPage.collectAsStateWithLifecycle()
     // search content filter: all | videos | channels | playlists (persisted; no sort API exists)
     var prefContentFilter by remember { mutableStateOf("all") }
     val playerVm: com.mohamedadel.mytube.ui.player.PlayerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -419,7 +420,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // fullscreen experiment: native ExoPlayer controls only; follows device rotation via SENSOR
     var isFullscreen by remember { mutableStateOf(false) }
-    var recentSearches by remember { mutableStateOf(listOf<String>()) }
+    val recentSearches by msearchVm.recentSearches.collectAsStateWithLifecycle()
     var showSuggestions by remember { mutableStateOf(false) }
     // G-A1: bumped on every resume when a shared/view intent is parked (consumed below after doSearch is in scope).
     var sharedPending by remember { mutableStateOf(0) }
@@ -744,6 +745,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
     androidx.compose.runtime.LaunchedEffect(Unit) { searchVm.configure(prefs) { e -> try { ctx.getString(R.string.err_search_detail_fmt, e) } catch (_: Exception) { e } } }
+    androidx.compose.runtime.LaunchedEffect(Unit) { msearchVm.configure(prefs) { try { ctx.getString(R.string.err_search) } catch (_: Exception) { "search error" } } }
     // L1 (audit P1 2026-11-11): session-restore targets — declared before the prefs-load
     // effect below (Kotlin locals must precede use); saveSession itself lives near setShuffle.
     var pendingSeekMs by remember { mutableStateOf<Long?>(null) }
@@ -850,7 +852,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { }
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
-            if (raw.isNotBlank()) recentSearches = raw.split("\u001f").filter { it.isNotBlank() }.take(6)
             // sleep timer is playback-bound and persisted: leaving/killing the app must not cancel it
             try {
                 val dl = prefs.getLong("sleep_deadline", 0L)
@@ -2420,22 +2421,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     LaunchedEffect(shouldLoadMore, currentQuery) {
         if (shouldLoadMore && hasMore && !loadingMore && !loading && currentQuery.isNotBlank()) {
-            val q = currentQuery
-            val page = nextPage ?: return@LaunchedEffect
-            loadingMore = true
-            try {
-                val res = YouTubeRepo.search(q, page, if (prefCountry == "global") null else prefCountry, prefContentFilter)
-                // drop duplicates already in list (same url/id) to avoid key crash
-                val seen = results.mapNotNull { it.url ?: it.id }.toSet()
-                val fresh = res.items.filter { (it.url ?: it.id ?: it.title) !in seen }
-                results = results + fresh
-                nextPage = res.nextPage
-                hasMore = res.hasNext && res.nextPage != null
-            } catch (_: Exception) {
-                hasMore = false
-            } finally {
-                loadingMore = false
-            }
+            msearchVm.loadMore(if (prefCountry == "global") null else prefCountry, prefContentFilter)
         }
     }
 
@@ -2662,10 +2648,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     // saved scroll position per query: firstVisibleIndex + offset, restored when the same query is searched again
     val savedScroll = remember { mutableMapOf<String, Pair<Int, Int>>() }
+    // scroll restore after VM search completes (needs activity listState + savedScroll)
+    LaunchedEffect(Unit) {
+        msearchVm.searchDone.collect { q ->
+            savedScroll[q]?.let { (idx, off) ->
+                try { listState.scrollToItem(idx, off) } catch (_: Exception) { }
+            }
+        }
+    }
     // Search single-flight with cancellation: a new query kills the previous request,
     // so late responses can never overwrite fresh results. Failures surface with retry.
-    var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var searchError by remember { mutableStateOf<String?>(null) }
+    val searchError by msearchVm.searchError.collectAsStateWithLifecycle()
     // 2.2 diagnostics: user-triggered report copy (no auto-upload — local-only app, no accounts).
     // Call site: settings button. Includes current visible errors + versions only.
     fun diagnosticsReport(): String {
@@ -2990,57 +2983,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { toast(ctx.getString(R.string.toast_delete_item_fail)) }
     }
 
-    var searchSuggestion by remember { mutableStateOf<String?>(null) }
-    var searchCorrected by remember { mutableStateOf(false) }
+    val searchSuggestion by msearchVm.searchSuggestion.collectAsStateWithLifecycle()
+    val searchCorrected by msearchVm.searchCorrected.collectAsStateWithLifecycle()
     fun doSearch(q: String) {
         if (q.isBlank()) return
         // navigating to results collapses the full player — audio continues in the mini bar.
         playerExpanded = false
-        currentQuery = q
-        loading = true
-        searchError = null
         showSuggestions = false
-        searchJob?.cancel()
-        searchJob = scope.launch {
-            try {
-                if (prefContentFilter == "playlists") {
-                    searchVm.assignRemotePlaylists(YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry))
-                } else if (prefContentFilter == "albums") {
-                    searchVm.assignRemotePlaylists(YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry, albums = true))
-                } else {
-                    searchVm.assignRemotePlaylists(emptyList())
-                }
-                // songs = YTM audio search; albums surface as cards only (no video rows)
-                val filter = if (prefContentFilter == "songs") "music_songs" else prefContentFilter
-                val page = if (prefContentFilter == "albums") com.mohamedadel.mytube.data.youtube.SearchPage(emptyList(), null, false, null)
-                else YouTubeRepo.search(q, null, if (prefCountry == "global") null else prefCountry, filter)
-                if (page.error != null && page.items.isEmpty()) {
-                    searchError = ctx.getString(R.string.err_search)
-                    results = emptyList()
-                    hasMore = false
-                } else {
-                    results = page.items
-                    nextPage = page.nextPage
-                    hasMore = page.hasNext
-                    searchSuggestion = page.suggestion
-                    searchCorrected = page.corrected
-                }
-            } catch (_: Exception) {
-                searchError = ctx.getString(R.string.err_search)
-                results = emptyList()
-                hasMore = false
-            } finally {
-                loading = false
-            }
-            // restore saved scroll position for repeated queries
-            savedScroll[q]?.let { (idx, off) ->
-                try { listState.scrollToItem(idx, off) } catch (_: Exception) { }
-            }
-            if (!recentSearches.contains(q)) {
-                recentSearches = (listOf(q) + recentSearches).take(6)
-                try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
-            }
-        }
+        msearchVm.search(q, prefContentFilter, if (prefCountry == "global") null else prefCountry) { cards -> searchVm.assignRemotePlaylists(cards) }
     }
     // G-A1 (audit P2 2026-11-11): shared / viewed YouTube links land here.
     // Companion-parked by onCreate/onNewIntent; consumed on resume (covers cold start +
@@ -3666,7 +3616,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try {
                 savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
             } catch (_: Exception) { }
-            results = emptyList()
+            msearchVm.clearResults()
             query = ""
             return true
         }
@@ -3803,10 +3753,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             uYT = null; uSC = null; uYM = null
             unifiedExpanded = null
             unifiedLoading = true
-            if (!recentSearches.contains(q)) {
-                recentSearches = (listOf(q) + recentSearches).take(6)
-                try { prefs.edit().putString("recent_searches", recentSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
-            }
+            msearchVm.rememberRecent(q)
             unifiedJob = scope.launch {
                 try {
                     val region = if (prefCountry == "global") null else prefCountry
@@ -3845,7 +3792,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 showSuggestions = showSuggestions,
                 recentSearches = recentSearches,
                 recentMusicSearches = recentMusicSearches,
-                setRecentSearches = { recentSearches = it },
+                setRecentSearches = { msearchVm.assignRecentSearches(it) },
                 setRecentMusicSearches = { searchVm.assignRecentMusic(it) },
                 prefs = prefs,
                 playing = playing,
@@ -3894,9 +3841,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         showPlaylists = false
                                         openPlaylistId = null
                                         val list = rows.map { it.toVideoItem() }
-                                        results = list
+                                        msearchVm.showPlaylistResults(list)
                                         playerVm.replaceQueue(list, 0)
-                                        currentQuery = ""
                                         playerVm.setRadioOn(false)
                                         videoModeQueue = playlists.firstOrNull { it.id == pid }?.mode == "video"
                                         playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
@@ -3907,9 +3853,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 val list = openItems.map { it.toVideoItem() }
                                 if (idx in list.indices) {
                                     showPlaylists = false
-                                    results = list
+                                    msearchVm.showPlaylistResults(list)
                                     playerVm.replaceQueue(list, idx)
-                                    currentQuery = ""
                                     playerVm.setRadioOn(false)
                                     videoModeQueue = playlists.firstOrNull { it.id == openPlaylistId }?.mode == "video"
                                     playVideo(list[idx], inQueue = true, expand = true, forcePlay = true)
@@ -4001,10 +3946,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_onResumePlay: (com.mohamedadel.mytube.data.youtube.VideoItem, Long) -> Unit = { v, ms -> pendingSeekMs = ms; pendingSeekKey = v.favKey(); playVideo(v, expand = true, forcePlay = true) }
             val mc_setContentFilter: (String) -> Unit = { prefContentFilter = it }
             val mc_doSearchText: (String) -> Unit = { q -> doSearch(q) }
-            val mc_setResults: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { results = it }
-            val mc_setNextPage: (org.schabi.newpipe.extractor.Page?) -> Unit = { nextPage = it }
-            val mc_setHasMore: (Boolean) -> Unit = { hasMore = it }
-            val mc_setLoadingMore: (Boolean) -> Unit = { loadingMore = it }
+            val mc_setResults: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { msearchVm.assignResults(it) }
+            val mc_setNextPage: (org.schabi.newpipe.extractor.Page?) -> Unit = { msearchVm.assignNextPage(it) }
+            val mc_setHasMore: (Boolean) -> Unit = { msearchVm.assignHasMore(it) }
+            val mc_setLoadingMore: (Boolean) -> Unit = { msearchVm.assignLoadingMore(it) }
             val mc_setShowLibrary: (Boolean) -> Unit = { showLibrary = it }
             val mc_setFromLibrary: (Boolean) -> Unit = { fromLibrary = it }
             val mc_setShowHistory: (Boolean) -> Unit = { showHistory = it }
@@ -4066,7 +4011,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_onClearFavorites: () -> Unit = { clearFavorites() }
             val mc_onStartRadio: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> startRadio(v) }
             val mc_setOpenRemote: (com.mohamedadel.mytube.data.youtube.RemotePlaylist?) -> Unit = { searchVm.setOpenRemote(it) }
-            val mc_setCurrentQuery: (String) -> Unit = { currentQuery = it }
+            val mc_setCurrentQuery: (String) -> Unit = { msearchVm.assignCurrentQuery(it) }
             val mc_onSaveRemoteList: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { list -> saveRemoteList(list) }
             val mc_onLoadMoreRemote: () -> Unit = { loadMoreRemote() }
             val mc_onQuickPin: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> quickPin(v, null) }
