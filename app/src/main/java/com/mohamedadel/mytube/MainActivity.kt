@@ -474,6 +474,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val dao = remember { db.playlists() }
     val csvVm: com.mohamedadel.mytube.ui.library.PlaylistCsvViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val backupVm: com.mohamedadel.mytube.ui.backup.BackupViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val libVm: com.mohamedadel.mytube.ui.library.LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val feedVm: com.mohamedadel.mytube.ui.feed.FeedViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     androidx.compose.runtime.LaunchedEffect(Unit) { feedVm.configure(dao) }
@@ -769,6 +770,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
     androidx.compose.runtime.LaunchedEffect(Unit) { searchVm.configure(prefs) { e -> try { ctx.getString(R.string.err_search_detail_fmt, e) } catch (_: Exception) { e } } }
     androidx.compose.runtime.LaunchedEffect(Unit) { settingsVm.configure(prefs) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { backupVm.configure(dao, prefs) }
     androidx.compose.runtime.LaunchedEffect(Unit) { msearchVm.configure(prefs) { try { ctx.getString(R.string.err_search) } catch (_: Exception) { "search error" } } }
     // L1 (audit P1 2026-11-11): session-restore targets — declared before the prefs-load
     // effect below (Kotlin locals must precede use); saveSession itself lives near setShuffle.
@@ -2092,25 +2094,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Pins are descriptors only: bytes stay on the old device (re-pin after moving).
     // Deferred item 7: last-backup metadata line for the Settings downloads section
     // (null until the first export; survives process death — plain prefs).
-    fun backupInfoText(): String? {
-        return try {
-            val at = try { prefs.getLong("backup_last_at", 0L) } catch (_: Exception) { 0L }
-            if (at <= 0L) return null
-            val date = try {
-                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(at))
-            } catch (_: Exception) { "" }
-            val bytes = try { prefs.getLong("backup_last_bytes", 0L) } catch (_: Exception) { 0L }
-            val size = if (bytes >= 1048576L) String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0)
-            else String.format(java.util.Locale.US, "%d KB", bytes / 1024)
-            ctx.getString(
-                R.string.backup_last_fmt, date,
-                try { prefs.getInt("backup_last_pl", 0) } catch (_: Exception) { 0 },
-                try { prefs.getInt("backup_last_fav", 0) } catch (_: Exception) { 0 },
-                try { prefs.getInt("backup_last_hist", 0) } catch (_: Exception) { 0 },
-                size
-            )
-        } catch (_: Exception) { null }
-    }
+    fun backupInfoText(): String? = backupVm.backupInfoText()
     // Deferred item 8: WorkManager scheduler for the periodic feed refresh (see FeedRefreshWorker).
     fun syncFeedWorker(appCtx: android.content.Context, enable: Boolean) {
         try {
@@ -2118,246 +2102,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { }
     }
     fun exportFullBackup() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val root = org.json.JSONObject()
-                root.put("app", "mytube")
-                root.put("v", 1)
-                root.put("at", System.currentTimeMillis())
-                val jpls = org.json.JSONArray()
-                for (pw in dao.observePlaylists().first()) {
-                    val o = org.json.JSONObject()
-                    o.put("name", pw.name); o.put("emoji", pw.emoji); o.put("mode", pw.mode)
-                    val ja = org.json.JSONArray()
-                    for (it in dao.itemsOnce(pw.id)) {
-                        val e = org.json.JSONObject()
-                        e.put("videoId", it.videoId); e.put("title", it.title); e.put("channel", it.channel)
-                        e.put("thumbnail", it.thumbnail); e.put("url", it.url)
-                        e.put("durationSec", it.durationSec ?: -1); e.put("viewCount", it.viewCount ?: -1)
-                        e.put("position", it.position)
-                        ja.put(e)
-                    }
-                    o.put("items", ja)
-                    jpls.put(o)
-                }
-                root.put("playlists", jpls)
-                fun vrow(videoKey: String, videoId: String?, title: String?, channel: String?, thumb: String?, url: String?, dur: Long?, views: Long?): org.json.JSONObject {
-                    val e = org.json.JSONObject()
-                    e.put("videoKey", videoKey); e.put("videoId", videoId); e.put("title", title)
-                    e.put("channel", channel); e.put("thumbnail", thumb); e.put("url", url)
-                    e.put("durationSec", dur ?: -1); e.put("viewCount", views ?: -1)
-                    return e
-                }
-                val jf = org.json.JSONArray()
-                for (f in dao.observeFavorites().first()) jf.put(vrow(f.videoKey, f.videoId, f.title, f.channel, f.thumbnail, f.url, f.durationSec, f.viewCount))
-                root.put("favorites", jf)
-                val jh = org.json.JSONArray()
-                for (h in dao.historyPage(500, 0)) jh.put(vrow(h.videoKey, h.videoId, h.title, h.channel, h.thumbnail, h.url, h.durationSec, h.viewCount))
-                root.put("history", jh)
-                val js = org.json.JSONArray()
-                for (x in dao.observeSubscriptions().first()) {
-                    val e = org.json.JSONObject()
-                    e.put("channelUrl", x.channelUrl); e.put("name", x.name); e.put("avatar", x.avatar)
-                    js.put(e)
-                }
-                root.put("subscriptions", js)
-                val jg = org.json.JSONArray()
-                for (g in dao.observeGroups().first()) {
-                    val o = org.json.JSONObject()
-                    o.put("name", g.name)
-                    val jm = org.json.JSONArray()
-                    for (m in dao.observeGroupMembers(g.id).first()) jm.put(m.channelUrl)
-                    o.put("members", jm)
-                    jg.put(o)
-                }
-                root.put("groups", jg)
-                val jp = org.json.JSONObject()
-                for ((k, v) in prefs.all) {
-                    try {
-                        when (v) {
-                            is Boolean -> jp.put(k, v)
-                            is Int -> jp.put(k, v)
-                            is Long -> jp.put(k, v)
-                            is Float -> jp.put(k, v.toDouble())
-                            is String -> jp.put(k, v)
-                            is Set<*> -> { val a = org.json.JSONArray(); for (e in v) a.put(e.toString()); jp.put(k, a) }
-                        }
-                    } catch (_: Exception) { }
-                }
-                root.put("prefs", jp)
-                val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
-                val f = java.io.File(dir, "mytube_backup_" + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date()) + ".json")
-                f.writeText(root.toString())
-                // Deferred item 7 (2026-11-11): backup metadata row — timestamp + size + counts in prefs.
-                try {
-                    prefs.edit()
-                        .putLong("backup_last_at", System.currentTimeMillis())
-                        .putLong("backup_last_bytes", f.length())
-                        .putInt("backup_last_pl", root.optJSONArray("playlists")?.length() ?: 0)
-                        .putInt("backup_last_fav", root.optJSONArray("favorites")?.length() ?: 0)
-                        .putInt("backup_last_hist", root.optJSONArray("history")?.length() ?: 0)
-                        .apply()
-                } catch (_: Exception) { }
-                val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "com.mohamedadel.mytube.fileprovider", f)
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "application/json"
-                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                val chooser = android.content.Intent.createChooser(send, try { ctx.getString(R.string.backup_export) } catch (_: Exception) { "backup" })
-                chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                ctx.startActivity(chooser)
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.backup_export_fail)) }
-        }
+        backupVm.exportFullBackup()
     }
     fun importFullBackup(uri: android.net.Uri) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val text = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return@launch
-                val root = org.json.JSONObject(text)
-                if (root.optString("app") != "mytube") { uiToast(ctx.getString(R.string.backup_import_fail)); return@launch }
-                var nPl = 0; var nFav = 0
-                // Deferred item 5 (2026-11-11): import robustness — counters only, restore semantics untouched.
-                // - " (import)" suffix applies ONLY on real name clashes (was blind on every import).
-                // - rows with neither videoId nor url are invalid and skipped (were inserted as ghosts).
-                var nSkippedPlaylists = 0; var nSkippedItems = 0; var nRenamed = 0
-                val usedNames = try { dao.observePlaylists().first().map { it.name }.toMutableSet() } catch (_: Exception) { mutableSetOf() }
-                val jpls = root.optJSONArray("playlists") ?: org.json.JSONArray()
-                for (i in 0 until jpls.length()) {
-                    try {
-                        val o = jpls.getJSONObject(i)
-                        val base = o.optString("name", "import").ifBlank { "import" }.take(80)
-                        var finalName = base
-                        if (finalName in usedNames) {
-                            var n = 1
-                            var cand = "$base (import)"
-                            while (cand in usedNames) { n++; cand = "$base (import $n)" }
-                            finalName = cand.take(80)
-                            nRenamed++
-                        }
-                        usedNames.add(finalName)
-                        val pid = dao.insertPlaylist(com.mohamedadel.mytube.data.local.PlaylistEntity(
-                            name = finalName,
-                            emoji = o.optString("emoji", "\uD83C\uDFB5"), mode = o.optString("mode", "music")))
-                        val items = o.optJSONArray("items") ?: org.json.JSONArray()
-                        val rows = (0 until items.length()).mapNotNull { j ->
-                            try {
-                                val e = items.getJSONObject(j)
-                                val vid = e.optString("videoId").ifBlank { null }
-                                val url = e.optString("url").ifBlank { null }
-                                if (vid == null && url == null) { nSkippedItems++; null }
-                                else com.mohamedadel.mytube.data.local.PlaylistItemEntity(
-                                    playlistId = pid, videoId = vid,
-                                    title = e.optString("title").ifBlank { null }, channel = e.optString("channel").ifBlank { null },
-                                    thumbnail = e.optString("thumbnail").ifBlank { null }, url = url,
-                                    durationSec = e.optLong("durationSec", -1).takeIf { it >= 0 }, viewCount = e.optLong("viewCount", -1).takeIf { it >= 0 },
-                                    position = e.optInt("position", j))
-                            } catch (_: Exception) { nSkippedItems++; null }
-                        }
-                        if (rows.isNotEmpty()) dao.insertItems(rows)
-                        nPl++
-                    } catch (_: Exception) { nSkippedPlaylists++ }
-                }
-                fun vrow(e: org.json.JSONObject, playedAt: Long): com.mohamedadel.mytube.data.local.HistoryEntity {
-                    return com.mohamedadel.mytube.data.local.HistoryEntity(
-                        videoKey = e.optString("videoKey"), videoId = e.optString("videoId").ifBlank { null },
-                        title = e.optString("title").ifBlank { null }, channel = e.optString("channel").ifBlank { null },
-                        thumbnail = e.optString("thumbnail").ifBlank { null }, url = e.optString("url").ifBlank { null },
-                        durationSec = e.optLong("durationSec", -1).takeIf { it >= 0 }, viewCount = e.optLong("viewCount", -1).takeIf { it >= 0 },
-                        playedAt = playedAt)
-                }
-                val jf = root.optJSONArray("favorites") ?: org.json.JSONArray()
-                for (i in 0 until jf.length()) {
-                    try {
-                        val h = vrow(jf.getJSONObject(i), System.currentTimeMillis())
-                        // Deferred item 5: skip identifier-less rows (no key/id/url = unrestorable ghost).
-                        if (h.videoKey.isBlank() && h.videoId.isNullOrBlank() && h.url.isNullOrBlank()) { nSkippedItems++; continue }
-                        if (h.videoKey.isNotBlank() && dao.favoriteCount(h.videoKey) == 0) {
-                            dao.insertFavorite(com.mohamedadel.mytube.data.local.FavoriteEntity(
-                                videoKey = h.videoKey, videoId = h.videoId, title = h.title, channel = h.channel,
-                                thumbnail = h.thumbnail, url = h.url, durationSec = h.durationSec, viewCount = h.viewCount))
-                            nFav++
-                        }
-                    } catch (_: Exception) { nSkippedItems++ }
-                }
-                var nHist = 0
-                val jh = root.optJSONArray("history") ?: org.json.JSONArray()
-                for (i in 0 until jh.length()) {
-                    try {
-                        val h = vrow(jh.getJSONObject(i), System.currentTimeMillis())
-                        // Deferred item 5: skip identifier-less rows.
-                        if (h.videoKey.isBlank() && h.videoId.isNullOrBlank() && h.url.isNullOrBlank()) { nSkippedItems++; continue }
-                        dao.upsertHistory(h); nHist++
-                    } catch (_: Exception) { nSkippedItems++ }
-                }
-                val js = root.optJSONArray("subscriptions") ?: org.json.JSONArray()
-                for (i in 0 until js.length()) {
-                    try {
-                        val e = js.getJSONObject(i)
-                        val u = e.optString("channelUrl")
-                        if (u.isNotBlank() && dao.subscriptionCount(u) == 0)
-                            dao.insertSubscription(com.mohamedadel.mytube.data.local.SubscriptionEntity(channelUrl = u, name = e.optString("name").ifBlank { null }, avatar = e.optString("avatar").ifBlank { null }))
-                    } catch (_: Exception) { }
-                }
-                val existingGroups = dao.observeGroups().first().map { it.name }.toSet()
-                val jg = root.optJSONArray("groups") ?: org.json.JSONArray()
-                for (i in 0 until jg.length()) {
-                    try {
-                        val o = jg.getJSONObject(i)
-                        val name = o.optString("name")
-                        if (name.isBlank() || name in existingGroups) continue
-                        val gid = dao.insertGroup(com.mohamedadel.mytube.data.local.ChannelGroupEntity(name = name))
-                        val jm = o.optJSONArray("members") ?: org.json.JSONArray()
-                        for (j in 0 until jm.length()) {
-                            try { dao.addMember(com.mohamedadel.mytube.data.local.ChannelGroupMemberEntity(groupId = gid, channelUrl = jm.optString(j))) } catch (_: Exception) { }
-                        }
-                    } catch (_: Exception) { }
-                }
-                val jp = root.optJSONObject("prefs")
-                if (jp != null) {
-                    try {
-                        val ed = prefs.edit()
-                        val cur = prefs.all
-                        val keys = jp.keys()
-                        while (keys.hasNext()) {
-                            val k = keys.next()
-                            try {
-                                if (k == "pref_pin_location") continue // device-local paths never roam
-                                val old = cur[k]
-                                when {
-                                    old is Boolean -> ed.putBoolean(k, jp.optBoolean(k, old))
-                                    old is Int -> ed.putInt(k, jp.optInt(k, old))
-                                    old is Long -> ed.putLong(k, jp.optLong(k, old))
-                                    old is Float -> ed.putFloat(k, jp.optDouble(k, old.toDouble()).toFloat())
-                                    old is String -> ed.putString(k, jp.optString(k, old))
-                                    old is Set<*> -> {
-                                        val a = jp.optJSONArray(k)
-                                        if (a != null) ed.putStringSet(k, (0 until a.length()).map { a.optString(it) }.toSet())
-                                    }
-                                    else -> {
-                                        // unknown key: restore by JSON type (best effort)
-                                        val v: Any? = jp.opt(k)
-                                        when (v) {
-                                            is Boolean -> ed.putBoolean(k, v)
-                                            is Int -> ed.putInt(k, v)
-                                            is Long -> ed.putLong(k, v)
-                                            is Double -> ed.putFloat(k, v.toFloat())
-                                            is String -> ed.putString(k, v)
-                                            is org.json.JSONArray -> ed.putStringSet(k, (0 until v.length()).map { v.optString(it) }.toSet())
-                                        }
-                                    }
-                                }
-                            } catch (_: Exception) { }
-                        }
-                        ed.apply()
-                    } catch (_: Exception) { }
-                }
-                uiToast(ctx.getString(R.string.backup_import_ok_fmt, nPl, nFav, nHist))
-                // Deferred item 5: report skipped/invalid rows + renames (restore itself unchanged).
-                val nSkippedTotal = nSkippedPlaylists + nSkippedItems
-                if (nSkippedTotal > 0 || nRenamed > 0) uiToast(ctx.getString(R.string.backup_import_skipped_fmt, nSkippedTotal, nRenamed))
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.backup_import_fail)) }
-        }
+        backupVm.importFullBackup(uri)
     }
     // Deferred item 6 (2026-11-11): update dialog payload (version + changelog + download URL).
     var updateInfo by remember { mutableStateOf<com.mohamedadel.mytube.data.UpdateCheck.Release?>(null) }
