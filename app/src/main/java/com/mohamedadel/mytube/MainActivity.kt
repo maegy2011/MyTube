@@ -2365,109 +2365,62 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun doUnpin(key: String) {
         pinVm.doUnpin(key, pinHost)
     }
-    fun smartBack(): Boolean {
-        if (showNotifications) {
-            showNotifications = false
-            return true
-        }
-        if (openGroup != null) {
-            openGroup = null
-            showGroups = true
-            return true
-        }
-        if (showGroups) {
-            showGroups = false
-            if (fromLibrary) { fromLibrary = false; showLibrary = true }
-            return true
-        }
-        if (feedGroupUrls != null && showFeed) {
-            feedGroupUrls = null; feedGroupName = null
-            if (fromLibrary) { fromLibrary = false; showLibrary = true } else showFeed = false
-            return true
-        }
-        if (showDownloads) {
-            showDownloads = false
-            if (fromLibrary) { fromLibrary = false; showLibrary = true }
-            return true
-        }
-        if (showLocal) {
-            showLocal = false
-            if (fromLibrary) { fromLibrary = false; showLibrary = true }
-            return true
-        }
-        if (showFeed) {
-            showFeed = false
-            if (fromLibrary) { fromLibrary = false; showLibrary = true }
-            return true
-        }
-        if (channelScreenUrl != null) {
-            chVm.closeChannel()
-            return true
-        }
-        if (showComments) {
-            showComments = false
-            return true
-        }
-        if (isFullscreen) {
-            setFullscreen(false)
-            return true
-        }
-        if (playerExpanded) {
-            playerExpanded = false
-            return true
-        }
-        if (showHistory) {
-            showHistory = false
-            if (fromLibrary) { fromLibrary = false; showLibrary = true }
-            return true
-        }
-        if (showPlaylists) {
-            if (openPlaylistId != null) openPlaylistId = null
-            else {
-                showPlaylists = false
-                if (fromLibrary) { fromLibrary = false; showLibrary = true }
-            }
-            return true
-        }
-        if (showFavorites) {
-            showFavorites = false
-            if (fromLibrary) { fromLibrary = false; showLibrary = true }
-            return true
-        }
-        if (showQueue) {
-            showQueue = false
-            return true
-        }
-        if (showSearch) {
-            showSearch = false
-            return true
-        }
-        if (showSettings) {
-            showSettings = false
-            return true
-        }
-        if (openRemote != null) {
-            searchVm.clearOpenRemote()
-            return true
-        }
-        if (showLibrary) {
-            showLibrary = false
-            return true
-        }
-        if (showSC) {
-            showSC = false
-            return true
-        }
-        if (results.isNotEmpty()) {
-            try {
-                savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-            } catch (_: Exception) { }
-            msearchVm.clearResults()
-            query = ""
-            return true
-        }
-        return false
+    fun backSnapshot(): com.mohamedadel.mytube.ui.navigation.NavState =
+        com.mohamedadel.mytube.ui.navigation.NavState(
+            showNotifications = showNotifications, openGroup = openGroup != null,
+            showGroups = showGroups, fromLibrary = fromLibrary,
+            feedGroupOpen = feedGroupUrls != null, showDownloads = showDownloads,
+            showLocal = showLocal, showFeed = showFeed, channelOpen = channelScreenUrl != null,
+            showComments = showComments, isFullscreen = isFullscreen,
+            playerExpanded = playerExpanded, showHistory = showHistory,
+            showPlaylists = showPlaylists, openPlaylist = openPlaylistId != null,
+            showFavorites = showFavorites, showQueue = showQueue, showSearch = showSearch,
+            showSettings = showSettings, openRemote = openRemote != null,
+            showLibrary = showLibrary, showSC = showSC, hasResults = results.isNotEmpty()
+        )
+
+    fun backToLibrary() {
+        if (fromLibrary) { fromLibrary = false; showLibrary = true }
     }
+
+    fun applyNavAction(a: com.mohamedadel.mytube.ui.navigation.NavAction): Boolean {
+        when (a) {
+            is com.mohamedadel.mytube.ui.navigation.NavAction.None -> return false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseNotifications -> showNotifications = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.GroupToGroups -> { openGroup = null; showGroups = true }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseGroups -> { showGroups = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseGroupFeed -> { feedGroupUrls = null; feedGroupName = null; showFeed = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseDownloads -> { showDownloads = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseLocal -> { showLocal = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseFeed -> { showFeed = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseChannel -> chVm.closeChannel()
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseComments -> showComments = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.ExitFullscreen -> setFullscreen(false)
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CollapsePlayer -> playerExpanded = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseHistory -> { showHistory = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.ClosePlaylistDetail -> openPlaylistId = null
+            is com.mohamedadel.mytube.ui.navigation.NavAction.ClosePlaylists -> { showPlaylists = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseFavorites -> { showFavorites = false; backToLibrary() }
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseQueue -> showQueue = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseSearch -> showSearch = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseSettings -> showSettings = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.ClearOpenRemote -> searchVm.clearOpenRemote()
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseLibrary -> showLibrary = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.CloseSC -> showSC = false
+            is com.mohamedadel.mytube.ui.navigation.NavAction.ClearResults -> {
+                try {
+                    savedScroll[currentQuery] = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+                } catch (_: Exception) { }
+                msearchVm.clearResults()
+                query = ""
+            }
+        }
+        return true
+    }
+
+    fun smartBack(): Boolean = applyNavAction(
+        com.mohamedadel.mytube.ui.navigation.NavStack.decide(backSnapshot())
+    )
     BackHandler(enabled = showNotifications || showFeed || channelScreenUrl != null || showComments || isFullscreen || playerExpanded || playing != null || showPlaylists || showFavorites || showHistory || showQueue || showSettings || showSearch || showLibrary || showDownloads || showGroups || openGroup != null || showSC || openRemote != null || results.isNotEmpty()) { smartBack() }
 
     if (showSplash) {
