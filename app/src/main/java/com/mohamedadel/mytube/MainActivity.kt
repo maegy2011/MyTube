@@ -131,6 +131,7 @@ import com.mohamedadel.mytube.ui.player.PlayerHost
 import com.mohamedadel.mytube.ui.player.enqueueLast
 import com.mohamedadel.mytube.ui.player.castCurrent
 import com.mohamedadel.mytube.ui.player.fadeOutAndPause
+import com.mohamedadel.mytube.ui.player.applyQuality
 import com.mohamedadel.mytube.ui.player.enqueueNext
 import com.mohamedadel.mytube.ui.player.isQueued
 import com.mohamedadel.mytube.ui.player.playFirstInQueue
@@ -1223,105 +1224,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
     // Gate-1: URL resolution extracted from applyQuality — null = unavailable (caller surfaces the error).
     // Returns (playback url, is it a muxed file, user-picked audio url or null).
+    val playerHostHolder = remember { arrayOfNulls<com.mohamedadel.mytube.ui.player.PlayerHost>(1) }
     fun resolvePlaybackUrl(q: String, s: StreamData): Triple<String, Boolean, String?>? =
         resolvePlaybackUrl(q, s, audioTrackIdx, prefAllow4k, ctx.estimatedDownstreamKbps())
 
     fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false, local: Boolean = false) {
-        if (p == null) return
-        val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
-        // user-selected dubbed/original audio track, falling back to lowest
-        val (url, isMuxed, selAudio) = resolvePlaybackUrl(q, s) ?: run {
-            playerError = ctx.getString(R.string.err_quality_unavailable)
-            playerLoading = false
-            return
-        }
-        val meta = MediaMetadata.Builder()
-            .setTitle(playing?.title ?: s.title)
-            .setArtist(playing?.channel)
-            .setAlbumTitle("MyTube")
-            .setDescription("© MyTube")
-            .setArtworkUri((playing?.thumbnail ?: s.artworkUrl ?: playing?.channelAvatar)?.let { Uri.parse(it) })
-            .build()
-        // side-loaded captions: the native CC button lists them, user switches language there
-        val subConfigs = s.subtitles.mapNotNull { cap ->
-            try {
-                MediaItem.SubtitleConfiguration.Builder(Uri.parse(cap.url))
-                    .setMimeType(cap.mime).setLanguage(cap.langTag).setLabel(cap.label).build()
-            } catch (_: Exception) { null }
-        }
-        // offline fix 2026-11-11: pinned files carry their recorded container (Cause 2);
-        // explicit MIME beats extension sniffing. Online streams pass null = unchanged.
-        val mediaItem = MediaItem.Builder().setUri(Uri.parse(url)).setMediaMetadata(meta).setSubtitleConfigurations(subConfigs).apply { try { s.videoMime?.takeIf { it.isNotBlank() }?.let { setMimeType(it) } } catch (_: Exception) { } }.build()
-        // Prepare paused; resume only if explicitly requested AND was already playing (quality switch / background switch), or forced (retry).
-        val resume = (autoplay && wasPlaying) || forceStart
-        // 2026-11-12 (runtime fix): HLS-flagged urls (scStream sets audioHlsOnly from
-        // the extractor's own DeliveryMethod, never URL sniffing) go through HlsMediaSource
-        // explicitly — extensionless HLS pointers are mis-sniffed as Progressive otherwise.
-        // Single tap still prepares paused (no-autoplay policy unchanged).
-        val hlsOnly = s.audioHlsOnly
-        p.playWhenReady = false
-        // Fix: muxed files bake their own audio, so a picked track was silently ignored there.
-        // Merged rebuild (muxed video + picked audio) + one-shot disable of the baked audio group.
-        val needExternalAudio = isMuxed && selAudio != null && audioTrackIdx != 0 && q != QUALITY_AUDIO_ONLY
-        // Shared HTTP stack for explicit sources: browser UA (googlevideo/cf-media 403
-        // non-browser agents) + cache-first for online, direct for local/pinned files.
-        fun explicitDsf(local: Boolean): androidx.media3.datasource.DataSource.Factory {
-            val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(BROWSER_UA)
-            return if (local) DefaultDataSource.Factory(ctx, httpFactory) else try {
-                com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
-            } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
-        }
-        // 2026-11-12 (runtime fix 1): livestreams expose NO progressive audio —
-        // only a single adaptive URL (NewPipe: getAudioStreams() is empty for lives).
-        // Auto-sniffing via setMediaItem misfires on extensionless googlevideo live
-        // pointers, so route explicitly: .mpd → DASH, everything else → HLS
-        // (NewPipe hands YouTube lives as HLS). Never cached (stale edge), never pinned
-        // (requestPin/quickPin refuse with err_pin_live).
-        if (s.isLive || q == "live") {
-            p.setMediaSource((if (url.lowercase().contains(".mpd")) DashMediaSource.Factory(explicitDsf(true)) else HlsMediaSource.Factory(explicitDsf(true))).createMediaSource(mediaItem))
-            p.prepare()
-        } else if (hlsOnly && q == QUALITY_AUDIO_ONLY) {
-            p.setMediaSource(HlsMediaSource.Factory(explicitDsf(local)).createMediaSource(mediaItem))
-            p.prepare()
-        } else if (q == QUALITY_AUDIO_ONLY || selAudio == null || (isMuxed && !needExternalAudio)) {
-            p.setMediaItem(mediaItem)
-            p.prepare()
-        } else {
-            val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(BROWSER_UA)
-            // Phase 1: cache-first media (replay within URL lifetime = zero bytes).
-            // Phase 4: pinned files bypass the cache entirely (no duplicate bytes on disk).
-            val dataSourceFactory = if (local) DefaultDataSource.Factory(ctx, httpFactory) else try {
-                com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
-            } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
-            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
-            val audioItem = MediaItem.Builder().setUri(Uri.parse(selAudio)).apply { try { s.audioMime?.takeIf { it.isNotBlank() }?.let { setMimeType(it) } } catch (_: Exception) { } }.build()
-            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(audioItem)
-            val merged = MergingMediaSource(videoSource, audioSource)
-            p.setMediaSource(merged)
-            p.prepare()
-            try { externalAudioHook[0]?.let { p.removeListener(it) } } catch (_: Exception) { }
-            externalAudioHook[0] = null
-            if (needExternalAudio) {
-                // MergingMediaSource concatenates groups in source order: [video, muxed-audio, picked-audio].
-                // Disabling the muxed-audio group leaves exactly the picked track playing.
-                p.addListener((object : Player.Listener {
-                    override fun onTracksChanged(tracks: Tracks) {
-                        try { p.removeListener(this) } catch (_: Exception) { }
-                        try {
-                            val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-                            if (audioGroups.size >= 2) {
-                                val ts = p.trackSelector as? DefaultTrackSelector ?: return
-                                ts.setParameters(ts.buildUponParameters().setOverrideForType(
-                                    TrackSelectionOverride(audioGroups[0].mediaTrackGroup, emptyList())
-                                ))
-                            }
-                        } catch (_: Exception) { }
-                    }
-                }).also { externalAudioHook[0] = it })
-            }
-        }
-        p.playWhenReady = resume
-        applyLangPrefs() // re-assert caps/roles after every media set (quality switch)
+        try { playerHostHolder[0]?.let { playerVm.applyQuality(q, s, p, it, autoplay, forceStart, local) } } catch (_: Exception) { }
     }
 
     // Background audio saver: dropping the video track stops video chunks with ZERO rebuffer gap
@@ -1368,7 +1276,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Push the current stream to the Cast receiver at the local position, then pause local.
     // Called on session start and whenever a new video starts while connected.
 
-    val playerHostHolder = remember { arrayOfNulls<com.mohamedadel.mytube.ui.player.PlayerHost>(1) }
     fun castCurrent(autoplay: Boolean = true) {
         try { playerHostHolder[0]?.let { playerVm.castCurrent(it, autoplay) } } catch (_: Exception) { }
     }
@@ -1677,6 +1584,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     )
                 } catch (_: Exception) { null }
             }
+            override fun appCtx(): android.content.Context = ctx
+            override fun audioTrackIdxNow(): Int = audioTrackIdx
+            override fun playingMeta(): VideoItem? = playing
+            override fun onQualityUnavailable() {
+                playerError = ctx.getString(R.string.err_quality_unavailable)
+                playerLoading = false
+            }
+            override fun reassertLang() { applyLangPrefs() }
+            override fun hookSlot(): Array<androidx.media3.common.Player.Listener?> = externalAudioHook
+            override fun allow4kNow(): Boolean = prefAllow4k
+            override fun kbpsNow(): Int = ctx.estimatedDownstreamKbps()
             override fun onCastStarted() {
                 try { player?.pause() } catch (_: Exception) { }
                 toast(ctx.getString(R.string.toast_cast_started))

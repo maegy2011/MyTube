@@ -7,6 +7,21 @@ import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.util.isLocal
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.dash.DashMediaSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 
 /**
  * Phase 2.3 slice 5 (2026-11-13): the Activity implements this seam.
@@ -24,6 +39,14 @@ interface PlayerHost {
     fun pausePlayer()
     fun castSnapshot(): CastSnapshot?
     fun onCastStarted()
+    fun appCtx(): android.content.Context
+    fun allow4kNow(): Boolean
+    fun kbpsNow(): Int
+    fun audioTrackIdxNow(): Int
+    fun playingMeta(): com.mohamedadel.mytube.data.youtube.VideoItem?
+    fun onQualityUnavailable()
+    fun reassertLang()
+    fun hookSlot(): Array<Player.Listener?>
 }
 
 data class CastSnapshot(
@@ -240,4 +263,128 @@ fun PlayerViewModel.castCurrent(host: PlayerHost, autoplay: Boolean = true) {
         )
         if (ok) host.onCastStarted()
     } catch (_: Exception) { }
+}
+
+data class QualityPick(val q: String, val url: String, val isMuxed: Boolean, val selAudio: String?)
+
+fun PlayerViewModel.buildQualityItem(
+    s: com.mohamedadel.mytube.data.youtube.StreamData,
+    url: String,
+    host: PlayerHost
+): MediaItem {
+    val meta = host.playingMeta()
+    val md = MediaMetadata.Builder()
+        .setTitle(meta?.title ?: s.title)
+        .setArtist(meta?.channel)
+        .setAlbumTitle("MyTube")
+        .setDescription("© MyTube")
+        .setArtworkUri((meta?.thumbnail ?: s.artworkUrl ?: meta?.channelAvatar)?.let { android.net.Uri.parse(it) })
+        .build()
+    val subConfigs = s.subtitles.mapNotNull { cap ->
+        try {
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(cap.url))
+                .setMimeType(cap.mime).setLanguage(cap.langTag).setLabel(cap.label).build()
+        } catch (_: Exception) { null }
+    }
+    return MediaItem.Builder().setUri(android.net.Uri.parse(url))
+        .setMediaMetadata(md).setSubtitleConfigurations(subConfigs).build()
+}
+
+private fun PlayerViewModel.dsf(host: PlayerHost, local: Boolean): DataSource.Factory {
+    val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(com.mohamedadel.mytube.util.BROWSER_UA)
+    val ctx = host.appCtx()
+    return if (local) DefaultDataSource.Factory(ctx, httpFactory) else try {
+        com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
+    } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
+}
+
+fun PlayerViewModel.setQualitySource(
+    p: ExoPlayer,
+    s: com.mohamedadel.mytube.data.youtube.StreamData,
+    item: MediaItem,
+    pick: QualityPick,
+    host: PlayerHost,
+    local: Boolean
+) {
+    val q = pick.q
+    if (s.isLive || q == "live") {
+        val src = if (pick.url.lowercase().contains(".mpd"))
+            DashMediaSource.Factory(dsf(host, true))
+        else HlsMediaSource.Factory(dsf(host, true))
+        p.setMediaSource(src.createMediaSource(item))
+        p.prepare()
+    } else if (s.audioHlsOnly && q == com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY) {
+        p.setMediaSource(HlsMediaSource.Factory(dsf(host, local)).createMediaSource(item))
+        p.prepare()
+    } else if (q == com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY || pick.selAudio == null || (pick.isMuxed && !needExternalAudio(pick, host))) {
+        p.setMediaItem(item)
+        p.prepare()
+    } else {
+        setMergedSource(p, item, pick, host, local, s)
+    }
+}
+
+private fun needExternalAudio(pick: QualityPick, host: PlayerHost): Boolean =
+    pick.isMuxed && pick.selAudio != null && host.audioTrackIdxNow() != 0 && pick.q != com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY
+
+private fun PlayerViewModel.setMergedSource(
+    p: ExoPlayer,
+    item: MediaItem,
+    pick: QualityPick,
+    host: PlayerHost,
+    local: Boolean,
+    s: com.mohamedadel.mytube.data.youtube.StreamData
+) {
+    val selAudio = pick.selAudio ?: return
+    val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(com.mohamedadel.mytube.util.BROWSER_UA)
+    val ctx = host.appCtx()
+    val dataSourceFactory = if (local) DefaultDataSource.Factory(ctx, httpFactory) else try {
+        com.mohamedadel.mytube.playback.MediaCache.factory(ctx, DefaultDataSource.Factory(ctx, httpFactory))
+    } catch (_: Exception) { DefaultDataSource.Factory(ctx, httpFactory) }
+    val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(item)
+    val audioItem = MediaItem.Builder().setUri(android.net.Uri.parse(selAudio)).apply {
+        try { s.audioMime?.takeIf { it.isNotBlank() }?.let { setMimeType(it) } } catch (_: Exception) { }
+    }.build()
+    val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(audioItem)
+    p.setMediaSource(MergingMediaSource(videoSource, audioSource))
+    p.prepare()
+    try { host.hookSlot()[0]?.let { p.removeListener(it) } } catch (_: Exception) { }
+    host.hookSlot()[0] = null
+    if (!needExternalAudio(pick, host)) return
+    val hook = (object : Player.Listener {
+        override fun onTracksChanged(tracks: Tracks) {
+            try { p.removeListener(this) } catch (_: Exception) { }
+            try {
+                val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                if (audioGroups.size >= 2) {
+                    val ts = p.trackSelector as? DefaultTrackSelector ?: return
+                    ts.setParameters(ts.buildUponParameters().setOverrideForType(
+                        androidx.media3.exoplayer.trackselection.TrackSelectionOverride(audioGroups[0].mediaTrackGroup, emptyList())
+                    ))
+                }
+            } catch (_: Exception) { }
+        }
+    }).also { host.hookSlot()[0] = it }
+    p.addListener(hook)
+}
+
+fun PlayerViewModel.applyQuality(
+    q: String,
+    s: com.mohamedadel.mytube.data.youtube.StreamData,
+    p: ExoPlayer?,
+    host: PlayerHost,
+    autoplay: Boolean = false,
+    forceStart: Boolean = false,
+    local: Boolean = false
+) {
+    if (p == null) return
+    val wasPlaying = try { p.isPlaying } catch (_: Exception) { false }
+    val triple = com.mohamedadel.mytube.util.resolvePlaybackUrl(q, s, host.audioTrackIdxNow(), host.allow4kNow(), host.kbpsNow())
+    if (triple == null) { host.onQualityUnavailable(); return }
+    val pick = QualityPick(q, triple.first, triple.second, triple.third)
+    val item = buildQualityItem(s, pick.url, host)
+    p.playWhenReady = false
+    setQualitySource(p, s, item, pick, host, local)
+    p.playWhenReady = (autoplay && wasPlaying) || forceStart
+    host.reassertLang()
 }
