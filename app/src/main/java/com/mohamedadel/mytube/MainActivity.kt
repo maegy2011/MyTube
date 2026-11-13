@@ -1097,60 +1097,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     androidx.compose.runtime.LaunchedEffect(groups) { refreshGroupCounts(groups) }
     // On-device audio (MediaStore): tracks, folder filter/exclusion, scan mode.
     var showLocal by remember { mutableStateOf(false) }
-    var localTracks by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.util.LocalTrack>()) }
-    var localFolder by remember { mutableStateOf<String?>(null) }
-    var localExcl by remember { mutableStateOf(setOf<String>()) }
-    var localCompat by remember { mutableStateOf(false) }
-    var localHasPerm by remember { mutableStateOf(false) }
-    fun localAudioPerm(): String = if (android.os.Build.VERSION.SDK_INT >= 33)
-        android.Manifest.permission.READ_MEDIA_AUDIO else android.Manifest.permission.READ_EXTERNAL_STORAGE
+    val localVm: com.mohamedadel.mytube.ui.local.LocalAudioViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val localTracks by localVm.localTracks.collectAsStateWithLifecycle()
+    val localFolder by localVm.localFolder.collectAsStateWithLifecycle()
+    val localHasPerm by localVm.hasPerm.collectAsStateWithLifecycle()
+    val localExcl by localVm.localExcl.collectAsStateWithLifecycle()
+    val localCompat by localVm.localCompat.collectAsStateWithLifecycle()
+    fun localAudioPerm(): String = localVm.localAudioPerm()
     fun checkLocalPerm() {
-        try {
-            localHasPerm = ctx.checkSelfPermission(localAudioPerm()) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        } catch (_: Exception) { localHasPerm = false }
+        localVm.checkLocalPerm()
     }
     fun refreshLocalAudio() {
-        checkLocalPerm()
-        if (!localHasPerm) return
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val excl = try { prefs.getStringSet("local_excl", emptySet()) ?: emptySet() } catch (_: Exception) { emptySet() }
-                localExcl = excl
-                localCompat = try { prefs.getBoolean("local_scan_compat", false) } catch (_: Exception) { false }
-                val all = try { ctx.scanLocalAudio(localCompat) } catch (_: Exception) { emptyList() }
-                localTracks = all.filter { t -> (t.folder ?: "") !in excl }
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_local_fail)) }
-        }
+        localVm.refreshLocalAudio()
     }
     fun excludeLocalFolder(f: String) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val cur = (try { prefs.getStringSet("local_excl", emptySet()) } catch (_: Exception) { emptySet() }) ?: emptySet()
-                val next = (cur + f).take(50).toSet()
-                prefs.edit().putStringSet("local_excl", next).apply()
-                localExcl = next
-                localTracks = localTracks.filter { (it.folder ?: "") !in next }
-                if (localFolder == f) localFolder = null
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_lib_fail)) }
-        }
+        localVm.excludeLocalFolder(f)
     }
     fun unexcludeLocalFolder(f: String) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val cur = (try { prefs.getStringSet("local_excl", emptySet()) } catch (_: Exception) { emptySet() }) ?: emptySet()
-                val next = cur - f
-                prefs.edit().putStringSet("local_excl", next).apply()
-                localExcl = next
-                refreshLocalAudio()
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_lib_fail)) }
-        }
+        localVm.unexcludeLocalFolder(f)
     }
     val localPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        localHasPerm = granted
-        if (granted) refreshLocalAudio()
-    }
+    ) { granted -> localVm.onPermissionResult(granted) }
     // playlist artwork covers (first 4 song thumbs per playlist, refreshed on change)
     var plCovers by remember { mutableStateOf(mapOf<Long, List<String>>()) }
     fun refreshPlCovers() {
@@ -3412,10 +3380,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_onPausePin: (String) -> Unit = { k -> pausePinDownload(k) }
             val mc_onResumePin: (String) -> Unit = { k -> resumePinDownload(k) }
             val mc_onCleanOrphans: () -> Unit = { cleanOrphans() }
-            val mc_setLocalFolder: (String?) -> Unit = { localFolder = it }
+            val mc_setLocalFolder: (String?) -> Unit = { localVm.setLocalFolder(it) }
             val mc_onExcludeFolder: (String) -> Unit = { f -> excludeLocalFolder(f) }
             val mc_onUnexclude: (String) -> Unit = { f -> unexcludeLocalFolder(f) }
-            val mc_setLocalCompat: (Boolean) -> Unit = { localCompat = it }
+            val mc_setLocalCompat: (Boolean) -> Unit = { localVm.setCompat(it) }
             val mc_onRefreshLocalAudio: () -> Unit = { refreshLocalAudio() }
             val mc_onRequestLocalPerm: () -> Unit = { try { localPermLauncher.launch(localAudioPerm()) } catch (_: Exception) { } }
             val mc_playingUrl = playing?.url
