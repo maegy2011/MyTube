@@ -474,6 +474,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val dao = remember { db.playlists() }
     val libVm: com.mohamedadel.mytube.ui.library.LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val feedVm: com.mohamedadel.mytube.ui.feed.FeedViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    androidx.compose.runtime.LaunchedEffect(Unit) { feedVm.configure(dao) }
     androidx.compose.runtime.LaunchedEffect(Unit) { libVm.configure(dao) }
     val playlists by dao.observePlaylists().collectAsStateWithLifecycle(initialValue = emptyList())
     var showPlaylists by remember { mutableStateOf(false) }
@@ -706,7 +708,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
 
     var commentList by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.CommentItem>()) }
     var showFeed by remember { mutableStateOf(false) }
-    var feedItems by remember { mutableStateOf(emptyList<VideoItem>()) }
+    val feedItems by feedVm.feedItems.collectAsStateWithLifecycle()
     // Low: splash waits for player readiness or first content (cap 3s), not a fixed timer.
     LaunchedEffect(Unit) {
         val t0 = android.os.SystemClock.uptimeMillis()
@@ -716,7 +718,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         showSplash = false
     }
-    var feedLoading by remember { mutableStateOf(false) }
+    val feedLoading by feedVm.feedLoading.collectAsStateWithLifecycle()
     var showComments by remember { mutableStateOf(false) }
     var commentsLoading by remember { mutableStateOf(false) }
 
@@ -2891,64 +2893,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // A3 feed: per-channel fetch with own try (one dead channel never kills the feed), merged newest-first
     // L1+L2: parallel fetch (cap 3) + 6h Room cache. DAO stays off-main; per-channel try (one dead channel never kills the feed).
     fun refreshFeed() {
-        feedLoading = true
-        val subs = subscriptions.toList()
-        val useParallel = prefFeedParallel
-        val useCache = prefFeedCache
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                suspend fun oneChannel(channelUrl: String?): List<VideoItem> {
-                    return try {
-                        val id = YouTubeRepo.channelIdFor(channelUrl) ?: return emptyList()
-                        if (useCache) {
-                            val hit = try { dao.getFeedCache(id) } catch (_: Exception) { null }
-                            if (hit != null && System.currentTimeMillis() - hit.fetchedAt < 6 * 3600 * 1000L) {
-                                val items = com.mohamedadel.mytube.data.local.FeedJson.fromJson(hit.itemsJson)
-                                if (items.isNotEmpty()) return items
-                            }
-                        }
-                        // RSS feed first (cheap, chronological); videos-tab fallback when the
-                        // feed endpoint is blocked/empty — recent uploads are the same content.
-                        val rss = YouTubeRepo.feedFor(id)
-                        val fresh = if (rss.isNotEmpty()) rss else YouTubeRepo.channelVideos(channelUrl).take(15)
-                        if (useCache && fresh.isNotEmpty()) {
-                            try { dao.upsertFeedCache(com.mohamedadel.mytube.data.local.FeedCacheEntity(id, System.currentTimeMillis(), com.mohamedadel.mytube.data.local.FeedJson.toJson(fresh))) } catch (_: Exception) { }
-                        }
-                        fresh
-                    } catch (_: Exception) { emptyList() }
-                }
-                val all = if (useParallel) {
-                    val sem = kotlinx.coroutines.sync.Semaphore(3)
-                    subs.map { sub ->
-                        async {
-                            sem.acquire(); try { oneChannel(sub.channelUrl) } finally { sem.release() }
-                        }
-                    }.awaitAll().flatten()
-                } else {
-                    subs.flatMap { oneChannel(it.channelUrl) }
-                }
-                // screens-fix Home P0-H1: VideoItem has no publishedAt (only uploadDate String),
-                // so newest-first sort is unreliable — round-robin interleave avoids channel blocks.
-                // TODO(field): verify newest-first across 3+ subs; add publishedAt to VideoItem if needed.
-                feedItems = if (all.size <= 1) all else {
-                    val perChannel = all.groupBy { it.channelUrl ?: it.channel ?: "?" }.values.toList()
-                    val mixed = mutableListOf<VideoItem>()
-                    var idx = 0
-                    var added: Boolean
-                    do {
-                        added = false
-                        for (bucket in perChannel) {
-                            if (idx < bucket.size) { mixed += bucket[idx]; added = true }
-                        }
-                        idx++
-                    } while (added)
-                    mixed
-                }
-                // notif 2026-11-12: store newly seen items (Room + read flag; bell badge).
-                try { com.mohamedadel.mytube.data.local.NotifCenter.recordFresh(dao, all) } catch (_: Exception) { }
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_feed_fail)) }
-            feedLoading = false
-        }
+        feedVm.refreshFeed(subscriptions.toList(), prefFeedParallel, prefFeedCache)
     }
     // Geo-switch ACCEPT path (2026-11-12, runtime layer): a plain (non-composable)
     // local fun declared after refreshTrending/refreshFeed (Kotlin locals: no forward
