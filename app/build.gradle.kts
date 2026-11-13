@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,9 +7,26 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Phase 1 (2026-11-13): release signing. Secret lives OUTSIDE the repo:
+// env RELEASE_STORE_PASSWORD first, then ~/.cellclaw/mytube-family.pw (chmod 600).
+// Fail-fast: a missing secret must break the build, never ship unsigned.
+val releaseStorePassword: String? = System.getenv("RELEASE_STORE_PASSWORD")
+    ?: runCatching {
+        File("/home/administrator/.cellclaw/mytube-family.pw").takeIf { it.isFile }?.readText()?.trim()?.ifBlank { null }
+    }.getOrNull()
+val hasReleaseKey: Boolean = !releaseStorePassword.isNullOrEmpty()
 android {
     namespace = "com.mohamedadel.mytube"
     compileSdk = 34
+    signingConfigs {
+        create("release") {
+            if (!hasReleaseKey) throw GradleException("RELEASE_STORE_PASSWORD env or ~/.cellclaw/mytube-family.pw missing — refusing unsigned release")
+            storeFile = file("/home/administrator/.cellclaw/mytube-family.keystore")
+            storePassword = releaseStorePassword
+            keyAlias = "family"
+            keyPassword = releaseStorePassword
+        }
+    }
     defaultConfig {
         applicationId = "com.mohamedadel.mytube"
         minSdk = 26
@@ -19,6 +38,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug { isMinifyEnabled = false }
