@@ -1290,7 +1290,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Single taps never expand: the mini player appears (SoundCloud/YTM-phone behavior);
     // tap the mini player to expand. Explicit actions (play-now, queue-when-idle) pass
     // expand = true; queue advances preserve the current state.
-    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null, forcePlay: Boolean = false) {\n        try { (playerHostHolder[0] as? com.mohamedadel.mytube.ui.player.PlayEngineHost)?.let { playerVm.playVideo(v, inQueue, expand, ageOk, pre, forcePlay, it) } } catch (_: Exception) { }\n    }
+    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null, forcePlay: Boolean = false) {
+        try { (playerHostHolder[0] as? com.mohamedadel.mytube.ui.player.PlayEngineHost)?.let { playerVm.playVideo(v, inQueue, expand, ageOk, pre, forcePlay, it) } } catch (_: Exception) { }
+    }
 
     // Queue navigation (suggestion #3): next/previous within the result list.
     val playerHost = remember {
