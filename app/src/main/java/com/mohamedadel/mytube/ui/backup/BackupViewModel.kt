@@ -47,11 +47,6 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
         try { Toast.makeText(getApplication(), s, Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
     }
 
-    private class Counts {
-        var nPl = 0; var nFav = 0; var nHist = 0
-        var nSkippedPlaylists = 0; var nSkippedItems = 0; var nRenamed = 0
-    }
-
     fun backupInfoText(): String? {
         return try {
             val p = prefs ?: return null
@@ -92,7 +87,7 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
         root.put("history", buildFavHistJson(d.historyPage(500, 0), isFav = false))
         root.put("subscriptions", buildSubsJson(d))
         root.put("groups", buildGroupsJson(d))
-        root.put("prefs", buildPrefsJson())
+        root.put("prefs", buildPrefsJson(prefs))
         return root
     }
 
@@ -114,17 +109,6 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
             jpls.put(o)
         }
         return jpls
-    }
-
-    private fun vrow(
-        videoKey: String, videoId: String?, title: String?, channel: String?,
-        thumb: String?, url: String?, dur: Long?, views: Long?
-    ): JSONObject {
-        val e = JSONObject()
-        e.put("videoKey", videoKey); e.put("videoId", videoId); e.put("title", title)
-        e.put("channel", channel); e.put("thumbnail", thumb); e.put("url", url)
-        e.put("durationSec", dur ?: -1); e.put("viewCount", views ?: -1)
-        return e
     }
 
     private fun buildFavHistJson(rows: List<Any>, isFav: Boolean): JSONArray {
@@ -161,22 +145,6 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
         return jg
     }
 
-    private fun buildPrefsJson(): JSONObject {
-        val jp = JSONObject()
-        for ((k, v) in prefs?.all ?: emptyMap()) {
-            try {
-                when (v) {
-                    is Boolean -> jp.put(k, v)
-                    is Int -> jp.put(k, v)
-                    is Long -> jp.put(k, v)
-                    is Float -> jp.put(k, v.toDouble())
-                    is String -> jp.put(k, v)
-                    is Set<*> -> { val a = JSONArray(); for (e in v) a.put(e.toString()); jp.put(k, a) }
-                }
-            } catch (_: Exception) { }
-        }
-        return jp
-    }
 
     private suspend fun shareBackup(root: JSONObject) {
         val ctx = getApplication<Application>()
@@ -215,7 +183,7 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
                 importPlaylists(root, c)
                 importFavHist(root, c)
                 importSubsGroups(root)
-                importPrefs(root.optJSONObject("prefs"))
+                importPrefs(prefs, root.optJSONObject("prefs"))
                 toastMain(str(R.string.backup_import_ok_fmt, c.nPl, c.nFav, c.nHist))
                 val skipped = c.nSkippedItems + c.nSkippedPlaylists
                 if (skipped > 0 || c.nRenamed > 0)
@@ -257,26 +225,7 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun parseImportItem(e: JSONObject, pid: Long, c: Counts): PlaylistItemEntity? {
-        val vid = e.optString("videoId").ifBlank { null }
-        val url = e.optString("url").ifBlank { null }
-        if (vid == null && url == null) { c.nSkippedItems++; return null }
-        return PlaylistItemEntity(
-            playlistId = pid, videoId = vid,
-            title = e.optString("title").ifBlank { null }, channel = e.optString("channel").ifBlank { null },
-            thumbnail = e.optString("thumbnail").ifBlank { null }, url = url,
-            durationSec = e.optLong("durationSec", -1).takeIf { it >= 0 }, viewCount = e.optLong("viewCount", -1).takeIf { it >= 0 },
-            position = e.optInt("position", 0))
-    }
 
-    private fun histFromJson(e: JSONObject, playedAt: Long): HistoryEntity {
-        return HistoryEntity(
-            videoKey = e.optString("videoKey"), videoId = e.optString("videoId").ifBlank { null },
-            title = e.optString("title").ifBlank { null }, channel = e.optString("channel").ifBlank { null },
-            thumbnail = e.optString("thumbnail").ifBlank { null }, url = e.optString("url").ifBlank { null },
-            durationSec = e.optLong("durationSec", -1).takeIf { it >= 0 }, viewCount = e.optLong("viewCount", -1).takeIf { it >= 0 },
-            playedAt = playedAt)
-    }
 
     private suspend fun importFavHist(root: JSONObject, c: Counts) {
         val d = dao ?: return
@@ -332,46 +281,5 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun importPrefs(jp: JSONObject?) {
-        if (jp == null) return
-        try {
-            val p = prefs ?: return
-            val ed = p.edit()
-            val cur = p.all
-            val keys = jp.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                try {
-                    if (k == "pref_pin_location") continue
-                    applyPrefKey(ed, cur[k], jp, k)
-                } catch (_: Exception) { }
-            }
-            ed.apply()
-        } catch (_: Exception) { }
-    }
 
-    private fun applyPrefKey(ed: SharedPreferences.Editor, old: Any?, jp: JSONObject, k: String) {
-        when {
-            old is Boolean -> ed.putBoolean(k, jp.optBoolean(k, old))
-            old is Int -> ed.putInt(k, jp.optInt(k, old))
-            old is Long -> ed.putLong(k, jp.optLong(k, old))
-            old is Float -> ed.putFloat(k, jp.optDouble(k, old.toDouble()).toFloat())
-            old is String -> ed.putString(k, jp.optString(k, old))
-            old is Set<*> -> {
-                val a = jp.optJSONArray(k)
-                if (a != null) ed.putStringSet(k, (0 until a.length()).map { a.optString(it) }.toSet())
-            }
-            else -> {
-                val v: Any? = jp.opt(k)
-                when (v) {
-                    is Boolean -> ed.putBoolean(k, v)
-                    is Int -> ed.putInt(k, v)
-                    is Long -> ed.putLong(k, v)
-                    is Double -> ed.putFloat(k, v.toFloat())
-                    is String -> ed.putString(k, v)
-                    is JSONArray -> ed.putStringSet(k, (0 until v.length()).map { v.optString(it) }.toSet())
-                }
-            }
-        }
-    }
 }
