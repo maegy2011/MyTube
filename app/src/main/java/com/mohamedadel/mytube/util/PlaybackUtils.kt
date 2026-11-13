@@ -222,6 +222,15 @@ fun autoKeyFor(sd0: StreamData, kbps: Int, allow4k: Boolean): String {
     } ?: "auto"
 }
 
+fun castMimeFor(url: String, audioOnly: Boolean): String {
+    return try {
+        val q = android.net.Uri.parse(url).getQueryParameter("mime")?.let {
+            java.net.URLDecoder.decode(it, "UTF-8")
+        }
+        if (!q.isNullOrBlank() && q.contains("/")) q else if (audioOnly) "audio/mp4" else "video/mp4"
+    } catch (_: Exception) { if (audioOnly) "audio/mp4" else "video/mp4" }
+}
+
 fun resolvePlaybackUrl(q: String, s: StreamData, audioTrackIdx: Int, allow4k: Boolean, kbps: Int): Triple<String, Boolean, String?>? {
     val selAudio = s.audioTracks.getOrNull(audioTrackIdx)?.url ?: s.audioLowestUrl
     val capped = cap4k(s, allow4k)
@@ -264,6 +273,23 @@ fun pickAudioIdxFor(sd: StreamData?, preferOriginal: Boolean, lang1: String, lan
         if (i >= 0) return i
     }
     return 0
+}
+
+fun matchSubIdxFor(sd: StreamData?, subLang: String, subLang2: String, subHideAuto: Boolean): Int {
+    if (subLang == "off") return -1
+    val subs = sd?.subtitles ?: return -1
+    if (subs.isEmpty()) return -1
+    val device = try { java.util.Locale.getDefault().language } catch (_: Exception) { null }
+    val ordered = listOf(resolveLang(subLang), resolveLang(subLang2)) + listOf(device, "en")
+    val pool = if (subHideAuto) subs.filter { !it.auto } else subs
+    for (want in ordered) {
+        if (want == null) break
+        var i = pool.indexOfFirst { !it.auto && it.langTag.startsWith(want, ignoreCase = true) }
+        if (i >= 0) return subs.indexOf(pool[i])
+        i = pool.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
+        if (i >= 0) return subs.indexOf(pool[i])
+    }
+    return -1
 }
 
 fun matchSubIdxsFor(sd: StreamData?, subLang: String, subLang2: String, subHideAuto: Boolean): Set<Int> {

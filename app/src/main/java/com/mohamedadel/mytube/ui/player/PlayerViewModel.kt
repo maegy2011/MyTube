@@ -50,6 +50,21 @@ class PlayerViewModel : ViewModel() {
     fun setVideoModeQueue(v: Boolean) { _videoModeQueue.value = v }
     fun queueNow(): List<VideoItem> = _queue.value
     fun queueIndexNow(): Int = _queueIndex.value
+
+    fun saveSession(prefs: android.content.SharedPreferences, positionMs: Long) {
+        try {
+            val q = queueNow().take(50)
+            if (q.isEmpty() || queueIndexNow() !in q.indices) return
+            prefs.edit()
+                .putString("sess_favs", q.joinToString("\u001f") { it.favKey() })
+                .putString("sess_urls", q.joinToString("\u001f") { it.url ?: "" })
+                .putString("sess_titles", q.joinToString("\u001f") { (it.title ?: "").replace("\u001f", " ") })
+                .putString("sess_ids", q.joinToString("\u001f") { it.id ?: "" })
+                .putInt("sess_index", queueIndexNow())
+                .putLong("sess_pos", positionMs)
+                .apply()
+        } catch (_: Exception) { }
+    }
     fun playingNow(): VideoItem? = _playing.value
     fun radioOnNow(): Boolean = _radioOn.value
     fun playModeNow(): String = _playMode.value

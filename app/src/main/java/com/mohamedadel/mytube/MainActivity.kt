@@ -910,22 +910,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { }
     }
     // auto-match the subtitle chip along the fallback chain (primary -> secondary -> device -> en)
-    fun matchSubIdxFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Int {
-        if (prefSubLang == "off") return -1
-        val subs = sd?.subtitles ?: return -1
-        if (subs.isEmpty()) return -1
-        val device = try { java.util.Locale.getDefault().language } catch (_: Exception) { null }
-        val ordered = listOf(resolveLang(prefSubLang), resolveLang(prefSubLang2)) + listOf(device, "en")
-        val pool = if (prefSubHideAuto) subs.filter { !it.auto } else subs
-        for (want in ordered) {
-            if (want == null) break // "original": keep the player's own default
-            var i = pool.indexOfFirst { !it.auto && it.langTag.startsWith(want, ignoreCase = true) }
-            if (i >= 0) return subs.indexOf(pool[i])
-            i = pool.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
-            if (i >= 0) return subs.indexOf(pool[i])
-        }
-        return -1
-    }
+    fun matchSubIdxFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Int =
+        com.mohamedadel.mytube.util.matchSubIdxFor(sd, prefSubLang, prefSubLang2, prefSubHideAuto)
     fun matchSubIdx(): Int = matchSubIdxFor(streamData)
     // Multi-subtitle default: the primary match PLUS the secondary-language match (Arabic + English
     // out of the box when both exist) — the user can still toggle any track in the dialog.
@@ -972,18 +958,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // L1 (audit P1 2026-11-11): minimal session — queue (favKey+url+title+id) + index + position.
     // Saved throttled while loaded; restored on launch (tap play to resume at position).
     fun saveSession() {
-        try {
-            val q = queue.take(50)
-            if (q.isEmpty() || queueIndex !in q.indices) return
-            prefs.edit()
-                .putString("sess_favs", q.joinToString("\u001f") { it.favKey() })
-                .putString("sess_urls", q.joinToString("\u001f") { it.url ?: "" })
-                .putString("sess_titles", q.joinToString("\u001f") { (it.title ?: "").replace("\u001f", " ") })
-                .putString("sess_ids", q.joinToString("\u001f") { it.id ?: "" })
-                .putInt("sess_index", queueIndex)
-                .putLong("sess_pos", playerPositionMs)
-                .apply()
-        } catch (_: Exception) { }
+        playerVm.saveSession(prefs, playerPositionMs)
     }
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var batteryExempt by remember { mutableStateOf(true) }
@@ -1385,14 +1360,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         pickStartQuality(sd0, kbps, prefQuality, prefAllow4k)
     // Chromecast: guess the receiver content type from the resolved stream URL.
     // Falls back to audio/mp4 + video/mp4 (progressive — what the extractor hands us).
-    fun castMimeFor(url: String, audioOnly: Boolean): String {
-        return try {
-            val q = android.net.Uri.parse(url).getQueryParameter("mime")?.let {
-                java.net.URLDecoder.decode(it, "UTF-8")
-            }
-            if (!q.isNullOrBlank() && q.contains("/")) q else if (audioOnly) "audio/mp4" else "video/mp4"
-        } catch (_: Exception) { if (audioOnly) "audio/mp4" else "video/mp4" }
-    }
+    fun castMimeFor(url: String, audioOnly: Boolean): String =
+        com.mohamedadel.mytube.util.castMimeFor(url, audioOnly)
 
     // Push the current stream to the Cast receiver at the local position, then pause local.
     // Called on session start and whenever a new video starts while connected.
