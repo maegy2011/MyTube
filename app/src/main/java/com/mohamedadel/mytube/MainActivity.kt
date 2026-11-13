@@ -502,13 +502,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var feedGroupUrls by remember { mutableStateOf<Set<String>?>(null) }
     var feedGroupName by remember { mutableStateOf<String?>(null) }
     // Channel extra tabs (lazy per tab)
-    var channelShorts by remember { mutableStateOf(emptyList<VideoItem>()) }
-    var channelShortsLoading by remember { mutableStateOf(false) }
-    var channelLive by remember { mutableStateOf(emptyList<VideoItem>()) }
-    var channelLiveLoading by remember { mutableStateOf(false) }
-    var channelPls by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.RemotePlaylist>()) }
-    var channelPlsLoading by remember { mutableStateOf(false) }
-    var channelTabsLoaded by remember { mutableStateOf(setOf<Int>()) }
+    val chVm: com.mohamedadel.mytube.ui.channel.ChannelViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val channelShorts by chVm.channelShorts.collectAsStateWithLifecycle()
+    val channelShortsLoading by chVm.channelShortsLoading.collectAsStateWithLifecycle()
+    val channelLive by chVm.channelLive.collectAsStateWithLifecycle()
+    val channelLiveLoading by chVm.channelLiveLoading.collectAsStateWithLifecycle()
+    val channelPls by chVm.channelPls.collectAsStateWithLifecycle()
+    val channelPlsLoading by chVm.channelPlsLoading.collectAsStateWithLifecycle()
     val favoriteSet = remember(favoriteKeys) { favoriteKeys.toSet() }
     val favorites by remember { dao.observeFavorites() }.collectAsStateWithLifecycle(initialValue = emptyList())
     // (toggleFavorite lives after `scope` below — Kotlin locals must precede use.)
@@ -701,7 +701,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var sleepTrackKey by remember { mutableStateOf<String?>(null) }
     var showQueue by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<VideoItem?>(null) }
-    var channelDetail by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.ChannelDetail?>(null) }
+    val channelDetail by chVm.channelDetail.collectAsStateWithLifecycle()
 
     val cmtVm: com.mohamedadel.mytube.ui.trending.CommentsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val commentList by cmtVm.commentList.collectAsStateWithLifecycle()
@@ -1058,9 +1058,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         cmtVm.loadMoreComments()
     }
     // Fix 3: full channel screen with tabs (replaces the dialog sheet)
-    var channelScreenUrl by remember { mutableStateOf<String?>(null) }
-    var channelScreenVideos by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
-    var channelScreenLoading by remember { mutableStateOf(false) }
+    val channelScreenUrl by chVm.channelScreenUrl.collectAsStateWithLifecycle()
+    val channelScreenVideos by chVm.channelScreenVideos.collectAsStateWithLifecycle()
+    val channelScreenLoading by chVm.channelScreenLoading.collectAsStateWithLifecycle()
     // member counts per group (groups are few; one small query each on change)
     fun refreshGroupCounts(gs: List<com.mohamedadel.mytube.data.local.ChannelGroupEntity>) {
         libVm.refreshGroupCounts(gs)
@@ -1082,38 +1082,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         libVm.removeFromGroup(gid, url)
     }
     fun loadChannelTab(i: Int, url: String) {
-        if (channelTabsLoaded.contains(i)) return
-        channelTabsLoaded = channelTabsLoaded + i
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                when (i) {
-                    1 -> { channelShortsLoading = true; channelShorts = YouTubeRepo.channelTab(url, listOf("short")) }
-                    2 -> { channelLiveLoading = true; channelLive = YouTubeRepo.channelTab(url, listOf("live", "stream")) }
-                    3 -> { channelPlsLoading = true; channelPls = YouTubeRepo.channelPlaylists(url) }
-                }
-            } catch (_: Exception) { } finally {
-                channelShortsLoading = false; channelLiveLoading = false; channelPlsLoading = false
-            }
-        }
+        chVm.loadChannelTab(i, url)
     }
     fun openChannel(url: String?) {
         if (url.isNullOrBlank()) return
         try { playerExpanded = false } catch (_: Exception) { }
-        channelScreenUrl = url
-        channelDetail = null
-        channelScreenVideos = emptyList()
-        channelScreenLoading = true
-        channelShorts = emptyList(); channelLive = emptyList(); channelPls = emptyList()
-        channelTabsLoaded = emptySet()
-        scope.launch {
-            // Gate-3: silent failure left an empty channel screen with no message — now surfaced.
-            try { channelDetail = YouTubeRepo.channelDetail(url) } catch (_: Exception) { }
-            try { channelScreenVideos = YouTubeRepo.channelVideos(url) } catch (_: Exception) { }
-            if (channelDetail == null && channelScreenVideos.isEmpty()) {
-                try { android.widget.Toast.makeText(ctx, ctx.getString(R.string.err_channel_load), android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
-            }
-            channelScreenLoading = false
-        }
+        chVm.openChannel(url)
     }
     // SimpleCache init does disk I/O — warm it off the main thread (skill Rule 5)
     LaunchedEffect(Unit) {
@@ -3044,7 +3018,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             return true
         }
         if (channelScreenUrl != null) {
-            channelScreenUrl = null
+            chVm.closeChannel()
             return true
         }
         if (showComments) {
