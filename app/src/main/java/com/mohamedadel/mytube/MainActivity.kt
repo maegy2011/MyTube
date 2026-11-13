@@ -2287,11 +2287,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             onCloseItems = { openPlaylistId = null },
                             onPlayAll = { pid ->
                                 scope.launch {
-                                    val rows = dao.itemsOnce(pid)
-                                    if (rows.isNotEmpty()) {
+                                    val list = libVm.loadPlaylistItems(pid)
+                                    if (list.isNotEmpty()) {
                                         showPlaylists = false
                                         openPlaylistId = null
-                                        val list = rows.map { it.toVideoItem() }
                                         msearchVm.showPlaylistResults(list)
                                         playerVm.replaceQueue(list, 0)
                                         playerVm.setRadioOn(false)
@@ -2312,36 +2311,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 }
                             },
                             onCreate = { name, emoji ->
-                                scope.launch { dao.insertPlaylist(PlaylistEntity(name = name, emoji = emoji)) }
+                                scope.launch { libVm.createPlaylist(name, emoji) }
                             },
                             onSaveEdits = { pid, name, emoji, mode, orderedIds ->
                                 scope.launch {
-                                    try {
-                                        dao.savePlaylistEdits(pid, name, emoji, mode, orderedIds)
-                                        toast(ctx.getString(R.string.toast_playlist_saved))
-                                    } catch (_: Exception) { toast(ctx.getString(R.string.toast_playlist_save_fail)) }
+                                    libVm.saveEdits(pid, name, emoji, mode, orderedIds)
                                 }
                             },
-                            onDelete = { pid -> scope.launch { dao.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
-                            onClearItems = { pid -> scope.launch { dao.clearPlaylist(pid) } },
+                            onDelete = { pid -> scope.launch { libVm.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
+                            onClearItems = { pid -> scope.launch { libVm.clearPlaylist(pid) } },
                             onMoveToPlaylist = { pid, iid, targetPid ->
-                                scope.launch {
-                                    try {
-                                        val row = dao.itemsOnce(pid).firstOrNull { it.id == iid }
-                                        if (row == null) { toast(ctx.getString(R.string.toast_move_fail)); return@launch }
-                                        val v = VideoItem(id = row.videoId, title = row.title, channel = row.channel, thumbnail = row.thumbnail, durationSec = row.durationSec, viewCount = row.viewCount, url = row.url)
-                                        val key = v.favKey()
-                                        val exists = dao.itemsOnce(targetPid).any { e ->
-                                            VideoItem(id = e.videoId, title = e.title, channel = e.channel, thumbnail = e.thumbnail, durationSec = e.durationSec, viewCount = e.viewCount, url = e.url).favKey() == key
-                                        }
-                                        if (exists) { toast(ctx.getString(R.string.toast_already_target)) }
-                                        else {
-                                            dao.insertItems(listOf(v.toEntity(targetPid, dao.itemCount(targetPid))))
-                                            dao.deleteItem(pid, iid)
-                                            toast(ctx.getString(R.string.toast_moved))
-                                        }
-                                    } catch (_: Exception) { toast(ctx.getString(R.string.toast_move_fail)) }
-                                }
+                                scope.launch { libVm.moveItem(pid, iid, targetPid) }
                             },
                             // 2026-11-12 (runtime fix): hierarchical pop via smartBack — the old
                             // inline close dropped fromLibrary and landed on home instead of Library.
@@ -2357,7 +2337,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 }
                             },
                             onPinItems = { vs -> scope.launch { for (v in vs) { try { quickPin(v, null) } catch (_: Exception) { } } } },
-                            onRemoveItems = { pid, ids -> scope.launch { try { dao.deleteItems(pid, ids) } catch (_: Exception) { } } },
+                            onRemoveItems = { pid, ids -> scope.launch { libVm.removeItems(pid, ids) } },
                             onExport = { pid -> exportPlaylistCsv(pid) },
                             // screens-fix Library P1-L4: CSV import entry.
                             onImport = { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } },
