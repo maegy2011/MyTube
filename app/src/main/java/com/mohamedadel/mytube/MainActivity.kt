@@ -382,7 +382,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val hasMore by msearchVm.hasMore.collectAsStateWithLifecycle()
     val nextPage by msearchVm.nextPage.collectAsStateWithLifecycle()
     // search content filter: all | videos | channels | playlists (persisted; no sort API exists)
-    var prefContentFilter by remember { mutableStateOf("all") }
+    val settingsVm: com.mohamedadel.mytube.ui.settings.SettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "settings")
+    val prefContentFilter by settingsVm.prefContentFilter.collectAsStateWithLifecycle()
     val playerVm: com.mohamedadel.mytube.ui.player.PlayerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val playing by playerVm.playing.collectAsStateWithLifecycle()
     var streamData by remember { mutableStateOf<StreamData?>(null) }
@@ -492,28 +493,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // (toggleFavorite lives after `scope` below — Kotlin locals must precede use.)
     // language prefs: "auto" (device language), "off" (subtitles only), "original" (video's own language),
     // or a language tag (ar/en/…). Secondary = fallback when the primary is unavailable.
-    var prefSubLang by remember { mutableStateOf("auto") }
-    var prefAudioLang by remember { mutableStateOf("auto") }
-    var prefSubLang2 by remember { mutableStateOf("en") }
-    var prefAudioLang2 by remember { mutableStateOf("original") }
+    val prefSubLang by settingsVm.prefSubLang.collectAsStateWithLifecycle()
+    val prefAudioLang by settingsVm.prefAudioLang.collectAsStateWithLifecycle()
+    val prefSubLang2 by settingsVm.prefSubLang2.collectAsStateWithLifecycle()
+    val prefAudioLang2 by settingsVm.prefAudioLang2.collectAsStateWithLifecycle()
     // content country (manual only, no IP): drives search/trending region. "global" = YouTube default.
-    var prefCountry by remember { mutableStateOf("EG") }
+    val prefCountry by settingsVm.prefCountry.collectAsStateWithLifecycle()
     // Geo-switch cache guard (2026-11-12, runtime layer): the newly picked country
     // waits here until the user confirms the cache-clear dialog; refuse = null
     // (old value kept, no partial state), accept = caches cleared then applied.
     var pendingCountry by remember { mutableStateOf<String?>(null) }
     // app theme: dark (default) | light (large-type friendly) | system
-    var prefTheme by remember { mutableStateOf("dark") }
-    var prefAccent by remember { mutableStateOf("red") }
-    var prefPip by remember { mutableStateOf(true) }
+    val prefTheme by settingsVm.prefTheme.collectAsStateWithLifecycle()
+    val prefAccent by settingsVm.prefAccent.collectAsStateWithLifecycle()
+    val prefPip by settingsVm.prefPip.collectAsStateWithLifecycle()
     // 2026-11-12 (runtime layer): mini-player options — master switch (default ON),
     // auto-show on play (default ON), swipe-to-dismiss (default ON). Live-apply, no restart.
-    var prefMiniEnabled by remember { mutableStateOf(true) }
-    var prefMiniAutoshow by remember { mutableStateOf(true) }
-    var prefMiniSwipe by remember { mutableStateOf(true) }
+    val prefMiniEnabled by settingsVm.prefMiniEnabled.collectAsStateWithLifecycle()
+    val prefMiniAutoshow by settingsVm.prefMiniAutoshow.collectAsStateWithLifecycle()
+    val prefMiniSwipe by settingsVm.prefMiniSwipe.collectAsStateWithLifecycle()
     // Audio focus: "all" (pause on any interruption, ExoPlayer handles) vs "calls"
     // (ignore other apps, pause only for phone calls via telephony callback).
-    var prefAf by remember { mutableStateOf("all") }
+    val prefAf by settingsVm.prefAf.collectAsStateWithLifecycle()
     var callPaused by remember { mutableStateOf(false) }
     fun applyAudioFocus() {
         try {
@@ -533,54 +534,54 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var pinSelLoc by remember { mutableStateOf("internal") }
     var pinEst by remember { mutableStateOf(-1L) }
     // SponsorBlock: community skip segments (default OFF — video IDs go to a third party).
-    var prefSb by remember { mutableStateOf(false) }
+    val prefSb by settingsVm.prefSb.collectAsStateWithLifecycle()
     var sbSegments by remember { mutableStateOf(emptyList<SbSeg>()) }
     // UI language: ar (default, RTL) | en (LTR). Applies via recreate().
-    var prefUiLang by remember { mutableStateOf("ar") }
+    val prefUiLang by settingsVm.prefUiLang.collectAsStateWithLifecycle()
     // default video quality for every new video: audio-only | auto | saver | high
-    var prefQuality by remember { mutableStateOf("audio-only") }
+    val prefQuality by settingsVm.prefQuality.collectAsStateWithLifecycle()
     // 2026-11-12 (runtime fix): persisted autoplay toggle, default ON (بأمر محمد) —
     // drives radio/queue auto-advance; OFF stops automatic advance. Declared up here
     // (next to the other prefs) because the prefs-load LaunchedEffect below assigns it.
-    var prefAutoplay by remember { mutableStateOf(true) }
+    val prefAutoplay by settingsVm.prefAutoplay.collectAsStateWithLifecycle()
     // subtitle studio: hide auto-generated, fg/bg/edge/size/bold (applied via CaptionStyleCompat)
-    var prefSubHideAuto by remember { mutableStateOf(false) }
-    var prefSubFg by remember { mutableStateOf("white") }
-    var prefSubBg by remember { mutableStateOf("transparent") }
-    var prefSubEdge by remember { mutableStateOf("outline") }
-    var prefSubScale by remember { mutableStateOf(1.0f) }
-    var prefSubBgOpacity by remember { mutableStateOf(80) }
-    var prefSubBold by remember { mutableStateOf(false) }
+    val prefSubHideAuto by settingsVm.prefSubHideAuto.collectAsStateWithLifecycle()
+    val prefSubFg by settingsVm.prefSubFg.collectAsStateWithLifecycle()
+    val prefSubBg by settingsVm.prefSubBg.collectAsStateWithLifecycle()
+    val prefSubEdge by settingsVm.prefSubEdge.collectAsStateWithLifecycle()
+    val prefSubScale by settingsVm.prefSubScale.collectAsStateWithLifecycle()
+    val prefSubBgOpacity by settingsVm.prefSubBgOpacity.collectAsStateWithLifecycle()
+    val prefSubBold by settingsVm.prefSubBold.collectAsStateWithLifecycle()
     // audio studio: prefer original + playback speed/pitch
-    var prefPreferOriginal by remember { mutableStateOf(false) }
+    val prefPreferOriginal by settingsVm.prefPreferOriginal.collectAsStateWithLifecycle()
     // B2 precise track roles: sub role (subtitle/caption/descriptive/system) + forced-sub kill + undetermined
-    var prefSubRole by remember { mutableStateOf("subtitle") }
-    var prefHideForced by remember { mutableStateOf(false) }
-    var prefUndetermined by remember { mutableStateOf(true) }
-    var prefAudioRole by remember { mutableStateOf("auto") }
+    val prefSubRole by settingsVm.prefSubRole.collectAsStateWithLifecycle()
+    val prefHideForced by settingsVm.prefHideForced.collectAsStateWithLifecycle()
+    val prefUndetermined by settingsVm.prefUndetermined.collectAsStateWithLifecycle()
+    val prefAudioRole by settingsVm.prefAudioRole.collectAsStateWithLifecycle()
     // B3 silence skipping (ExoPlayer SilenceSkippingAudioProcessor via custom RenderersFactory)
-    var prefSkipSilence by remember { mutableStateOf(false) }
+    val prefSkipSilence by settingsVm.prefSkipSilence.collectAsStateWithLifecycle()
     // Phase 1: transient media-cache cap (MB) + live size label
-    var prefCacheMaxMb by remember { mutableStateOf(500L) }
+    val prefCacheMaxMb by settingsVm.prefCacheMaxMb.collectAsStateWithLifecycle()
     // Phase 4: offline mode — pinned items play from disk, unpinned show "pin first"
-    var prefOffline by remember { mutableStateOf(false) }
+    val prefOffline by settingsVm.prefOffline.collectAsStateWithLifecycle()
     // Phase 4 fix: quality-switch/retry must reuse the local path for pinned playback,
     // otherwise file:// bytes get needlessly duplicated into the transient cache.
     var playingPinned by remember { mutableStateOf(false) }
     // Phase 6: storage section — pins totals + soft-limit (reminder only, never blocks)
-    var prefPinWarnMb by remember { mutableStateOf(1024L) }
+    val prefPinWarnMb by settingsVm.prefPinWarnMb.collectAsStateWithLifecycle()
     // Perf toggles (settings): feed parallelism + feed cache; lazy lists stay lazy (no toggle needed)
-    var prefFeedParallel by remember { mutableStateOf(true) }
-    var prefFeedCache by remember { mutableStateOf(true) }
+    val prefFeedParallel by settingsVm.prefFeedParallel.collectAsStateWithLifecycle()
+    val prefFeedCache by settingsVm.prefFeedCache.collectAsStateWithLifecycle()
     // Deferred item 8 (2026-11-11): periodic feed refresh toggle (WorkManager, default OFF).
-    var prefFeedAuto by remember { mutableStateOf(false) }
+    val prefFeedAuto by settingsVm.prefFeedAuto.collectAsStateWithLifecycle()
     // M1: next-item stream prefetch (latency only — no media bytes; one extractor fetch).
     // Skipped when offline (pins need no resolve) and capped at 2 entries.
-    var prefPreloadNext by remember { mutableStateOf(true) }
+    val prefPreloadNext by settingsVm.prefPreloadNext.collectAsStateWithLifecycle()
     // R5: prefetch on WiFi only (default ON, as promised) — mobile data never prefetches.
-    var prefPreloadWifiOnly by remember { mutableStateOf(true) }
+    val prefPreloadWifiOnly by settingsVm.prefPreloadWifiOnly.collectAsStateWithLifecycle()
     // M3: title-translation toggle (default ON); OFF = original titles always, zero Google calls.
-    var prefTitleTranslate by remember { mutableStateOf(true) }
+    val prefTitleTranslate by settingsVm.prefTitleTranslate.collectAsStateWithLifecycle()
     fun isUnmeteredNet(): Boolean {
         return try {
             val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
@@ -595,8 +596,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var histCount by remember { mutableStateOf(0) }
 
     var cacheSizeLabel by remember { mutableStateOf("—") }
-    var prefSpeed by remember { mutableStateOf(1.0f) }
-    var prefPitch by remember { mutableStateOf(1.0f) }
+    val prefSpeed by settingsVm.prefSpeed.collectAsStateWithLifecycle()
+    val prefPitch by settingsVm.prefPitch.collectAsStateWithLifecycle()
     // standalone search screen (YouTube-style) + trending tabs
     var showSearch by remember { mutableStateOf(false) }
     // home-redesign Phase 1 (2026-11-12): unified search state — source chips + parallel results.
@@ -724,13 +725,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var showNotifications by remember { mutableStateOf(false) }
     val notifications by remember { dao.observeNotifications() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val unreadCount by remember { dao.observeUnreadCount() }.collectAsStateWithLifecycle(initialValue = 0)
-    var prefKeepalive by remember { mutableStateOf(false) }
-    var prefAgeMode by remember { mutableStateOf("block") } // block | warn | allow
-    var prefShowComments by remember { mutableStateOf(true) }
-    var prefShowRelated by remember { mutableStateOf(true) }
-    var prefShowInfo by remember { mutableStateOf(true) }
-    var prefShowSubs by remember { mutableStateOf(true) }
-    var prefAllow4k by remember { mutableStateOf(true) }
+    val prefKeepalive by settingsVm.prefKeepalive.collectAsStateWithLifecycle()
+    val prefAgeMode by settingsVm.prefAgeMode.collectAsStateWithLifecycle()
+    val prefShowComments by settingsVm.prefShowComments.collectAsStateWithLifecycle()
+    val prefShowRelated by settingsVm.prefShowRelated.collectAsStateWithLifecycle()
+    val prefShowInfo by settingsVm.prefShowInfo.collectAsStateWithLifecycle()
+    val prefShowSubs by settingsVm.prefShowSubs.collectAsStateWithLifecycle()
+    val prefAllow4k by settingsVm.prefAllow4k.collectAsStateWithLifecycle()
     // warn-consent carries the resolved stream: confirming resumes playback with ZERO re-extraction.
     var agePending by remember { mutableStateOf<Triple<VideoItem, Boolean, com.mohamedadel.mytube.data.youtube.StreamData?>?>(null) }
     var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
@@ -745,6 +746,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
     androidx.compose.runtime.LaunchedEffect(Unit) { searchVm.configure(prefs) { e -> try { ctx.getString(R.string.err_search_detail_fmt, e) } catch (_: Exception) { e } } }
+    androidx.compose.runtime.LaunchedEffect(Unit) { settingsVm.configure(prefs) }
     androidx.compose.runtime.LaunchedEffect(Unit) { msearchVm.configure(prefs) { try { ctx.getString(R.string.err_search) } catch (_: Exception) { "search error" } } }
     // L1 (audit P1 2026-11-11): session-restore targets — declared before the prefs-load
     // effect below (Kotlin locals must precede use); saveSession itself lives near setShuffle.
@@ -789,66 +791,15 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // persisted settings + recents (survive app restarts)
     LaunchedEffect(Unit) {
         try {
-            prefSubLang = prefs.getString("pref_sub_lang", "auto") ?: "auto"
-            prefAudioLang = prefs.getString("pref_audio_lang", "auto") ?: "auto"
-            prefSubLang2 = prefs.getString("pref_sub_lang2", "en") ?: "en"
-            prefAudioLang2 = prefs.getString("pref_audio_lang2", "original") ?: "original"
-            prefCountry = prefs.getString("pref_country", "EG") ?: "EG"
             try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.contentLang = prefs.getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { }
             try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(prefCountry) } catch (_: Exception) { }
-            prefTheme = prefs.getString("pref_theme", "dark") ?: "dark"
-            prefPip = try { prefs.getBoolean("pref_pip", true) } catch (_: Exception) { true }
-            prefMiniEnabled = try { prefs.getBoolean("pref_mini_enabled", true) } catch (_: Exception) { true }
-            prefMiniAutoshow = try { prefs.getBoolean("pref_mini_autoshow", true) } catch (_: Exception) { true }
-            prefMiniSwipe = try { prefs.getBoolean("pref_mini_swipe", true) } catch (_: Exception) { true }
-            prefAf = try { prefs.getString("pref_audiofocus", "all") ?: "all" } catch (_: Exception) { "all" }
-            prefSb = try { prefs.getBoolean("pref_sponsorblock", false) } catch (_: Exception) { false }
-            prefAccent = prefs.getString("pref_accent", "red") ?: "red"
             eqEnabled = try { prefs.getBoolean("eq_enabled", false) } catch (_: Exception) { false }
             eqPreset = try { prefs.getInt("eq_preset", 0) } catch (_: Exception) { 0 }
-            prefUiLang = prefs.getString("pref_ui_lang", "ar") ?: "ar"
-            prefQuality = prefs.getString("pref_quality", "audio-only") ?: "audio-only"
             // 2026-11-12 (runtime fix): autoplay persisted, default ON (بأمر محمد).
-            prefAutoplay = try { prefs.getBoolean("pref_autoplay", true) } catch (_: Exception) { true }
-            prefContentFilter = prefs.getString("pref_content_filter", "all") ?: "all"
-            prefSubHideAuto = prefs.getBoolean("pref_sub_hide_auto", false)
-            prefSubFg = prefs.getString("pref_sub_fg", "white") ?: "white"
-            prefSubBg = prefs.getString("pref_sub_bg", "transparent") ?: "transparent"
-            prefSubEdge = prefs.getString("pref_sub_edge", "outline") ?: "outline"
             // size migration: legacy s/m/l/xl codes -> scale float (one-time, then pref_sub_scale rules).
-            prefSubScale = try {
-                if (prefs.contains("pref_sub_scale")) prefs.getFloat("pref_sub_scale", 1.0f).coerceIn(0.5f, 2.0f)
-                else when (prefs.getString("pref_sub_size", "m")) { "s" -> 0.8f; "l" -> 1.25f; "xl" -> 1.5f; else -> 1.0f }
-            } catch (_: Exception) { 1.0f }
-            prefSubBgOpacity = try { prefs.getInt("pref_sub_bg_opacity", 80).coerceIn(0, 100) } catch (_: Exception) { 80 }
-            prefSubBold = prefs.getBoolean("pref_sub_bold", false)
-            prefPreferOriginal = prefs.getBoolean("pref_prefer_original", false)
-            prefSubRole = prefs.getString("pref_sub_role", "subtitle") ?: "subtitle"
-            prefHideForced = prefs.getBoolean("pref_hide_forced", false)
-            prefUndetermined = prefs.getBoolean("pref_undetermined", true)
-            prefAudioRole = prefs.getString("pref_audio_role", "auto") ?: "auto"
-            prefSkipSilence = prefs.getBoolean("pref_skip_silence", false)
-            prefCacheMaxMb = prefs.getLong("pref_cache_max_mb", 500L).takeIf { it > 0 } ?: 500L
-            prefOffline = prefs.getBoolean("pref_offline", false)
-            prefKeepalive = prefs.getBoolean("pref_keepalive", false)
-            prefAgeMode = prefs.getString("pref_age_mode", "block") ?: "block"
-            prefShowComments = prefs.getBoolean("pref_show_comments", true)
-            prefShowRelated = prefs.getBoolean("pref_show_related", true)
-            prefShowInfo = prefs.getBoolean("pref_show_info", true)
-            prefShowSubs = prefs.getBoolean("pref_show_subtitles", true)
-            prefAllow4k = prefs.getBoolean("pref_allow_4k", true)
             try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
-            prefPinWarnMb = prefs.getLong("pref_pin_warn_mb", 1024L)
-            prefFeedParallel = prefs.getBoolean("pref_feed_parallel", true)
-            prefFeedCache = prefs.getBoolean("pref_feed_cache", true)
-            prefFeedAuto = try { prefs.getBoolean("pref_feed_auto", false) } catch (_: Exception) { false }
-            prefPreloadNext = prefs.getBoolean("pref_preload_next", true)
-            prefPreloadWifiOnly = prefs.getBoolean("pref_preload_wifi_only", true)
-            prefTitleTranslate = prefs.getBoolean("pref_title_translate", true)
             // cap only (no disk I/O); the cache itself warms on a background thread after scope exists
             try { com.mohamedadel.mytube.playback.MediaCache.setMax(prefCacheMaxMb * 1024 * 1024) } catch (_: Exception) { }
-            prefSpeed = prefs.getFloat("pref_speed", 1.0f)
-            prefPitch = prefs.getFloat("pref_pitch", 1.0f)
         } catch (_: Exception) { }
         try {
             val raw = prefs.getString("recent_searches", "") ?: ""
@@ -1088,7 +1039,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption(); if (!com.mohamedadel.mytube.playback.CastManager.available.value) { try { com.mohamedadel.mytube.playback.CastManager.init(ctx.applicationContext) } catch (_: Exception) { } }
                 // L4 (audit P1 2026-11-11): ACTION_STOP writes the pref directly — re-read on resume or the toggle lies.
-                try { prefKeepalive = prefs.getBoolean("pref_keepalive", false) } catch (_: Exception) { }
+                try { settingsVm.setPrefKeepalive(prefs.getBoolean("pref_keepalive", false)) } catch (_: Exception) { }
                 // G-A1: a parked SEND/VIEW intent (cold start or share-while-alive) gets consumed below.
                 try { if (MainActivity.pendingSharedIntent != null) sharedPending++ } catch (_: Exception) { } }
         }
@@ -2349,8 +2300,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // continues after this item), and force-starts this item now. Cold taps
     // elsewhere still start silent (unchanged).
     fun playNowAlone(v: VideoItem) {
-        prefAutoplay = true
-        try { prefs.edit().putBoolean("pref_autoplay", true).apply() } catch (_: Exception) { }
+        settingsVm.setPrefAutoplay(true)
         playVideo(v, inQueue = false, expand = true, forcePlay = true)
         autoAdvance = true
         playerVm.setRadioOn(true)
@@ -3166,8 +3116,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val afPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) {
             try {
-                prefAf = "all"
-                prefs.edit().putString("pref_audiofocus", "all").apply()
+                settingsVm.setPrefAf("all")
                 applyAudioFocus()
                 toast(ctx.getString(R.string.af_perm_denied))
             } catch (_: Exception) { }
@@ -3284,8 +3233,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try { com.mohamedadel.mytube.playback.MediaCache.clear(ctx.applicationContext) } catch (_: Exception) { }
             try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.clearCaches() } catch (_: Exception) { }
             try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                prefCountry = v
-                try { prefs.edit().putString("pref_country", v).apply() } catch (_: Exception) { }
+                settingsVm.setPrefCountry(v)
                 try { com.mohamedadel.mytube.data.youtube.YouTubeRepo.applyRegion(v, prefUiLang) } catch (_: Exception) { }
                 // L7 (audit P2 2026-11-11): reload both surfaces + announce.
                 refreshTrending()
@@ -3944,7 +3892,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_onSearchQ: (String) -> Unit = { q -> query = q; doSearch(q) }
             val mc_onSuggestionQ: (String) -> Unit = { q -> query = q; doSearch(q) }
             val mc_onResumePlay: (com.mohamedadel.mytube.data.youtube.VideoItem, Long) -> Unit = { v, ms -> pendingSeekMs = ms; pendingSeekKey = v.favKey(); playVideo(v, expand = true, forcePlay = true) }
-            val mc_setContentFilter: (String) -> Unit = { prefContentFilter = it }
+            val mc_setContentFilter: (String) -> Unit = { settingsVm.setPrefContentFilter(it) }
             val mc_doSearchText: (String) -> Unit = { q -> doSearch(q) }
             val mc_setResults: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { msearchVm.assignResults(it) }
             val mc_setNextPage: (org.schabi.newpipe.extractor.Page?) -> Unit = { msearchVm.assignNextPage(it) }
@@ -4376,8 +4324,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         // manual pick becomes the saved subtitle preference (applies to all future videos)
                         try {
                             if (i < 0) {
-                                prefSubLang = "off"
-                                prefs.edit().putString("pref_sub_lang", "off").apply()
+                                settingsVm.setPrefSubLang("off")
                                 subTrackIdx = -1
                                 subTrackFor = null // F8: explicit off clears any override owner
                                 toast(ctx.getString(R.string.toast_sub_off))
@@ -4387,8 +4334,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 // keep the raw tag (matching is prefix-based): collapsing rare tags to
                                 // "auto" made the setting disagree with the chip the user just picked.
                                 val code = tag ?: "auto"
-                                prefSubLang = code
-                                prefs.edit().putString("pref_sub_lang", code).apply()
+                                settingsVm.setPrefSubLang(code)
                                 subTrackIdx = i
                                 subTrackFor = playing?.favKey() // F8: explicit pick owns the override
                                 toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
@@ -4409,8 +4355,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             val t = streamData?.audioTracks?.getOrNull(i)
                             val tag = t?.localeTag?.substringBefore("-") ?: t?.name
                             if (!tag.isNullOrBlank()) {
-                                prefAudioLang = tag
-                                prefs.edit().putString("pref_audio_lang", tag).apply()
+                                settingsVm.setPrefAudioLang(tag)
                             }
                         } catch (_: Exception) { }
                         streamData?.let { sd -> applyQuality(quality, sd, player, autoplay = true) }
@@ -4525,36 +4470,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     quality = prefQuality,
                     deviceLang = try { java.util.Locale.getDefault() } catch (_: Exception) { null },
                     onSubLang = { v ->
-                        prefSubLang = v
-                        try { prefs.edit().putString("pref_sub_lang", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefSubLang(v)
                         applyLangPrefs()
                     },
                     onAudioLang = { v ->
-                        prefAudioLang = v
-                        try { prefs.edit().putString("pref_audio_lang", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefAudioLang(v)
                         applyLangPrefs()
                     },
                     onSubLang2 = { v ->
-                        prefSubLang2 = v
-                        try { prefs.edit().putString("pref_sub_lang2", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefSubLang2(v)
                     },
                     onAudioLang2 = { v ->
-                        prefAudioLang2 = v
-                        try { prefs.edit().putString("pref_audio_lang2", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefAudioLang2(v)
                         audioTrackIdx = pickAudioIdx()
                     },
                     // Geo-switch cache guard (2026-11-12): NEVER apply directly — stage
                     // the pick and show the mandatory cache-clear dialog instead.
                     onCountry = { v -> if (v != prefCountry) pendingCountry = v },
                     onQuality = { v ->
-                        prefQuality = v
-                        try { prefs.edit().putString("pref_quality", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefQuality(v)
                         toast(ctx.getString(R.string.toast_quality_next))
                     },
                     uiLang = prefUiLang,
                     onUiLang = { v ->
-                        prefUiLang = v
-                        try { prefs.edit().putString("pref_ui_lang", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefUiLang(v)
                         toast(ctx.getString(R.string.toast_lang_restart))
                         try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
                     },
@@ -4566,32 +4505,27 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     // 2026-11-12 (runtime fix): autoplay persisted, default ON (بأمر محمد).
                     autoplay = prefAutoplay,
                     onAutoplay = { v ->
-                        prefAutoplay = v
-                        try { prefs.edit().putBoolean("pref_autoplay", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefAutoplay(v)
                     },
                     // 2026-11-12 (runtime layer): mini-player options, live-apply (no restart).
                     miniEnabled = prefMiniEnabled,
                     onMiniEnabled = { v ->
-                        prefMiniEnabled = v
-                        try { prefs.edit().putBoolean("pref_mini_enabled", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefMiniEnabled(v)
                         // turning the bar off while collapsed strands playback behind no UI —
                         // open the full player so it stays reachable (same as autoshow-OFF rule).
                         if (!v && playing != null && !playerExpanded) playerExpanded = true
                     },
                     miniAutoshow = prefMiniAutoshow,
                     onMiniAutoshow = { v ->
-                        prefMiniAutoshow = v
-                        try { prefs.edit().putBoolean("pref_mini_autoshow", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefMiniAutoshow(v)
                     },
                     miniSwipe = prefMiniSwipe,
                     onMiniSwipe = { v ->
-                        prefMiniSwipe = v
-                        try { prefs.edit().putBoolean("pref_mini_swipe", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefMiniSwipe(v)
                     },
                     afMode = prefAf,
                     onAf = { v ->
-                        prefAf = v
-                        try { prefs.edit().putString("pref_audiofocus", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefAf(v)
                         try {
                             if (v == "calls") {
                                 val granted = ctx.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
@@ -4602,13 +4536,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     },
                     sbEnabled = prefSb,
                     onSb = { v ->
-                        prefSb = v
-                        try { prefs.edit().putBoolean("pref_sponsorblock", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefSb(v)
                     },
                     pipAuto = prefPip,
                     onPip = { v ->
-                        prefPip = v
-                        try { prefs.edit().putBoolean("pref_pip", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefPip(v)
                     },
                     favCount = favoriteKeys.size,
                     histCount = histCount,
@@ -4623,8 +4555,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     cacheSize = cacheSizeLabel,
                     cacheMaxMb = prefCacheMaxMb,
                     onCacheMax = { mb ->
-                        prefCacheMaxMb = mb
-                        try { prefs.edit().putLong("pref_cache_max_mb", mb).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefCacheMaxMb(mb)
                         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                             try {
                                 com.mohamedadel.mytube.playback.MediaCache.setMax(mb * 1024 * 1024)
@@ -4637,45 +4568,37 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onClearCache = { clearMediaCache() },
                     offlineMode = prefOffline,
                     onOfflineMode = { v ->
-                        prefOffline = v
-                        try { prefs.edit().putBoolean("pref_offline", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefOffline(v)
                     },
                     keepAlive = prefKeepalive,
                     onKeepAlive = { v ->
-                        prefKeepalive = v
-                        try { prefs.edit().putBoolean("pref_keepalive", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefKeepalive(v)
                         try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
                         if (!v) toast(ctx.getString(R.string.keepalive_off))
                     },
                     ageMode = prefAgeMode,
                     onAgeMode = { m ->
-                        prefAgeMode = m
-                        try { prefs.edit().putString("pref_age_mode", m).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefAgeMode(m)
                     },
                     showComments = prefShowComments,
                     onShowComments = { v ->
-                        prefShowComments = v
-                        try { prefs.edit().putBoolean("pref_show_comments", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefShowComments(v)
                     },
                     showRelated = prefShowRelated,
                     onShowRelated = { v ->
-                        prefShowRelated = v
-                        try { prefs.edit().putBoolean("pref_show_related", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefShowRelated(v)
                     },
                     showInfo = prefShowInfo,
                     onShowInfo = { v ->
-                        prefShowInfo = v
-                        try { prefs.edit().putBoolean("pref_show_info", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefShowInfo(v)
                     },
                     showSubs = prefShowSubs,
                     onShowSubs = { v ->
-                        prefShowSubs = v
-                        try { prefs.edit().putBoolean("pref_show_subtitles", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefShowSubs(v)
                     },
                     allow4k = prefAllow4k,
                     onAllow4k = { v ->
-                        prefAllow4k = v
-                        try { prefs.edit().putBoolean("pref_allow_4k", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefAllow4k(v)
                     },
                     pinsCount = pinsCount,
                     pinsSize = pinsSizeLabel,
@@ -4685,75 +4608,66 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     extAvailable = try { com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext) } catch (_: Exception) { false },
                     onPinLoc = { loc ->
                         pinSelLoc = loc
-                        try { prefs.edit().putString("pref_pin_location", loc).apply() } catch (_: Exception) { }
                     },
                     onPinsWarn = { mb ->
-                        prefPinWarnMb = mb
-                        try { prefs.edit().putLong("pref_pin_warn_mb", mb).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefPinWarnMb(mb)
                     },
                     onClearPins = { clearAllPins() },
                     feedParallel = prefFeedParallel,
                     onFeedParallel = { v ->
-                        prefFeedParallel = v
-                        try { prefs.edit().putBoolean("pref_feed_parallel", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefFeedParallel(v)
                     },
                     feedCache = prefFeedCache,
                     onFeedCache = { v ->
-                        prefFeedCache = v
-                        try { prefs.edit().putBoolean("pref_feed_cache", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefFeedCache(v)
                     },
                     // Deferred items 7+8: last-backup metadata row + periodic refresh toggle.
                     backupInfo = backupInfoText(),
                     feedAutoRefresh = prefFeedAuto,
                     onFeedAutoRefresh = { v ->
-                        prefFeedAuto = v
-                        try { prefs.edit().putBoolean("pref_feed_auto", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefFeedAuto(v)
                         try { syncFeedWorker(ctx.applicationContext, v) } catch (_: Exception) { }
                     },
                     preloadNext = prefPreloadNext,
                     onPreloadNext = { v ->
-                        prefPreloadNext = v
-                        try { prefs.edit().putBoolean("pref_preload_next", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefPreloadNext(v)
                         if (!v) try { prefetched.clear() } catch (_: Exception) { }
                     },
                     preloadWifiOnly = prefPreloadWifiOnly,
                     titleTranslate = prefTitleTranslate,
                     onTitleTranslate = { v ->
-                        prefTitleTranslate = v
-                        try { prefs.edit().putBoolean("pref_title_translate", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefTitleTranslate(v)
                     },
                     onPreloadWifiOnly = { v ->
-                        prefPreloadWifiOnly = v
-                        try { prefs.edit().putBoolean("pref_preload_wifi_only", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefPreloadWifiOnly(v)
                     },
                     subHideAuto = prefSubHideAuto,
-                    onSubHideAuto = { v -> prefSubHideAuto = v; try { prefs.edit().putBoolean("pref_sub_hide_auto", v).apply() } catch (_: Exception) { } },
+                    onSubHideAuto = { v -> settingsVm.setPrefSubHideAuto(v) },
                     subFg = prefSubFg,
-                    onSubFg = { v -> prefSubFg = v; try { prefs.edit().putString("pref_sub_fg", v).apply() } catch (_: Exception) { } },
+                    onSubFg = { v -> settingsVm.setPrefSubFg(v) },
                     subBg = prefSubBg,
-                    onSubBg = { v -> prefSubBg = v; try { prefs.edit().putString("pref_sub_bg", v).apply() } catch (_: Exception) { } },
+                    onSubBg = { v -> settingsVm.setPrefSubBg(v) },
                     subEdge = prefSubEdge,
-                    onSubEdge = { v -> prefSubEdge = v; try { prefs.edit().putString("pref_sub_edge", v).apply() } catch (_: Exception) { } },
+                    onSubEdge = { v -> settingsVm.setPrefSubEdge(v) },
                     subScale = prefSubScale,
-                    onSubScale = { v -> prefSubScale = v; try { prefs.edit().putFloat("pref_sub_scale", v.coerceIn(0.5f, 2.0f)).apply() } catch (_: Exception) { } },
+                    onSubScale = { v -> settingsVm.setPrefSubScale(v) },
                     subBgOpacity = prefSubBgOpacity,
-                    onSubBgOpacity = { v -> prefSubBgOpacity = v; try { prefs.edit().putInt("pref_sub_bg_opacity", v.coerceIn(0, 100)).apply() } catch (_: Exception) { } },
+                    onSubBgOpacity = { v -> settingsVm.setPrefSubBgOpacity(v) },
                     subBold = prefSubBold,
-                    onSubBold = { v -> prefSubBold = v; try { prefs.edit().putBoolean("pref_sub_bold", v).apply() } catch (_: Exception) { } },
+                    onSubBold = { v -> settingsVm.setPrefSubBold(v) },
                     preferOriginal = prefPreferOriginal,
-                    onPreferOriginal = { v -> prefPreferOriginal = v; try { prefs.edit().putBoolean("pref_prefer_original", v).apply() } catch (_: Exception) { }; audioTrackIdx = pickAudioIdx() },
+                    onPreferOriginal = { v -> settingsVm.setPrefPreferOriginal(v); audioTrackIdx = pickAudioIdx() },
                     subRole = prefSubRole,
-                    onSubRole = { v -> prefSubRole = v; try { prefs.edit().putString("pref_sub_role", v).apply() } catch (_: Exception) { } },
+                    onSubRole = { v -> settingsVm.setPrefSubRole(v) },
                     hideForced = prefHideForced,
-                    onHideForced = { v -> prefHideForced = v; try { prefs.edit().putBoolean("pref_hide_forced", v).apply() } catch (_: Exception) { } },
+                    onHideForced = { v -> settingsVm.setPrefHideForced(v) },
                     undetermined = prefUndetermined,
-                    onUndetermined = { v -> prefUndetermined = v; try { prefs.edit().putBoolean("pref_undetermined", v).apply() } catch (_: Exception) { } },
+                    onUndetermined = { v -> settingsVm.setPrefUndetermined(v) },
                     audioRole = prefAudioRole,
-                    onAudioRole = { v -> prefAudioRole = v; try { prefs.edit().putString("pref_audio_role", v).apply() } catch (_: Exception) { } },
+                    onAudioRole = { v -> settingsVm.setPrefAudioRole(v) },
                     skipSilence = prefSkipSilence,
                     onSkipSilence = { v ->
-                        prefSkipSilence = v
-                        try { prefs.edit().putBoolean("pref_skip_silence", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefSkipSilence(v)
                         toast(ctx.getString(R.string.toast_skip_restart))
                         // processor chain is fixed at player build: stop the service, WAIT for
                         // death, then recreate — the old fire-and-forget raced a stale player (major #6).
@@ -4764,19 +4678,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         }
                     },
                     speed = prefSpeed,
-                    onSpeed = { v -> prefSpeed = v; try { prefs.edit().putFloat("pref_speed", v).apply() } catch (_: Exception) { } },
+                    onSpeed = { v -> settingsVm.setPrefSpeed(v) },
                     pitch = prefPitch,
-                    onPitch = { v -> prefPitch = v; try { prefs.edit().putFloat("pref_pitch", v).apply() } catch (_: Exception) { } },
+                    onPitch = { v -> settingsVm.setPrefPitch(v) },
                     theme = prefTheme,
                     onTheme = { v ->
-                        prefTheme = v
-                        try { prefs.edit().putString("pref_theme", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefTheme(v)
                         try { themeLive.value = v } catch (_: Exception) { }
                     },
                     accent = prefAccent,
                     onAccent = { v ->
-                        prefAccent = v
-                        try { prefs.edit().putString("pref_accent", v).apply() } catch (_: Exception) { }
+                        settingsVm.setPrefAccent(v)
                         try { accentLive.value = v } catch (_: Exception) { }
                     },
                     // Restart-prompt (11 Nov 2026 — بأمر محمد): dialog choice after theme/accent change.
@@ -4786,11 +4698,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     onVolume = { v ->
                         try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }
                         if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { }
-                        try { prefs.edit().putFloat("pref_volume", v.coerceIn(0f, 1f)).apply() } catch (_: Exception) { }
                     },
                     onMuted = { m ->
                         try { mutedLive.value = m } catch (_: Exception) { }
-                        try { prefs.edit().putBoolean("pref_muted", m).apply() } catch (_: Exception) { }
                     },
                     eqSupported = eqSupported,
                     eqEnabled = eqEnabled,
