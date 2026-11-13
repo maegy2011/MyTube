@@ -608,31 +608,32 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var unifiedJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // SoundCloud tab (separate): own query/results/loading, reuses SearchScreen + SearchRow.
     var showSC by remember { mutableStateOf(false) }
-    var scQuery by remember { mutableStateOf("") }
-    var scResults by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
-    var scLoading by remember { mutableStateOf(false) }
-    var scError by remember { mutableStateOf<String?>(null) }
+    val searchVm: com.mohamedadel.mytube.ui.search.MusicSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "music")
+    val scQuery by searchVm.scQuery.collectAsStateWithLifecycle()
+    val scResults by searchVm.scResults.collectAsStateWithLifecycle()
+    val scLoading by searchVm.scLoading.collectAsStateWithLifecycle()
+    val scError by searchVm.scError.collectAsStateWithLifecycle()
     // Remote playlists (service playlists, not local Room): cards + openable contents view.
-    var remotePlaylists by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.RemotePlaylist>()) }
-    var openRemote by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.RemotePlaylist?>(null) }
-    var openRemoteItems by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.youtube.VideoItem>()) }
-    var openRemoteLoading by remember { mutableStateOf(false) }
+    val remotePlaylists by searchVm.remotePlaylists.collectAsStateWithLifecycle()
+    val openRemote by searchVm.openRemote.collectAsStateWithLifecycle()
+    val openRemoteItems by searchVm.openRemoteItems.collectAsStateWithLifecycle()
+    val openRemoteLoading by searchVm.openRemoteLoading.collectAsStateWithLifecycle()
     // remote-playlist paging (SoundCloud sets run long): next page + single-flight guard.
-    var openRemoteNext by remember { mutableStateOf<org.schabi.newpipe.extractor.Page?>(null) }
-    var openRemoteLoadingMore by remember { mutableStateOf(false) }
+    val openRemoteNext by searchVm.openRemoteNext.collectAsStateWithLifecycle()
+    val openRemoteLoadingMore by searchVm.openRemoteLoadingMore.collectAsStateWithLifecycle()
 
     // Music-tab source: 0 = SoundCloud, 1 = YouTube Music (native music_songs filter).
     // screens-fix Music P1-M5: survive rotation (was remember).
-    var scSource by rememberSaveable { mutableIntStateOf(0) }
+    val scSource by searchVm.scSource.collectAsStateWithLifecycle()
     // Music-tab YTM kind filter (SoundCloud source stays unfiltered — its extractor has one list).
-    var scKind by rememberSaveable { mutableStateOf("songs") } // songs | albums | artists | playlists
+    val scKind by searchVm.scKind.collectAsStateWithLifecycle()
     // YTM tabs paging mirrors the main search list (auto-append near the end); history in prefs (on-device only).
-    var scNextPage by remember { mutableStateOf<org.schabi.newpipe.extractor.Page?>(null) }
-    var scHasMore by remember { mutableStateOf(false) }
-    var scLoadingMore by remember { mutableStateOf(false) }
+    // scNextPage lives in SearchViewModel now
+    val scHasMore by searchVm.scHasMore.collectAsStateWithLifecycle()
+    val scLoadingMore by searchVm.scLoadingMore.collectAsStateWithLifecycle()
     // screens-fix Music P1-M7: search-correction mirror of the main search screen.
-    var scSuggestion by remember { mutableStateOf<String?>(null) }
-    var scCorrected by remember { mutableStateOf(false) }
+    val scSuggestion by searchVm.scSuggestion.collectAsStateWithLifecycle()
+    val scCorrected by searchVm.scCorrected.collectAsStateWithLifecycle()
     // screens-fix Music P1-M5: taste TTL (5 min) — refreshTaste skips network while fresh.
     var tasteFetchedAt by remember { mutableStateOf(0L) }
     // screens-fix Library P2-L12: most-replayed rail data (loaded when the hub opens).
@@ -643,7 +644,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var continueProgress by remember { mutableStateOf(mapOf<String, Float>()) }
     var continueResumeMs by remember { mutableStateOf(mapOf<String, Long>()) }
     val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
-    var recentMusicSearches by remember { mutableStateOf(listOf<String>()) }
+    val recentMusicSearches by searchVm.recentMusicSearches.collectAsStateWithLifecycle()
     // Local-profile recommendations (no account): quick picks + one YTM mix shelf.
     var tasteProfile by remember { mutableStateOf<com.mohamedadel.mytube.util.TasteProfile?>(null) }
     var tasteMix by remember { mutableStateOf(emptyList<VideoItem>()) }
@@ -742,6 +743,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 2, k) }.flow
     }
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { searchVm.configure(prefs) { e -> try { ctx.getString(R.string.err_search_detail_fmt, e) } catch (_: Exception) { e } } }
     // L1 (audit P1 2026-11-11): session-restore targets — declared before the prefs-load
     // effect below (Kotlin locals must precede use); saveSession itself lives near setShuffle.
     var pendingSeekMs by remember { mutableStateOf<Long?>(null) }
@@ -860,8 +862,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
                 }
             } catch (_: Exception) { }
-            try { prefs.getString("recent_music_searches", "")?.let { m -> if (m.isNotBlank()) recentMusicSearches = m.split("\u001f").filter { it.isNotBlank() }.take(6) } } catch (_: Exception) { }
-            // L1 (audit P1 2026-11-11): restore last session's queue (no autoplay; position seeks on tap-play).
+                        // L1 (audit P1 2026-11-11): restore last session's queue (no autoplay; position seeks on tap-play).
             try {
                 val favs = (prefs.getString("sess_favs", "") ?: "").split("\u001f")
                 val urls = (prefs.getString("sess_urls", "") ?: "").split("\u001f")
@@ -1095,37 +1096,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     val scope = rememberCoroutineScope()
     fun openRemotePlaylist(p: com.mohamedadel.mytube.data.youtube.RemotePlaylist) {
-        openRemote = p
-        openRemoteItems = emptyList()
-        openRemoteNext = null
-        openRemoteLoadingMore = false
-        openRemoteLoading = true
-        scope.launch {
-            try {
-                val (first, next) = com.mohamedadel.mytube.data.youtube.YouTubeRepo.fetchPlaylist(p.url ?: return@launch)
-                openRemoteItems = first
-                openRemoteNext = next
-            } catch (_: Exception) { openRemoteItems = emptyList(); openRemoteNext = null }
-            finally { openRemoteLoading = false }
-        }
+        searchVm.openPlaylist(p)
     }
     // page-walk for the opened remote playlist (dedup by canonical key).
     fun loadMoreRemote() {
-        val rp = openRemote ?: return
-        val nxt = openRemoteNext ?: return
-        if (openRemoteLoading || openRemoteLoadingMore) return
-        openRemoteLoadingMore = true
-        scope.launch {
-            try {
-                val (more, next) = com.mohamedadel.mytube.data.youtube.YouTubeRepo.fetchPlaylistPage(rp.url ?: return@launch, nxt)
-                if (more.isNotEmpty()) {
-                    val seen = openRemoteItems.mapNotNull { it.url ?: it.id }.toSet()
-                    openRemoteItems = openRemoteItems + more.filter { (it.url ?: it.id ?: it.title) !in seen }
-                }
-                openRemoteNext = next
-            } catch (_: Exception) { }
-            finally { openRemoteLoadingMore = false }
-        }
+        searchVm.loadMoreRemote()
     }
     // Title localization: displayed title follows the video's FIRST subtitle language.
     var translatedTitle by remember { mutableStateOf<String?>(null) }
@@ -3029,11 +3004,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         searchJob = scope.launch {
             try {
                 if (prefContentFilter == "playlists") {
-                    remotePlaylists = YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry)
+                    searchVm.assignRemotePlaylists(YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry))
                 } else if (prefContentFilter == "albums") {
-                    remotePlaylists = YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry, albums = true)
+                    searchVm.assignRemotePlaylists(YouTubeRepo.searchPlaylists(q, if (prefCountry == "global") null else prefCountry, albums = true))
                 } else {
-                    remotePlaylists = emptyList()
+                    searchVm.assignRemotePlaylists(emptyList())
                 }
                 // songs = YTM audio search; albums surface as cards only (no video rows)
                 val filter = if (prefContentFilter == "songs") "music_songs" else prefContentFilter
@@ -3165,81 +3140,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (pipMode.value) { try { onEnterPip() } catch (_: Exception) { } }
     }
     // SoundCloud search (separate tab, own state; failures surface with retry).
-    var scJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // Music-tab search (SoundCloud / YouTube Music): main track search runs FIRST with one
     // retry; playlist cards resolve independently so a failing playlist endpoint can never
     // blank the track list. Errors carry the real extractor message (truncated) — the old
     // generic toast hid whether this was network, ReCaptcha, or a dead client_id.
     fun doScSearch(q: String, src: Int = scSource, kind: String = scKind) {
         if (q.isBlank()) return
-        scQuery = q
-        scLoading = true
-        scError = null
-        scJob?.cancel()
-        scJob = scope.launch {
-            try {
-                val region = if (prefCountry == "global") null else prefCountry
-                val musicFilter = when (kind) {
-                    "albums" -> "music_albums"
-                    "playlists" -> "music_playlists"
-                    "artists" -> "music_artists"
-                    else -> "music_songs"
-                }
-                suspend fun mainPage(): com.mohamedadel.mytube.data.youtube.SearchPage {
-                    if (src == 1 && kind == "albums")
-                        return com.mohamedadel.mytube.data.youtube.SearchPage(emptyList(), null, false, null)
-                    var last: com.mohamedadel.mytube.data.youtube.SearchPage? = null
-                    repeat(2) {
-                        last = if (src == 1)
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, region, musicFilter)
-                        else
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q)
-                        val l = last
-                        // T5: null-safe return instead of !! chain.
-                        if (l != null && l.error == null && l.items.isNotEmpty()) return l
-                    }
-                    return last ?: com.mohamedadel.mytube.data.youtube.SearchPage()
-                }
-                val page = try { mainPage() } catch (e: Exception) {
-                    com.mohamedadel.mytube.data.youtube.SearchPage(error = e.javaClass.simpleName + (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it.take(120) } ?: ""))
-                }
-                if (page.error != null && page.items.isEmpty()) {
-                    scError = try { ctx.getString(R.string.err_search_detail_fmt, page.error) } catch (_: Exception) { page.error }
-                    scResults = emptyList()
-                    remotePlaylists = emptyList()
-                    scSuggestion = null
-                    scCorrected = false
-                } else {
-                    scResults = page.items
-                    scNextPage = page.nextPage
-                    scHasMore = page.hasNext && page.nextPage != null
-                    // screens-fix Music P1-M7: mirror main-search correction row.
-                    scSuggestion = page.suggestion
-                    scCorrected = page.corrected
-                    if (!recentMusicSearches.contains(q)) {
-                        recentMusicSearches = (listOf(q) + recentMusicSearches).take(6)
-                        try { prefs.edit().putString("recent_music_searches", recentMusicSearches.joinToString("\u001f")).apply() } catch (_: Exception) { }
-                    }
-                    // playlist cards: best-effort, never fatal
-                    remotePlaylists = try {
-                        if (src == 1 && kind == "albums")
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, region, albums = true)
-                        else if (src == 1 && kind == "playlists")
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, region, music = true)
-                        else if (src == 1)
-                            emptyList()
-                        else
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.searchPlaylists(q, sc = true)
-                    } catch (_: Exception) { emptyList() }
-                }
-            } catch (e: Exception) {
-                val detail = e.javaClass.simpleName + (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it.take(120) } ?: "")
-                scError = try { ctx.getString(R.string.err_search_detail_fmt, detail) } catch (_: Exception) { detail }
-                scResults = emptyList()
-            } finally {
-                scLoading = false
-            }
-        }
+        searchVm.search(q, src, kind, if (prefCountry == "global") null else prefCountry)
     }
     fun refreshTaste() {
         // screens-fix Music P1-M5: TTL 5 min + only when the music tab is actually open.
@@ -3270,35 +3177,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     fun loadScMore() {
-        val q = scQuery
-        val pg = scNextPage
-        if (q.isBlank() || pg == null || scLoadingMore || scLoading || !scHasMore) return
-        scLoadingMore = true
-        scope.launch {
-            try {
-                val region = if (prefCountry == "global") null else prefCountry
-                val res = if (scSource == 1) {
-                    val mf = when (scKind) {
-                        "albums" -> "music_albums"
-                        "playlists" -> "music_playlists"
-                        "artists" -> "music_artists"
-                        else -> "music_songs"
-                    }
-                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, pg, region, mf)
-                } else {
-                    com.mohamedadel.mytube.data.youtube.YouTubeRepo.scSearch(q, pg)
-                }
-                val seen = scResults.mapNotNull { it.url ?: it.id }.toSet()
-                val fresh = res.items.filter { (it.url ?: it.id ?: it.title) !in seen }
-                scResults = scResults + fresh
-                scNextPage = res.nextPage
-                scHasMore = res.hasNext && res.nextPage != null
-            } catch (_: Exception) {
-                scHasMore = false
-            } finally {
-                scLoadingMore = false
-            }
-        }
+        searchVm.loadMore(if (prefCountry == "global") null else prefCountry)
     }
     // music-tab paging: auto-append when the tail approaches (same pattern as main search)
     val scTail = try {
@@ -3317,7 +3196,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         try {
             val heard = res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
             if (heard.isNotEmpty()) {
-                if (showSC) { scQuery = heard; doScSearch(heard) }
+                if (showSC) { searchVm.setScQuery(heard); doScSearch(heard) }
                 else { query = heard; svm.onQueryChange(heard); showSearch = false; doSearch(heard) }
             }
         } catch (_: Exception) { }
@@ -3772,8 +3651,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             return true
         }
         if (openRemote != null) {
-            openRemote = null
-            openRemoteItems = emptyList()
+            searchVm.clearOpenRemote()
             return true
         }
         if (showLibrary) {
@@ -3968,7 +3846,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 recentSearches = recentSearches,
                 recentMusicSearches = recentMusicSearches,
                 setRecentSearches = { recentSearches = it },
-                setRecentMusicSearches = { recentMusicSearches = it },
+                setRecentMusicSearches = { searchVm.assignRecentMusic(it) },
                 prefs = prefs,
                 playing = playing,
                 isPlaying = isPlaying,
@@ -3983,7 +3861,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 doUnifiedSearch = { q -> doUnifiedSearch(q) },
                 setShowSearch = { showSearch = it },
                 setShowSC = { showSC = it },
-                setScQuery = { scQuery = it },
+                setScQuery = { searchVm.setScQuery(it) },
                 setShowSuggestions = { showSuggestions = it },
                 clearUnifiedResults = { uYT = null; uSC = null; uYM = null; unifiedExpanded = null },
                 retryUnifiedSource = { q, s -> retryUnifiedSource(q, s) },
@@ -4167,14 +4045,14 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_setFeedFilter: (String?) -> Unit = { feedFilter = it }
             val mc_setFeedGroupUrls: (Set<String>?) -> Unit = { feedGroupUrls = it }
             val mc_setFeedGroupName: (String?) -> Unit = { feedGroupName = it }
-            val mc_setScQuery: (String) -> Unit = { scQuery = it }
-            val mc_setRecentMusicSearches: (List<String>) -> Unit = { recentMusicSearches = it }
-            val mc_setScSource: (Int) -> Unit = { scSource = it }
-            val mc_setScKind: (String) -> Unit = { scKind = it }
-            val mc_setScResults: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { scResults = it }
-            val mc_setScError: (String?) -> Unit = { scError = it }
-            val mc_setScSuggestion: (String?) -> Unit = { scSuggestion = it }
-            val mc_setRemotePlaylists: (List<com.mohamedadel.mytube.data.youtube.RemotePlaylist>) -> Unit = { remotePlaylists = it }
+            val mc_setScQuery: (String) -> Unit = { searchVm.setScQuery(it) }
+            val mc_setRecentMusicSearches: (List<String>) -> Unit = { searchVm.assignRecentMusic(it) }
+            val mc_setScSource: (Int) -> Unit = { searchVm.setScSource(it) }
+            val mc_setScKind: (String) -> Unit = { searchVm.setScKind(it) }
+            val mc_setScResults: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { searchVm.assignScResults(it) }
+            val mc_setScError: (String?) -> Unit = { searchVm.assignScError(it) }
+            val mc_setScSuggestion: (String?) -> Unit = { searchVm.assignScSuggestion(it) }
+            val mc_setRemotePlaylists: (List<com.mohamedadel.mytube.data.youtube.RemotePlaylist>) -> Unit = { searchVm.assignRemotePlaylists(it) }
             val mc_doScSearch: (String) -> Unit = { q -> doScSearch(q) }
             val mc_doScSearchSrc: (String, Int) -> Unit = { q, src -> doScSearch(q, src) }
             val mc_doScSearchKind: (String, Int, String) -> Unit = { q, src, k -> doScSearch(q, src, k) }
@@ -4187,7 +4065,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_onClearHistory: () -> Unit = { clearHistory() }
             val mc_onClearFavorites: () -> Unit = { clearFavorites() }
             val mc_onStartRadio: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = { v -> startRadio(v) }
-            val mc_setOpenRemote: (com.mohamedadel.mytube.data.youtube.RemotePlaylist?) -> Unit = { openRemote = it }
+            val mc_setOpenRemote: (com.mohamedadel.mytube.data.youtube.RemotePlaylist?) -> Unit = { searchVm.setOpenRemote(it) }
             val mc_setCurrentQuery: (String) -> Unit = { currentQuery = it }
             val mc_onSaveRemoteList: (List<com.mohamedadel.mytube.data.youtube.VideoItem>) -> Unit = { list -> saveRemoteList(list) }
             val mc_onLoadMoreRemote: () -> Unit = { loadMoreRemote() }
