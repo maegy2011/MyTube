@@ -475,6 +475,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val dao = remember { db.playlists() }
     val csvVm: com.mohamedadel.mytube.ui.library.PlaylistCsvViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val backupVm: com.mohamedadel.mytube.ui.backup.BackupViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val pinVm: com.mohamedadel.mytube.ui.pins.PinViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val sysVm: com.mohamedadel.mytube.ui.system.SystemViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val libVm: com.mohamedadel.mytube.ui.library.LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val feedVm: com.mohamedadel.mytube.ui.feed.FeedViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -552,12 +553,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         } catch (_: Exception) { }
     }
     // Download manager: the sd behind the current pinConfirm + live quick-pick selection.
-    var pinSd by remember { mutableStateOf<com.mohamedadel.mytube.data.youtube.StreamData?>(null) }
-    var pinSelQuality by remember { mutableStateOf(QUALITY_AUDIO_ONLY) }
-    var pinSelAudio by remember { mutableStateOf(0) }
-    var pinSelSubs by remember { mutableStateOf(emptySet<Int>()) } // empty = none
-    var pinSelLoc by remember { mutableStateOf("internal") }
-    var pinEst by remember { mutableStateOf(-1L) }
+    val pinSelQuality by pinVm.pinSelQuality.collectAsStateWithLifecycle()
+    val pinSelAudio by pinVm.pinSelAudio.collectAsStateWithLifecycle()
+    val pinSelSubs by pinVm.pinSelSubs.collectAsStateWithLifecycle()
+    val pinSelLoc by pinVm.pinSelLoc.collectAsStateWithLifecycle()
+    val pinSd by pinVm.pinSd.collectAsStateWithLifecycle()
+    val pinEst by pinVm.pinEst.collectAsStateWithLifecycle()
     // SponsorBlock: community skip segments (default OFF — video IDs go to a third party).
     val prefSb by settingsVm.prefSb.collectAsStateWithLifecycle()
     var sbSegments by remember { mutableStateOf(emptyList<SbSeg>()) }
@@ -739,11 +740,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             } else ""))
         }
     }
-    var pinningKeys by remember { mutableStateOf(setOf<String>()) }
+    val pinningKeys by pinVm.pinningKeys.collectAsStateWithLifecycle()
     // F5: in-flight download jobs for cancellation (Job.cancel + PinManager flag).
     // (PinRetry hoisted to top level — see above.)
-    val pinJobs = remember { java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>() }
-    var pinProgress by remember { mutableStateOf(mapOf<String, Float>()) }
+    val pinProgress by pinVm.pinProgress.collectAsStateWithLifecycle()
     var showDownloads by remember { mutableStateOf(false) }
     // notif 2026-11-12: bell screen state + live badge count (runtime layer).
     var showNotifications by remember { mutableStateOf(false) }
@@ -758,7 +758,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val prefAllow4k by settingsVm.prefAllow4k.collectAsStateWithLifecycle()
     // warn-consent carries the resolved stream: confirming resumes playback with ZERO re-extraction.
     var agePending by remember { mutableStateOf<Triple<VideoItem, Boolean, com.mohamedadel.mytube.data.youtube.StreamData?>?>(null) }
-    var pinConfirm by remember { mutableStateOf<com.mohamedadel.mytube.data.local.PinManager.PinRequest?>(null) }
+    val pinConfirm by pinVm.pinConfirm.collectAsStateWithLifecycle()
     val histFlowAll = remember { androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 30)) { com.mohamedadel.mytube.data.local.HistoryPaging(dao, 0, emptyList()) }.flow }
     val histFlowPinned = remember(pinKeys) {
         val k = pinKeys.toList().ifEmpty { listOf("__none__") }
@@ -771,6 +771,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val prefs = remember { ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE) }
     androidx.compose.runtime.LaunchedEffect(Unit) { searchVm.configure(prefs) { e -> try { ctx.getString(R.string.err_search_detail_fmt, e) } catch (_: Exception) { e } } }
     androidx.compose.runtime.LaunchedEffect(Unit) { settingsVm.configure(prefs) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { pinVm.configure(dao, prefs) }
     androidx.compose.runtime.LaunchedEffect(Unit) { backupVm.configure(dao, prefs) }
     androidx.compose.runtime.LaunchedEffect(Unit) { msearchVm.configure(prefs) { try { ctx.getString(R.string.err_search) } catch (_: Exception) { "search error" } } }
     // L1 (audit P1 2026-11-11): session-restore targets — declared before the prefs-load
@@ -2332,7 +2333,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
         val key = v.favKey()
         if (pinKeys.contains(key) || pinningKeys.contains(key)) return
-        pinningKeys = pinningKeys + key
+        pinVm.setPinning(key, true)
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // pin-deepfix: a null URL used to exit silently (no toast at all).
@@ -2358,59 +2359,52 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 // pin-runtime 2026-11-11: dialog state on Main (writes from IO are
                 // silently late/lost on some skins) + loc from the centralized default.
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    pinSd = s
-                    pinSelQuality = qq
-                    pinSelAudio = ai
-                    pinSelSubs = si
-                    try {
-                        pinSelLoc = com.mohamedadel.mytube.data.local.PinFiles.loc(ctx.applicationContext)
-                    } catch (_: Exception) { }
-                    pinEst = est
-                    pinConfirm = com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est)
+                    val loc = try { com.mohamedadel.mytube.data.local.PinFiles.loc(ctx.applicationContext) } catch (_: Exception) { "internal" }
+                    pinVm.setConfirm(com.mohamedadel.mytube.data.local.PinManager.PinRequest(v, plan, est), s, qq, ai, si, loc, est)
                 }
             } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
-            finally { pinningKeys = pinningKeys - key }
+            finally { pinVm.setPinning(key, false) }
         }
     }
     // pause/stop 2026-11-12: paused keys (job ended, staging kept for Range resume) +
     // stored plans so resume re-enters without re-resolving (single pinProgress source kept).
-    var pausedKeys by remember { mutableStateOf(setOf<String>()) }
-    val pinPlans = remember { java.util.concurrent.ConcurrentHashMap<String, Triple<com.mohamedadel.mytube.data.youtube.VideoItem, com.mohamedadel.mytube.data.local.PinManager.PinPlan, PinRetry?>>() }
     // pause/stop 2026-11-12: download-job execution lives in PinDownloadRunner
     // (data/local) — this composable method sits at the 64KB codegen limit and the
     // inline body broke compileDebugKotlin (MethodTooLargeException). Thin
     // forwarders only; every existing call site is untouched.
-    fun pinDeps(): com.mohamedadel.mytube.data.local.PinDownloadRunner.Deps =
-        com.mohamedadel.mytube.data.local.PinDownloadRunner.Deps(
-            scope = scope, act = ctx, app = ctx.applicationContext, dao = dao, prefs = prefs,
-            pinJobs = pinJobs, pinPlans = pinPlans,
-            pinSelLoc = pinSelLoc, allow4k = prefAllow4k,
-            kbps = { ctx.estimatedDownstreamKbps() },
-            uiToast = { m -> uiToast(m) },
-            isPinning = { k -> pinningKeys.contains(k) },
-            addPinning = { k -> pinningKeys = pinningKeys + k },
-            removePinning = { k -> pinningKeys = pinningKeys - k },
-            isPausedKey = { k -> pausedKeys.contains(k) },
-            addPaused = { k -> pausedKeys = pausedKeys + k },
-            removePaused = { k -> pausedKeys = pausedKeys - k },
-            setProgress = { k, f -> try { pinProgress = if (f == null) pinProgress - k else pinProgress + (k to f) } catch (_: Exception) { } }
-        )
+
+    // Phase 2.3 slice 15: PinHost seam — VM owns registry/runner, activity owns player/toasts/net.
+    val pinHost = remember {
+        object : com.mohamedadel.mytube.ui.pins.PinHost {
+            override fun uiToast(s: String) { uiToast(s) }
+            override fun kbps(): Int = ctx.estimatedDownstreamKbps()
+            override fun allow4k(): Boolean = prefAllow4k
+            override fun playingKey(): String? = try { playing?.favKey() } catch (_: Exception) { null }
+            override fun closePlayer() { closePlayer() }
+            override fun refreshPinsLabel() { refreshPinsLabel() }
+            override fun lastPinQuality(): String? = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
+            override fun lastPinSubs(): Set<Int> = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.toSet() } catch (_: Exception) { emptySet() }
+            override fun rememberPinChoices(q: String, subs: Set<Int>) {
+                try { prefs.edit().putString("pref_pin_last_q", q).putString("pref_pin_last_subs", subs.sorted().joinToString(",")).apply() } catch (_: Exception) { }
+            }
+        }
+    }
     fun runPinDownload(v: VideoItem, plan: com.mohamedadel.mytube.data.local.PinManager.PinPlan, key: String, alreadyAdded: Boolean = false, retry: PinRetry? = null, resume: Boolean = false) =
-        com.mohamedadel.mytube.data.local.PinDownloadRunner.run(v, plan, key, alreadyAdded, retry, resume, pinDeps())
+        pinVm.runPinDownload(v, plan, key, pinHost, alreadyAdded, retry, resume)
     // notif 2026-11-12: POST_NOTIFICATIONS at pin time (API33+) so the terminal
     // download notification is visible even if the launch-time grant was skipped.
     // PAUSE: suspends the OkHttp stream (flag; the loop exits at the next 256KB chunk),
     // keeps staging (.part byte counts = persisted resume offsets) + frozen progress.
     fun pausePinDownload(key: String) =
-        com.mohamedadel.mytube.data.local.PinDownloadRunner.pause(key, pinDeps())
+        pinVm.pausePinDownload(key, pinHost)
     // RESUME: re-enters runPinDownload with resume=true — staging kept, Range continues.
     fun resumePinDownload(key: String) =
-        com.mohamedadel.mytube.data.local.PinDownloadRunner.resume(key, pinDeps())
+        pinVm.resumePinDownload(key, pinHost)
     // STOP: aborts the job, wipes the partial file + temp meta (staging), clears every
     // tracking key, dismisses the notification — and shows ONLY the cancel toast
     // (runPinDownload stays silent on the cancel path, no false-failure toast).
     fun cancelPinDownload(key: String) =
-        com.mohamedadel.mytube.data.local.PinDownloadRunner.stop(key, pinDeps())
+        pinVm.cancelPinDownload(key, pinHost)
     // Notification Pause / Resume / Stop taps land here (same process static registry).
     try {
         com.mohamedadel.mytube.playback.DownloadActions.onPause = { k -> pausePinDownload(k) }
@@ -2429,10 +2423,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun confirmPin() {
         ensurePinNotifPerm()
         val pc = pinConfirm ?: return
-        val sd = pinSd
+        val sd = pinVm.pinSdNow()
         val key = pc.v.favKey()
-        pinConfirm = null
-        pinSd = null
+        pinVm.clearConfirm()
         // remember last choices: quick-pin replays them with one tap
         try {
             prefs.edit()
@@ -2458,7 +2451,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (pinKeys.contains(key) || pinningKeys.contains(key)) return
         // F6: optimistic add on the UI thread (mirrors requestPin) —
         // closes the double-tap race where two launches both passed the check before either added.
-        pinningKeys = pinningKeys + key
+        pinVm.setPinning(key, true)
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // pin-deepfix: a null URL used to exit silently (no toast at all).
@@ -2469,12 +2462,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 // Early exits below remove the key explicitly; the success path is owned
                 // by runPinDownload(alreadyAdded=true) which removes it when done.
                 val u = v.url
-                if (sd == null && u.isNullOrBlank()) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
-                val s = sd ?: YouTubeRepo.streamRouted(u ?: run { pinningKeys = pinningKeys - key; return@launch }) ?: run { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                if (sd == null && u.isNullOrBlank()) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                val s = sd ?: YouTubeRepo.streamRouted(u ?: run { pinVm.setPinning(key, false); return@launch }) ?: run { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 // SoundCloud HLS transcodings record to file (see downloadHlsTo) — only refuse non-SC streaming audio.
-                if (s.audioHlsOnly && !(u?.contains("soundcloud.com") == true)) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
+                if (s.audioHlsOnly && !(u?.contains("soundcloud.com") == true)) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.pin_err_stream)); return@launch }
                 if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
-                    pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
+                    pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch
                 }
                 val kbps = ctx.estimatedDownstreamKbps()
                 val lastQ = try { prefs.getString("pref_pin_last_q", null) } catch (_: Exception) { null }
@@ -2485,28 +2478,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 val lastSubs = try { (prefs.getString("pref_pin_last_subs", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }.filter { s.subtitles.getOrNull(it) != null }.toSet() } catch (_: Exception) { emptySet() }
                 val si = if (lastSubs.isNotEmpty()) lastSubs else matchSubIdxsFor(s)
                 val plan = com.mohamedadel.mytube.data.local.PinManager.buildPlan(s, qq, ai, si, kbps, maxH = if (prefAllow4k) Int.MAX_VALUE else 1080)
-                if (plan == null) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
+                if (plan == null) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)); return@launch }
                 runPinDownload(v, plan, key, alreadyAdded = true, retry = PinRetry(qq, ai, si))
-            } catch (_: Exception) { pinningKeys = pinningKeys - key; uiToast(ctx.getString(R.string.toast_pin_fail)) }
+            } catch (_: Exception) { pinVm.setPinning(key, false); uiToast(ctx.getString(R.string.toast_pin_fail)) }
         }
     }
     // external orphan pins (left after switching location to internal)
-    var orphanInfo by remember { mutableStateOf(0 to 0L) }
+    val orphanInfo by pinVm.orphanInfo.collectAsStateWithLifecycle()
     fun refreshOrphans() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                orphanInfo = com.mohamedadel.mytube.data.local.PinFiles.externalOrphans(ctx.applicationContext, pinKeys.toList())
-            } catch (_: Exception) { }
-        }
+        pinVm.refreshOrphans(pinKeys.toList())
     }
     fun cleanOrphans() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val n = com.mohamedadel.mytube.data.local.PinFiles.cleanExternalOrphans(ctx.applicationContext, pinKeys.toList())
-                refreshOrphans()
-                uiToast(ctx.getString(R.string.pin_orphans_cleaned_fmt, n))
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
-        }
+        pinVm.cleanOrphans(pinHost, pinKeys.toList())
     }
     androidx.compose.runtime.LaunchedEffect(showDownloads, pinKeys) { if (showDownloads) refreshOrphans() }
     // notif 2026-11-12: opening the screen marks everything read (badge clears).
@@ -2514,29 +2497,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (showNotifications) { try { dao.markAllNotificationsRead() } catch (_: Exception) { } }
     }
     fun clearAllPins() {
-        try {
-            val cur = playing?.favKey()
-            if (cur != null && com.mohamedadel.mytube.data.local.PinFiles.isPinned(ctx.applicationContext, cur)) closePlayer()
-        } catch (_: Exception) { }
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                com.mohamedadel.mytube.data.local.PinFiles.clearAll(ctx.applicationContext)
-                try { dao.clearPins() } catch (_: Exception) { }
-                refreshPinsLabel()
-                uiToast(ctx.getString(R.string.toast_pins_cleared))
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
-        }
+        pinVm.clearAllPins(pinHost)
     }
     fun doUnpin(key: String) {
-        // never delete under an in-flight download (it would re-upsert after us)
-        if (pinningKeys.contains(key)) { toast(ctx.getString(R.string.pinning)); return }
-        try { if (playing?.favKey() == key) closePlayer() } catch (_: Exception) { }
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                com.mohamedadel.mytube.data.local.PinManager.unpin(ctx.applicationContext, dao, key)
-                uiToast(ctx.getString(R.string.toast_unpinned))
-            } catch (_: Exception) { uiToast(ctx.getString(R.string.toast_pin_fail)) }
-        }
+        pinVm.doUnpin(key, pinHost)
     }
     fun smartBack(): Boolean {
         if (showNotifications) {
@@ -3163,7 +3127,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 onDeletePin = mc_onDeletePin,
                 onClearAllPins = mc_onClearAllPins,
                 onCancelPin = mc_onCancelPin,
-                pausedKeys = pausedKeys,
+                pausedKeys = pinVm.pausedKeys.collectAsStateWithLifecycle().value,
                 onPausePin = mc_onPausePin,
                 onResumePin = mc_onResumePin,
                 orphanInfo = orphanInfo,
@@ -3670,7 +3634,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     pinLoc = pinSelLoc,
                     extAvailable = try { com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext) } catch (_: Exception) { false },
                     onPinLoc = { loc ->
-                        pinSelLoc = loc
+                        pinVm.setPinSelLoc(loc)
                     },
                     onPinsWarn = { mb ->
                         settingsVm.setPrefPinWarnMb(mb)
@@ -3823,12 +3787,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 pinSelSubs = pinSelSubs,
                 pinEst = pinEst,
                 prefAllow4k = prefAllow4k,
-                setPinSelLoc = { pinSelLoc = it },
-                setPinSelQuality = { pinSelQuality = it },
-                setPinSelAudio = { pinSelAudio = it },
-                setPinSelSubs = { pinSelSubs = it },
-                setPinEst = { pinEst = it },
-                setPinConfirm = { pinConfirm = it },
+                setPinSelLoc = { pinVm.setPinSelLoc(it) },
+                setPinSelQuality = { pinVm.setPinSelQuality(it) },
+                setPinSelAudio = { pinVm.setPinSelAudio(it) },
+                setPinSelSubs = { pinVm.setPinSelSubs(it) },
+                setPinEst = { pinVm.setPinEst(it) },
+                setPinConfirm = { pinVm.setPinConfirm(it) },
                 onConfirmPin = { confirmPin() },
                 optionsFor = optionsFor,
                 setOptionsFor = { optionsFor = it },
