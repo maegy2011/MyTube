@@ -20,11 +20,14 @@ android {
     compileSdk = 34
     signingConfigs {
         create("release") {
-            if (!hasReleaseKey) throw GradleException("RELEASE_STORE_PASSWORD env or ~/.cellclaw/mytube-family.pw missing — refusing unsigned release")
-            storeFile = file("/home/administrator/.cellclaw/mytube-family.keystore")
-            storePassword = releaseStorePassword
-            keyAlias = "family"
-            keyPassword = releaseStorePassword
+            // CI-safe: debug/CI evaluation never needs the family key.
+            // Fail-fast only when a Release task is actually requested (below).
+            if (hasReleaseKey) {
+                storeFile = file("/home/administrator/.cellclaw/mytube-family.keystore")
+                storePassword = releaseStorePassword
+                keyAlias = "family"
+                keyPassword = releaseStorePassword
+            }
         }
     }
     defaultConfig {
@@ -43,6 +46,10 @@ android {
         }
         debug { isMinifyEnabled = false }
     }
+    // Fail-fast (2026-11-13 fix): a Release build without the family secret must
+    // break loudly — but debug/CI evaluation configures fine without it.
+    val wantsRelease = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+    if (wantsRelease && !hasReleaseKey) throw GradleException("RELEASE_STORE_PASSWORD env or ~/.cellclaw/mytube-family.pw missing — refusing unsigned release")
     buildFeatures { compose = true; buildConfig = true }
     // offline CI: lint-gradle artifact isn't in the dependency cache — skip release lint
     lint { checkReleaseBuilds = false; abortOnError = false }
