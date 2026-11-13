@@ -122,6 +122,16 @@ import com.mohamedadel.mytube.util.pickStartQuality
 import com.mohamedadel.mytube.util.resolveLang
 import com.mohamedadel.mytube.util.resolvePlaybackUrl
 import com.mohamedadel.mytube.ui.player.MiniPlayer
+import com.mohamedadel.mytube.ui.player.PlayerHost
+import com.mohamedadel.mytube.ui.player.enqueueLast
+import com.mohamedadel.mytube.ui.player.enqueueNext
+import com.mohamedadel.mytube.ui.player.isQueued
+import com.mohamedadel.mytube.ui.player.playFirstInQueue
+import com.mohamedadel.mytube.ui.player.playNextInQueue
+import com.mohamedadel.mytube.ui.player.playNowAlone
+import com.mohamedadel.mytube.ui.player.playPrevInQueue
+import com.mohamedadel.mytube.ui.player.playRandomInQueue
+import com.mohamedadel.mytube.ui.player.startRadio
 import com.mohamedadel.mytube.ui.player.PlayerArea
 import com.mohamedadel.mytube.ui.player.subStyleFromPrefs
 import com.mohamedadel.mytube.ui.player.SleepTimerDialog
@@ -412,7 +422,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     var playerBufferedPct by remember { mutableStateOf(0) }
     var playerError by remember { mutableStateOf<String?>(null) }
     // queue (suggestion #3): sequential playback of the result list, started only by explicit user action
-    var autoAdvance by rememberSaveable { mutableStateOf(false) }
+    val autoAdvance by playerVm.autoAdvance.collectAsStateWithLifecycle()
     // Radio (endless related queue): seeded from StreamData.related, refilled at every
     // queue end from the just-played track's own related list. Local-only, no account.
     val radioOn by playerVm.radioOn.collectAsStateWithLifecycle()
@@ -1194,7 +1204,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // playlist tools: tab sort + per-playlist song sort (prefs) + video-mode queue flag
     var plTabSort by remember { mutableStateOf("custom") }
     var plSongSort by remember { mutableStateOf("added") }
-    var videoModeQueue by remember { mutableStateOf(false) }
+    val videoModeQueue by playerVm.videoModeQueue.collectAsStateWithLifecycle()
     fun loadPlSorts(pid: Long?) {
         try { plTabSort = prefs.getString("pl_tab_sort", "custom") ?: "custom" } catch (_: Exception) { }
         try { plSongSort = if (pid == null) "added" else (prefs.getString("pl_sort_" + pid, "added") ?: "added") } catch (_: Exception) { plSongSort = "added" }
@@ -1718,11 +1728,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         if (!inQueue) {
             // single tap: this video alone is the queue (no implicit follow-up)
             playerVm.replaceQueue(listOf(v), 0)
-            autoAdvance = false
+            playerVm.setAutoAdvance(false)
             playerVm.setRadioOn(false)
-            videoModeQueue = false
+            playerVm.setVideoModeQueue(false)
         } else {
-            autoAdvance = true
+            playerVm.setAutoAdvance(true)
         }
         // F11 (audit P2 2026-11-11): canonical key everywhere — id/url matching let dupes slip the position.
         playerVm.setQueueIndex(playerVm.indexOfKey(v.favKey()))
@@ -1809,7 +1819,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                 toast(ctx.getString(R.string.err_age_blocked))
                                 val nxt = queue.getOrNull(queueIndex + 1)
                                 if (nxt != null) playVideo(nxt, inQueue = true, expand = playerExpanded)
-                                else { playerVm.setRadioOn(false); autoAdvance = false }
+                                else { playerVm.setRadioOn(false); playerVm.setAutoAdvance(false) }
                                 return@launch
                             }
                             agePending = Triple(v, inQueue, null)
@@ -1921,7 +1931,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         toast(ctx.getString(R.string.err_age_blocked))
                         val nxt = queue.getOrNull(queueIndex + 1)
                         if (nxt != null) playVideo(nxt, inQueue = true, expand = playerExpanded)
-                        else { playerVm.setRadioOn(false); autoAdvance = false }
+                        else { playerVm.setRadioOn(false); playerVm.setAutoAdvance(false) }
                         return@launch
                     }
                     agePending = Triple(v, inQueue, s)
@@ -1972,56 +1982,24 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
 
     // Queue navigation (suggestion #3): next/previous within the result list.
-    fun startRadio(v: VideoItem) {
-        scope.launch {
-            try {
-                // screens-fix Music P0-M2: local audio has no related list — refuse early.
-                if (v.isLocal()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
-                val sdNow = streamData
-                // 2026-11-12 (runtime fix): related may be empty for ANY source (YTM items,
-                // SC has none by design, age-gated/region-emptied YT) — fall back to a title
-                // search for all sources instead of SC-only, and surface the extractor
-                // reason instead of swallowing it (was: generic toast on every failure).
-                var seedErr: String? = null
-                val seed: List<VideoItem> = if (playing?.favKey() == v.favKey() && !sdNow?.related.isNullOrEmpty()) {
-                    // T5: local val instead of !! (race-safe snapshot).
-                    sdNow.related
-                } else {
-                    val url = v.url
-                    if (url.isNullOrBlank()) { toast(ctx.getString(R.string.toast_radio_fail)); return@launch }
-                    var list: List<VideoItem> = emptyList()
-                    if (!url.contains("soundcloud.com")) {
-                        try {
-                            val s = com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(url)
-                            list = s?.related ?: emptyList()
-                            if (list.isEmpty()) seedErr = s?.error
-                        } catch (e: Exception) { seedErr = e.message?.take(80) }
-                    }
-                    if (list.isEmpty()) {
-                        val q = v.title?.takeIf { it.isNotBlank() }
-                        if (q == null) {
-                            if (!seedErr.isNullOrBlank()) toast(ctx.getString(R.string.err_extract_detail, seedErr))
-                            else toast(ctx.getString(R.string.toast_radio_fail))
-                            return@launch
-                        }
-                        try { list = com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(q, null, null).items }
-                        catch (e: Exception) { if (seedErr == null) seedErr = e.message?.take(80) }
-                    }
-                    list
-                }
-                val fresh = seed.filter { it.url?.isNotBlank() == true }.distinctBy { it.favKey() }.take(15)
-                if (fresh.isEmpty()) {
-                    if (!seedErr.isNullOrBlank()) toast(ctx.getString(R.string.err_extract_detail, seedErr))
-                    else toast(ctx.getString(R.string.toast_radio_fail))
-                    return@launch
-                }
-                playerVm.replaceQueue(listOf(v) + fresh.filter { it.favKey() != v.favKey() }, 0)
-                playerVm.setRadioOn(true)
-                videoModeQueue = false
-                toast(ctx.getString(R.string.toast_radio_started))
-                playVideo(v, inQueue = true)
-            } catch (_: Exception) { toast(ctx.getString(R.string.toast_radio_fail)) }
+    // Phase 2.3 slice 5: PlayerHost seam — VM owns navigation logic, activity owns player/toasts/streams.
+    val playerHost = remember {
+        val showToast: (String) -> Unit = { s -> toast(s) }
+        object : com.mohamedadel.mytube.ui.player.PlayerHost {
+            override fun play(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) {
+                playVideo(v, inQueue, expand, forcePlay = forcePlay)
+            }
+            override fun toast(resId: Int, arg: String?) {
+                try { showToast(if (arg == null) ctx.getString(resId) else ctx.getString(resId, arg)) } catch (_: Exception) { }
+            }
+            override fun expandedNow(): Boolean = playerExpanded
+            override fun relatedNow(): List<VideoItem> =
+                try { streamData?.related ?: emptyList() } catch (_: Exception) { emptyList() }
+            override fun enableAutoplayPrefs() { settingsVm.setPrefAutoplay(true) }
         }
+    }
+    fun startRadio(v: VideoItem) {
+        playerVm.startRadio(v, playerHost)
     }
     // T6 (audit P1 2026-11-11): cancellable fade — a second call cancels the first (no stuck low volume).
     // Plain holder (no state): no composable reads this; state would recompose pointlessly.
@@ -2045,9 +2023,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         }
     }
     fun playPrevInQueue() {
-        // T4 (audit P1): pure index math lives in PlayerController.
-        val prev = playerVm.prevSequential()
-        if (prev != null) playVideo(prev, inQueue = true, expand = playerExpanded)
+        playerVm.playPrevInQueue(playerHost)
     }
     // F7 (audit P1 2026-11-11): shuffled play order as favKeys (head = next to play).
     // Both auto-advance and manual Next consume it; rebuilt when empty/stale so queue
@@ -2059,98 +2035,13 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // playback modes: random pick (shuffle) + wrap-around (repeat all)
     // 2026-11-12: forcePlay=true only from the STATE_ENDED path (session keeps sounding).
     fun playRandomInQueue(forcePlay: Boolean = false) {
-        if (queue.size < 2) { if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = forcePlay); return }
-        val nxt = playerVm.drawShuffled()
-        if (nxt == null) {
-            // stale order despite refresh: legacy uniform pick (never strand playback).
-            val q = queue
-            var n = queueIndex
-            var guard = 0
-            while (n == queueIndex && guard++ < 8) n = (0 until q.size).random()
-            playVideo(q[n], inQueue = true, expand = playerExpanded, forcePlay = forcePlay)
-            return
-        }
-        playVideo(nxt, inQueue = true, expand = playerExpanded, forcePlay = forcePlay)
+        playerVm.playRandomInQueue(forcePlay, playerHost)
     }
     fun playNextInQueue(forcePlay: Boolean = false) {
-        // F7 (audit P1 2026-11-11): manual Next honors shuffle (was: sequential always).
-        // Declared after playRandomInQueue: Kotlin locals must precede use.
-        if (shuffleOn && queue.size > 1) { playRandomInQueue(forcePlay); return }
-        // T4 (audit P1): pure index math lives in PlayerController.
-        val next = playerVm.nextSequential()
-        // expand=playerExpanded: advancing from notification/lock while browsing must not yank the full player open
-        if (next != null) { playVideo(next, inQueue = true, expand = playerExpanded, forcePlay = forcePlay); return }
-        // queue exhausted: radio refills from the just-played track's related list (endless)
-        if (radioOn) {
-            // screens-fix Music P0-M2: never refill for local tracks (no related list) — stop cleanly.
-            if (playing?.isLocal() == true) { playerVm.setRadioOn(false); autoAdvance = false; return }
-            // F11: one canonical key for refill too (dedupe seeds, not just the queue).
-            val cached = (streamData?.related ?: emptyList())
-                .filter { r -> (r.url?.isNotBlank() == true) && queue.none { it.favKey() == r.favKey() } }
-                .distinctBy { it.favKey() }
-                .take(10)
-            if (cached.isNotEmpty()) {
-                playerVm.appendItems(cached)
-                // F10 (audit P2 2026-11-11): radio grows +10 per refill — trim the consumed head,
-                // keeping the last 50 + everything upcoming (queueIndex adjusted).
-                playerVm.trimHead()
-                playVideo(cached[0], inQueue = true, expand = playerExpanded, forcePlay = true)
-                return
-            }
-            // 2026-11-12 (runtime fix): cached related empty for ANY source (YTM/SC/emptied YT)
-            // must not kill the radio silently — refetch + title-search fallback async (all sources),
-            // then keep playing; only stop with a reason when that dries up too.
-            val cur = playing
-            val curUrl = cur?.url
-            if (curUrl.isNullOrBlank() && cur?.title.isNullOrBlank()) {
-                if (playMode == "repeatAll" && queue.isNotEmpty()) { playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = true); return }
-                playerVm.setRadioOn(false)
-                autoAdvance = false
-                return
-            }
-            scope.launch {
-                try {
-                    var seed: List<VideoItem> = emptyList()
-                    var err: String? = null
-                    if (!curUrl.isNullOrBlank() && !curUrl.contains("soundcloud.com")) {
-                        try {
-                            val s = com.mohamedadel.mytube.data.youtube.YouTubeRepo.streamRouted(curUrl)
-                            seed = s?.related ?: emptyList()
-                            if (seed.isEmpty()) err = s?.error
-                        } catch (e: Exception) { err = e.message?.take(80) }
-                    }
-                    if (seed.isEmpty() && !cur?.title.isNullOrBlank()) {
-                        try { seed = com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(cur?.title ?: "", null, null).items }
-                        catch (e: Exception) { if (err == null) err = e.message?.take(80) }
-                    }
-                    val fresh = seed
-                        .filter { r -> (r.url?.isNotBlank() == true) && queue.none { it.favKey() == r.favKey() } }
-                        .distinctBy { it.favKey() }
-                        .take(10)
-                    if (fresh.isNotEmpty()) {
-                        playerVm.appendItems(fresh)
-                        playerVm.trimHead()
-                        playVideo(fresh[0], inQueue = true, expand = playerExpanded, forcePlay = true)
-                        return@launch
-                    }
-                    // F9 (audit P2 2026-11-11): repeatAll wraps the live queue when radio dries up
-                    // instead of stranding playback at the end.
-                    if (playMode == "repeatAll" && queue.isNotEmpty()) { playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = true); return@launch }
-                    playerVm.setRadioOn(false)
-                    autoAdvance = false
-                    if (!err.isNullOrBlank()) toast(ctx.getString(R.string.err_extract_detail, err))
-                } catch (_: Exception) {
-                    playerVm.setRadioOn(false)
-                    autoAdvance = false
-                    toast(ctx.getString(R.string.toast_radio_fail))
-                }
-            }
-            return
-        }
-        autoAdvance = false
+        playerVm.playNextInQueue(forcePlay, playerHost)
     }
     fun playFirstInQueue(forcePlay: Boolean = false) {
-        if (queue.isNotEmpty()) playVideo(queue[0], inQueue = true, expand = playerExpanded, forcePlay = forcePlay) else autoAdvance = false
+        playerVm.playFirstInQueue(forcePlay, playerHost)
     }
     // explicit queue building (long-press menu)
     // 2026-11-12 (runtime fix, بأمر محمد): Play Now ALWAYS enables autoplay —
@@ -2158,28 +2049,16 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // continues after this item), and force-starts this item now. Cold taps
     // elsewhere still start silent (unchanged).
     fun playNowAlone(v: VideoItem) {
-        settingsVm.setPrefAutoplay(true)
-        playVideo(v, inQueue = false, expand = true, forcePlay = true)
-        autoAdvance = true
-        playerVm.setRadioOn(true)
+        playerVm.playNowAlone(v, playerHost)
     }
     // explicit queue building only: duplicates are refused with a toast (no silent dupes)
     fun isQueued(v: VideoItem): Boolean =
-        queue.any { it.favKey() == v.favKey() }
+        playerVm.isQueued(v)
     fun enqueueNext(v: VideoItem) {
-        if (isQueued(v)) { toast(ctx.getString(R.string.toast_already_queued)); return }
-        val q = queue.toMutableList()
-        val at = if (queueIndex >= 0) queueIndex + 1 else q.size
-        q.add(at.coerceIn(0, q.size), v)
-        playerVm.replaceQueue(q, queueIndex)
-        toast(ctx.getString(R.string.toast_added_queue))
-        if (playing == null) { playerVm.setQueueIndex(0); playVideo(v, inQueue = true, expand = true, forcePlay = true) }
+        playerVm.enqueueNext(v, playerHost)
     }
     fun enqueueLast(v: VideoItem) {
-        if (isQueued(v)) { toast(ctx.getString(R.string.toast_already_queued)); return }
-        playerVm.appendItems(listOf(v))
-        toast(ctx.getString(R.string.toast_added_queue))
-        if (playing == null) playVideo(v, inQueue = true, expand = true, forcePlay = true)
+        playerVm.enqueueLast(v, playerHost)
     }
     fun modeLabel(m: String): String = when (m) {
         "repeatAll" -> ctx.getString(R.string.mode_repeat_all)
@@ -2265,9 +2144,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         sleepTrackKey = null
                         if (!stale) {
                             // stop at end of track: no advance, no repeat, no radio refill
-                            autoAdvance = false
+                            playerVm.setAutoAdvance(false)
                             playerVm.setRadioOn(false)
-                            videoModeQueue = false
+                            playerVm.setVideoModeQueue(false)
                             sleepLeft = ""
                             return
                         }
@@ -2276,7 +2155,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     // (explicit repeatOne replay still honors the user's picked mode).
                     if (!prefAutoplay && playMode != "repeatOne") {
                         playerVm.setRadioOn(false)
-                        autoAdvance = false
+                        playerVm.setAutoAdvance(false)
                         return
                     }
                     when {
@@ -3001,7 +2880,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         playerVm.setPlaying(null)
         streamData = null
         playerExpanded = false
-        autoAdvance = false
+        playerVm.setAutoAdvance(false)
         playerVm.setRadioOn(false)
         playerVm.setQueueIndex(-1)
     }
@@ -3639,7 +3518,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                         msearchVm.showPlaylistResults(list)
                                         playerVm.replaceQueue(list, 0)
                                         playerVm.setRadioOn(false)
-                                        videoModeQueue = playlists.firstOrNull { it.id == pid }?.mode == "video"
+                                        playerVm.setVideoModeQueue(playlists.firstOrNull { it.id == pid }?.mode == "video")
                                         playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
                                     }
                                 }
@@ -3651,7 +3530,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                                     msearchVm.showPlaylistResults(list)
                                     playerVm.replaceQueue(list, idx)
                                     playerVm.setRadioOn(false)
-                                    videoModeQueue = playlists.firstOrNull { it.id == openPlaylistId }?.mode == "video"
+                                    playerVm.setVideoModeQueue(playlists.firstOrNull { it.id == openPlaylistId }?.mode == "video")
                                     playVideo(list[idx], inQueue = true, expand = true, forcePlay = true)
                                 }
                             },

@@ -41,6 +41,20 @@ class PlayerViewModel : ViewModel() {
     val sleepAtMs: StateFlow<Long?> = _sleepAtMs.asStateFlow()
     fun setSleepAtMs(v: Long?) { _sleepAtMs.value = v }
 
+    // ---- slice 5: navigation state + read accessors for PlayerNavigation ----
+    private val _autoAdvance = MutableStateFlow(false)
+    val autoAdvance: StateFlow<Boolean> = _autoAdvance.asStateFlow()
+    fun setAutoAdvance(v: Boolean) { _autoAdvance.value = v }
+    private val _videoModeQueue = MutableStateFlow(false)
+    val videoModeQueue: StateFlow<Boolean> = _videoModeQueue.asStateFlow()
+    fun setVideoModeQueue(v: Boolean) { _videoModeQueue.value = v }
+    fun queueNow(): List<VideoItem> = _queue.value
+    fun queueIndexNow(): Int = _queueIndex.value
+    fun playingNow(): VideoItem? = _playing.value
+    fun radioOnNow(): Boolean = _radioOn.value
+    fun playModeNow(): String = _playMode.value
+    fun shuffleOnNow(): Boolean = _shuffleOn.value
+
     fun initModes(mode: String, shuffle: Boolean, radio: Boolean) {
         _playMode.value = mode
         _shuffleOn.value = shuffle
