@@ -132,6 +132,7 @@ import com.mohamedadel.mytube.ui.player.enqueueLast
 import com.mohamedadel.mytube.ui.player.castCurrent
 import com.mohamedadel.mytube.ui.player.fadeOutAndPause
 import com.mohamedadel.mytube.ui.player.applyQuality
+import com.mohamedadel.mytube.ui.player.playVideo
 import com.mohamedadel.mytube.ui.player.enqueueNext
 import com.mohamedadel.mytube.ui.player.isQueued
 import com.mohamedadel.mytube.ui.player.playFirstInQueue
@@ -1289,276 +1290,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Single taps never expand: the mini player appears (SoundCloud/YTM-phone behavior);
     // tap the mini player to expand. Explicit actions (play-now, queue-when-idle) pass
     // expand = true; queue advances preserve the current state.
-    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null, forcePlay: Boolean = false) {
-        // 2026-11-12 (runtime layer): mini-player prefs — a FRESH play (nothing was playing)
-        // opens the full player when the mini bar is disabled entirely (master OFF) or when
-        // auto-show is OFF, so playback stays reachable; track switches inside a live session
-        // keep the current expanded/collapsed state (no yanking on auto-advance).
-        val hadPlaying = playing != null
-        playerVm.setPlaying(v)
-        recordHistory(v)
-        if (expand) playerExpanded = true
-        else if (!hadPlaying && (!prefMiniEnabled || !prefMiniAutoshow)) playerExpanded = true
-        if (!inQueue) {
-            // single tap: this video alone is the queue (no implicit follow-up)
-            playerVm.replaceQueue(listOf(v), 0)
-            playerVm.setAutoAdvance(false)
-            playerVm.setRadioOn(false)
-            playerVm.setVideoModeQueue(false)
-        } else {
-            playerVm.setAutoAdvance(true)
-        }
-        // F11 (audit P2 2026-11-11): canonical key everywhere — id/url matching let dupes slip the position.
-        playerVm.setQueueIndex(playerVm.indexOfKey(v.favKey()))
-        playerVm.setPlayerLoading(true)
-        playerVm.setPlayerError(null)
-        playerVm.setPlayerPositionMs(0L); playerVm.setPlayerDurationMs(0L); playerVm.setPlayerBufferedPct(0)
-        // queue continuity: advancing inside a playing queue resumes; an explicit play-button
-        // tap (forcePlay) force-starts even when the player was idle (wasPlaying is false after
-        // the pause above, so autoplay alone could never resume a fresh tap). Plain prepares
-        // without forcePlay keep the old paused behavior.
-        // 2026-11-12 (runtime fix): at STATE_ENDED isPlaying is already false, so the check
-        // below was ALWAYS false on auto-advance — the next radio/queue track loaded paused
-        // (radio looked dead). forcePlay=true is passed ONLY from the ENDED path, i.e. inside
-        // an already user-started session; cold taps keep forcePlay=false (no autoplay).
-        val wasPlayingQueue = (inQueue && try { player?.isPlaying == true } catch (_: Exception) { false }) || forcePlay
-        if (!inQueue) try { prefetched.clear() } catch (_: Exception) { }
-        try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { }
-        scope.launch {
-            val key = v.favKey()
-            val app = ctx.applicationContext
-            val pinned = try { withContext(kotlinx.coroutines.Dispatchers.IO) { com.mohamedadel.mytube.data.local.PinFiles.isPinned(app, key) } } catch (_: Exception) { false }
-            if (prefOffline && !pinned) {
-                playerVm.setPlayerLoading(false)
-                playerVm.setPlayerError(ctx.getString(R.string.err_pin_first))
-                toast(ctx.getString(R.string.err_pin_first))
-                return@launch
-            }
-            playerVm.setPlayingPinned(false)
-            // On-device file (MediaStore content:// or file://): zero-network playback,
-            // same local path as pins (no cache, no autoplay change).
-            // L9 (audit P2 2026-11-11): explicit local type check (id carries the local: prefix).
-            if (v.isLocal()) {
-                try {
-                    playerVm.setAudioTrackIdx(0)
-                    playerVm.setSubTrackIdx(-1)
-                    val s = com.mohamedadel.mytube.data.youtube.StreamData(
-                        audioLowestUrl = v.url,
-                        title = v.title,
-                        subtitles = emptyList()
-                    )
-                    playerVm.setStreamData(s)
-                    playerVm.setQualityList(listOf(QUALITY_AUDIO_ONLY))
-                    playerVm.setQuality(QUALITY_AUDIO_ONLY)
-                    applyQuality(QUALITY_AUDIO_ONLY, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
-                    if (CastManager.connected.value) castCurrent(autoplay = true)
-                    return@launch
-                } catch (_: Exception) {
-                    playerVm.setPlayerLoading(false)
-                    playerVm.setPlayerError(ctx.getString(R.string.toast_pin_fail))
-                    return@launch
-                }
-            }
-            playerVm.setPlayingPinned(pinned)
-            if (pinned) {
-                // Phase 4: zero-network playback from the faithful snapshot
-                // T1 (audit P1 2026-11-11): disk + JSON snapshot on IO; player work stays on Main.
-                val snap = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val d = com.mohamedadel.mytube.data.local.PinFiles.existingDir(app, key)
-                    val vf = if (d != null) File(d, "video.mp4") else null
-                    val af = if (d != null) File(d, "audio.m4a") else null
-                    val sf = if (d != null) File(d, "sub.vtt") else null
-                    val m = try { if (d != null) org.json.JSONObject(File(d, "meta.json").readText()) else org.json.JSONObject() } catch (_: Exception) { org.json.JSONObject() }
-                    Triple(d, Triple(vf, af, sf), m)
-                }
-                try {
-                    val dir = snap.first ?: throw IllegalStateException("pin missing")
-                    val vFile = snap.second.first ?: throw IllegalStateException("pin missing")
-                    val aFile = snap.second.second
-                    val sFile = snap.second.third
-                    if (!vFile.exists()) throw IllegalStateException("pin missing")
-                    val meta = snap.third
-                    val pinAge = try { meta.optInt("age", 0) } catch (_: Exception) { 0 }
-                    if (pinAge >= 18 && !ageOk) {
-                        if (prefAgeMode == "block") {
-                            playerVm.setPlayerLoading(false)
-                            playerVm.setPlayerError(ctx.getString(R.string.err_age_blocked))
-                            toast(ctx.getString(R.string.err_age_blocked))
-                            return@launch
-                        } else if (prefAgeMode == "warn") {
-                            playerVm.setPlayerLoading(false)
-                            // L3 (audit P0 2026-11-11): queue auto-advance must never freeze silently — skip with a toast.
-                            // Inline (not playNextInQueue()): local funs declared below are out of scope here.
-                            if (inQueue) {
-                                toast(ctx.getString(R.string.err_age_blocked))
-                                val nxt = queue.getOrNull(queueIndex + 1)
-                                if (nxt != null) playVideo(nxt, inQueue = true, expand = playerExpanded)
-                                else { playerVm.setRadioOn(false); playerVm.setAutoAdvance(false) }
-                                return@launch
-                            }
-                            playerVm.setAgePending(Triple(v, inQueue, null))
-                            return@launch
-                        }
-                    }
-                    val label = meta.optString("quality", QUALITY_AUDIO_ONLY).takeIf { it.isNotBlank() } ?: QUALITY_AUDIO_ONLY
-                    val hasAudio = aFile?.exists() == true
-                    val hasSub = sFile?.exists() == true
-                    val vUri = android.net.Uri.fromFile(vFile).toString()
-                    // multi-sub meta ("subs" array); legacy pins fall back to the single sub.vtt keys
-                    val subs = try {
-                        val arr = meta.optJSONArray("subs")
-                        if (arr != null && arr.length() > 0) {
-                            (0 until arr.length()).mapNotNull { i ->
-                                val o = try { arr.getJSONObject(i) } catch (_: Exception) { null } ?: return@mapNotNull null
-                                val fn = o.optString("file", "")
-                                val f = if (fn.isBlank()) null else File(dir, fn)
-                                if (f == null || !f.exists()) return@mapNotNull null
-                                com.mohamedadel.mytube.data.youtube.SubtitleItem(
-                                    url = android.net.Uri.fromFile(f).toString(),
-                                    langTag = o.optString("lang", "und").takeIf { it.isNotBlank() } ?: "und",
-                                    label = o.optString("label", "").takeIf { it.isNotBlank() } ?: label,
-                                    auto = false,
-                                    mime = o.optString("mime", "text/vtt").takeIf { it.isNotBlank() } ?: "text/vtt"
-                                )
-                            }
-                        } else null
-                    } catch (_: Exception) { null }
-                        ?: if (hasSub) listOf(
-                            com.mohamedadel.mytube.data.youtube.SubtitleItem(
-                                url = android.net.Uri.fromFile(sFile ?: vFile).toString(),
-                                langTag = meta.optString("subLang", "und").takeIf { it.isNotBlank() } ?: "und",
-                                label = meta.optString("subTag", "").takeIf { it.isNotBlank() } ?: label,
-                                auto = false,
-                                mime = meta.optString("subMime", "text/vtt").takeIf { it.isNotBlank() } ?: "text/vtt"
-                            )
-                        ) else emptyList()
-                    // offline fix 2026-11-11: recorded containers (Cause 2) — explicit MIME
-                    // frees playback from file-extension sniffing (audio-opus-as-.mp4 etc.).
-                    // Legacy pins (no mime keys) fall back to null = old sniffing behavior.
-                    fun cleanMime(raw: String?): String? {
-                        val m = raw?.trim()?.takeIf { it.contains("/") } ?: return null
-                        return if (m.startsWith("audio/") || m.startsWith("video/")) m else null
-                    }
-                    val s = com.mohamedadel.mytube.data.youtube.StreamData(
-                        audioLowestUrl = if (hasAudio && aFile != null) android.net.Uri.fromFile(aFile).toString() else vUri,
-                        videoUrlByQuality = mapOf(label to vUri),
-                        muxedQualities = if (hasAudio) emptySet() else setOf(label),
-                        title = v.title,
-                        subtitles = subs,
-                        channelUrl = v.channelUrl,
-                        videoMime = cleanMime(meta.optString("videoMime", "")),
-                        audioMime = cleanMime(meta.optString("audioMime", ""))
-                    )
-                    playerVm.setStreamData(s)
-                    playerVm.setQualityList(listOf(label))
-                    playerVm.setQuality(label)
-                    playerVm.setAudioTrackIdx(0)
-                    playerVm.setSubTrackIdx(if (hasSub) 0 else -1)
-                    playerVm.setSubTrackFor(null) // F8: packaged pin track, not an explicit pick)
-                    applyQuality(label, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
-                    playerVm.setPlayingPinned(true)
-                } catch (_: Exception) {
-                    playerVm.setPlayerLoading(false)
-                    playerVm.setPlayerError(ctx.getString(R.string.toast_pin_fail))
-                    toast(ctx.getString(R.string.toast_pin_fail))
-                } finally {
-                    playerVm.setPlayerLoading(false)
-                }
-                return@launch
-            }
-            // M1: consume a prefetched next-item stream when it matches (skips the 1-3s extraction spinner)
-            var s = pre ?: try { prefetched.remove(key) } catch (_: Exception) { null }
-            if (s != null && s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) s = null
-            if (s == null) {
-                s = try { YouTubeRepo.streamRouted(v.url ?: return@launch) } catch (_: Exception) { null }
-                if (s == null) {
-                    playerVm.setPlayerLoading(false)
-                    playerVm.setPlayerError(ctx.getString(R.string.err_no_sources))
-                    return@launch
-                }
-            }
-            // total extraction failure used to leave the spinner forever with NO error (silent death).
-            // Detect it here and report a smart message instead.
-            // 2026-11-12: StreamData.error carries the extractor's own reason — show it
-            // so a stale-extractor/403 class is diagnosable on device (was: generic text only).
-            if (s.audioLowestUrl == null && s.videoUrlByQuality.isEmpty()) {
-                playerVm.setPlayerLoading(false)
-                playerVm.setPlayerError(if (!s.error.isNullOrBlank()) ctx.getString(R.string.err_extract_detail, s.error) else ctx.getString(R.string.err_no_sources))
-                return@launch
-            }
-            // Fresh video = fresh indices, set HERE (the LaunchedEffect on streamData races
-            // applyQuality and played the previous video's dub/subtitle — major #4/#5).
-            playerVm.setAudioTrackIdx(pickAudioIdxFor(s))
-            playerVm.setSubTrackIdx(matchSubIdxFor(s))
-            playerVm.setSubTrackFor(null) // F8: auto-matched, not an explicit pick)
-            if (s.ageLimit >= 18 && !ageOk) {
-                if (prefAgeMode == "block") {
-                    playerVm.setPlayerLoading(false)
-                    playerVm.setPlayerError(ctx.getString(R.string.err_age_blocked))
-                    toast(ctx.getString(R.string.err_age_blocked))
-                    return@launch
-                } else if (prefAgeMode == "warn") {
-                    playerVm.setPlayerLoading(false)
-                    // L3 (audit P0 2026-11-11): queue auto-advance must never freeze silently — skip with a toast.
-                    // Inline (not playNextInQueue()): local funs declared below are out of scope here.
-                    if (inQueue) {
-                        toast(ctx.getString(R.string.err_age_blocked))
-                        val nxt = queue.getOrNull(queueIndex + 1)
-                        if (nxt != null) playVideo(nxt, inQueue = true, expand = playerExpanded)
-                        else { playerVm.setRadioOn(false); playerVm.setAutoAdvance(false) }
-                        return@launch
-                    }
-                    playerVm.setAgePending(Triple(v, inQueue, s))
-                    return@launch
-                }
-            }
-            if (s.isLive) {
-                // live edge: single URL, no quality ladder, no cache (cache would pin a stale edge)
-                playerVm.setQualityList(listOf("live"))
-                playerVm.setQuality("live")
-                playerVm.setStreamData(s)
-                applyQuality("live", s, player, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
-                if (CastManager.connected.value) castCurrent(autoplay = true)
-                return@launch
-            }
-            playerVm.setStreamData(s)
-            // label the auto entry with the speed-based target so the user sees what auto will pick
-            val kbps = ctx.estimatedDownstreamKbps()
-            playerVm.setQualityList(qualityEntriesFor(s, kbps))
-            val startQ = if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY else pickStartQuality(s, kbps)
-            // video-mode playlist: never start audio-only (keeps videos out of the music flow)
-            playerVm.setQuality(if (videoModeQueue && startQ == QUALITY_AUDIO_ONLY && s.videoUrlByQuality.isNotEmpty()) {
-                qualityList.firstOrNull { it != QUALITY_AUDIO_ONLY } ?: startQ
-            } else startQ)
-            applyQuality(startQ, s, player, autoplay = wasPlayingQueue, forceStart = forcePlay)
-            if (CastManager.connected.value) castCurrent(autoplay = true)
-            // M1: prefetch the next queue item's stream (metadata/subs only — zero media bytes)
-            try {
-                if (prefPreloadNext && !prefOffline && autoAdvance && prefetched.size < 2 && (!prefPreloadWifiOnly || isUnmeteredNet())) {
-                    val nxt = queue.getOrNull(queueIndex + 1)
-                    if (nxt != null) {
-                        val nk = nxt.favKey()
-                        val app2 = ctx.applicationContext
-                        if (!com.mohamedadel.mytube.data.local.PinFiles.isPinned(app2, nk) && !prefetched.containsKey(nk) && nxt.url != null && nxt.url?.isLocalAudioUri() != true) {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                try {
-                                    val s2 = YouTubeRepo.streamRouted(nxt.url ?: return@launch) ?: return@launch
-                                    if (s2.audioLowestUrl != null || s2.videoUrlByQuality.isNotEmpty()) {
-                                        if (prefetched.size < 2) prefetched[nk] = s2
-                                    }
-                                } catch (_: Exception) { }
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) { }
-        }
-    }
+    fun playVideo(v: VideoItem, inQueue: Boolean = false, expand: Boolean = false, ageOk: Boolean = false, pre: com.mohamedadel.mytube.data.youtube.StreamData? = null, forcePlay: Boolean = false) {\n        try { (playerHostHolder[0] as? com.mohamedadel.mytube.ui.player.PlayEngineHost)?.let { playerVm.playVideo(v, inQueue, expand, ageOk, pre, forcePlay, it) } } catch (_: Exception) { }\n    }
 
     // Queue navigation (suggestion #3): next/previous within the result list.
     val playerHost = remember {
         val showToast: (String) -> Unit = { s -> toast(s) }
-        object : com.mohamedadel.mytube.ui.player.PlayerHost {
+        object : com.mohamedadel.mytube.ui.player.PlayEngineHost {
             override fun play(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) {
                 playVideo(v, inQueue, expand, forcePlay = forcePlay)
             }
@@ -1595,6 +1332,44 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             override fun hookSlot(): Array<androidx.media3.common.Player.Listener?> = externalAudioHook
             override fun allow4kNow(): Boolean = prefAllow4k
             override fun kbpsNow(): Int = ctx.estimatedDownstreamKbps()
+            override fun playPrefs(): com.mohamedadel.mytube.ui.player.PlayPrefs =
+                com.mohamedadel.mytube.ui.player.PlayPrefs(
+                    offline = prefOffline, ageMode = prefAgeMode,
+                    miniEnabled = prefMiniEnabled, miniAutoshow = prefMiniAutoshow,
+                    preloadNext = prefPreloadNext, preloadWifiOnly = prefPreloadWifiOnly,
+                    videoMode = videoModeQueue
+                )
+            override fun exo(): ExoPlayer? = player
+            override fun playerWasPlaying(): Boolean = try { player?.isPlaying == true } catch (_: Exception) { false }
+            override fun pauseNow() { try { player?.playWhenReady = false; player?.pause() } catch (_: Exception) { } }
+            override fun recordHistory(v: VideoItem) { libVm.recordHistory(v) }
+            override fun takePrefetched(key: String): com.mohamedadel.mytube.data.youtube.StreamData? =
+                try { prefetched.remove(key) } catch (_: Exception) { null }
+            override fun putPrefetched(key: String, s: com.mohamedadel.mytube.data.youtube.StreamData) {
+                try { prefetched[key] = s } catch (_: Exception) { }
+            }
+            override fun prefetchCount(): Int = try { prefetched.size } catch (_: Exception) { 0 }
+            override fun clearPrefetch() { try { prefetched.clear() } catch (_: Exception) { } }
+            override fun isUnmetered(): Boolean = isUnmeteredNet()
+            override fun pickAudio(s: com.mohamedadel.mytube.data.youtube.StreamData): Int = pickAudioIdxFor(s)
+            override fun pickSub(s: com.mohamedadel.mytube.data.youtube.StreamData): Int = matchSubIdxFor(s)
+            override fun startQuality(s: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String = pickStartQuality(s, kbps)
+            override fun qualityEntries(s: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): List<String> = qualityEntriesFor(s, kbps)
+            override fun setExpanded(b: Boolean) { playerExpanded = b }
+            override fun offlinePinFail() {
+                playerVm.setPlayerLoading(false)
+                playerVm.setPlayerError(ctx.getString(R.string.err_pin_first))
+                toast(ctx.getString(R.string.err_pin_first))
+            }
+            override fun extractFail(detail: String?) {
+                playerVm.setPlayerLoading(false)
+                playerVm.setPlayerError(if (!detail.isNullOrBlank()) ctx.getString(R.string.err_extract_detail, detail) else ctx.getString(R.string.err_no_sources))
+            }
+            override fun pinFail() {
+                playerVm.setPlayerError(ctx.getString(R.string.toast_pin_fail))
+                toast(ctx.getString(R.string.toast_pin_fail))
+            }
+            override fun ageBlocked() { toast(ctx.getString(R.string.err_age_blocked)) }
             override fun onCastStarted() {
                 try { player?.pause() } catch (_: Exception) { }
                 toast(ctx.getString(R.string.toast_cast_started))

@@ -91,6 +91,8 @@ class PlayerViewModel : ViewModel() {
     fun streamDataNow(): com.mohamedadel.mytube.data.youtube.StreamData? = _streamData.value
     fun setQualityList(l: List<String>) { _qualityList.value = l }
     fun setQuality(q: String) { _quality.value = q }
+    fun qualityListNow(): List<String> = _qualityList.value
+    fun autoAdvanceNow(): Boolean = _autoAdvance.value
     fun qualityNow(): String = _quality.value
     fun setAudioTrackIdx(i: Int) { _audioTrackIdx.value = i }
     fun audioTrackIdxNow(): Int = _audioTrackIdx.value
