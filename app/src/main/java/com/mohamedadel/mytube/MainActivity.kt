@@ -113,6 +113,14 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY
+import com.mohamedadel.mytube.util.autoKeyFor
+import com.mohamedadel.mytube.util.cap4k
+import com.mohamedadel.mytube.util.matchSubIdxsFor
+import com.mohamedadel.mytube.util.pickAudioIdxFor
+import com.mohamedadel.mytube.util.pickStartQuality
+import com.mohamedadel.mytube.util.resolveLang
+import com.mohamedadel.mytube.util.resolvePlaybackUrl
 import com.mohamedadel.mytube.ui.player.MiniPlayer
 import com.mohamedadel.mytube.ui.player.PlayerArea
 import com.mohamedadel.mytube.ui.player.subStyleFromPrefs
@@ -336,7 +344,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // screens-fix Library P2-L10: single const for the default quality key (was a magic string ×5).
-private const val QUALITY_AUDIO_ONLY = "audio-only (default)"
 
 // 2026-11-12 (runtime fix): playback session survives rotation/process death so the
 // mini-player, queue position and radio flag are not wiped by a config change.
@@ -676,7 +683,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }.collectAsStateWithLifecycle(initialValue = emptyList())
     // Sleep timer: absolute deadline (uptime ms). The polling loop below watches it;
     // expiry pauses playback and clears itself. Survives nothing — a deliberate session choice.
-    var sleepAtMs by remember { mutableStateOf<Long?>(null) }
+    val sleepAtMs by playerVm.sleepAtMs.collectAsStateWithLifecycle()
     var sleepLeft by remember { mutableStateOf("") }
     var showSleep by remember { mutableStateOf(false) }
     // end-of-track mode: stop when the current track ends instead of after N minutes
@@ -809,7 +816,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             try {
                 val dl = prefs.getLong("sleep_deadline", 0L)
                 if (dl > android.os.SystemClock.uptimeMillis() + 30000L) {
-                    sleepAtMs = dl
+                    playerVm.setSleepAtMs(dl)
                     // F1: re-arm the service-side deadline after process restart.
                     try { PlaybackService.scheduleSleep(dl - android.os.SystemClock.uptimeMillis()) } catch (_: Exception) { }
                 } else if (dl > 0L) {
@@ -839,32 +846,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
     // language helpers: resolve "auto" to the device language; push prefs into the player.
     // Placed AFTER prefs/player/streamData declarations (Kotlin locals must precede use).
-    fun resolveLang(pref: String): String? = when (pref) {
-        "off" -> null
-        "original" -> null
-        "auto" -> try { java.util.Locale.getDefault().language } catch (_: Exception) { "ar" }
-        else -> pref
-    }
     // fallback chain: primary -> secondary -> device -> English/original. Null = no forcing.
-    fun pickAudioIdxFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Int {
-        val tracks = sd?.audioTracks ?: return 0
-        if (tracks.isEmpty()) return 0
-        if (prefPreferOriginal) {
-            val i = tracks.indexOfFirst { (it.type ?: "").equals("ORIGINAL", ignoreCase = true) }
-            if (i >= 0) return i
-        }
-        val ordered = listOf(resolveLang(prefAudioLang), resolveLang(prefAudioLang2)) +
-            listOf(try { java.util.Locale.getDefault().language } catch (_: Exception) { null }, "en")
-        for (want in ordered) {
-            if (want == null) return 0 // "original" or "off": keep the video's own first track
-            val i = tracks.indexOfFirst { t ->
-                val tag = t.localeTag ?: t.name ?: ""
-                tag.startsWith(want, ignoreCase = true)
-            }
-            if (i >= 0) return i
-        }
-        return 0
-    }
+    fun pickAudioIdxFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Int =
+        pickAudioIdxFor(sd, prefPreferOriginal, prefAudioLang, prefAudioLang2)
     fun pickAudioIdx(): Int = pickAudioIdxFor(streamData)
     // Trending loader: defined as a suspend-friendly launcher; the actual scope is
     // passed at call sites (Kotlin locals must precede use, scope lives below).
@@ -942,23 +926,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     fun matchSubIdx(): Int = matchSubIdxFor(streamData)
     // Multi-subtitle default: the primary match PLUS the secondary-language match (Arabic + English
     // out of the box when both exist) — the user can still toggle any track in the dialog.
-    fun matchSubIdxsFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Set<Int> {
-        if (prefSubLang == "off") return emptySet()
-        val subs = sd?.subtitles ?: return emptySet()
-        if (subs.isEmpty()) return emptySet()
-        val device = try { java.util.Locale.getDefault().language } catch (_: Exception) { null }
-        val ordered = (listOf(resolveLang(prefSubLang), resolveLang(prefSubLang2)) + listOf(device, "en")).filterNotNull().distinct()
-        val pool = if (prefSubHideAuto) subs.filter { !it.auto } else subs
-        val out = linkedSetOf<Int>()
-        for (want in ordered) {
-            if (want == "original") break // "original": keep the player's own default
-            var i = pool.indexOfFirst { !it.auto && it.langTag.startsWith(want, ignoreCase = true) }
-            if (i < 0) i = pool.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
-            if (i >= 0) out.add(subs.indexOf(pool[i]))
-            if (out.size >= 2) break
-        }
-        return out
-    }
+    fun matchSubIdxsFor(sd: com.mohamedadel.mytube.data.youtube.StreamData?): Set<Int> =
+        matchSubIdxsFor(sd, prefSubLang, prefSubLang2, prefSubHideAuto)
     LaunchedEffect(streamData, prefAudioLang, prefAudioLang2) {
         // backup only: playVideo sets both indices synchronously after resolve (no race).
         // Pinned playback keeps its packaged tracks — never auto-rematch those.
@@ -1560,18 +1529,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Policy: default quality is audio-only; NEVER auto-play. Playback starts only via explicit user tap on play.
     // Gate-1: URL resolution extracted from applyQuality — null = unavailable (caller surfaces the error).
     // Returns (playback url, is it a muxed file, user-picked audio url or null).
-    fun resolvePlaybackUrl(q: String, s: StreamData): Triple<String, Boolean, String?>? {
-        val selAudio = s.audioTracks.getOrNull(audioTrackIdx)?.url ?: s.audioLowestUrl
-        val maxH = if (prefAllow4k) Int.MAX_VALUE else 1080
-        val capped = if (maxH == Int.MAX_VALUE) s else try { s.copy(videoUrlByQuality = s.videoUrlByQuality.filterKeys { (qualityHeight(it) ?: 0) <= maxH }) } catch (_: Exception) { s }
-        val url = when {
-            q == QUALITY_AUDIO_ONLY -> selAudio
-            q.startsWith("auto") -> autoUrl(capped, ctx.estimatedDownstreamKbps())
-            else -> capped.videoUrlByQuality[q]
-        } ?: return null
-        val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
-        return Triple(url, url in muxedUrls, selAudio)
-    }
+    fun resolvePlaybackUrl(q: String, s: StreamData): Triple<String, Boolean, String?>? =
+        resolvePlaybackUrl(q, s, audioTrackIdx, prefAllow4k, ctx.estimatedDownstreamKbps())
 
     fun applyQuality(q: String, s: StreamData, p: ExoPlayer?, autoplay: Boolean = false, forceStart: Boolean = false, local: Boolean = false) {
         if (p == null) return
@@ -1695,33 +1654,18 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // expand=false keeps the current collapsed/expanded state (queue advancing while browsing).
     // 4K gate: when off, ladders behave as if >1080p never existed (saves data on small screens).
     fun cap4k(sd: com.mohamedadel.mytube.data.youtube.StreamData): com.mohamedadel.mytube.data.youtube.StreamData =
-        if (prefAllow4k) sd else try { sd.copy(videoUrlByQuality = sd.videoUrlByQuality.filterKeys { (qualityHeight(it) ?: 0) <= 1080 }) } catch (_: Exception) { sd }
-    fun autoKeyFor(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
-        val sd = cap4k(sd0)
-        return autoUrl(sd, kbps)?.let { u ->
-            val h = sd.videoUrlByQuality.entries.firstOrNull { it.value == u }?.key
-                ?.let { qualityHeight(it) }
-            if (h != null && h != Int.MAX_VALUE) "auto \u2022 ${h}p" else "auto"
-        } ?: "auto"
-    }
+        cap4k(sd, prefAllow4k)
+    fun autoKeyFor(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String =
+        autoKeyFor(sd0, kbps, prefAllow4k)
     fun qualityEntriesFor(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): List<String> {
-        val sd = cap4k(sd0)
-        val autoKey = autoKeyFor(sd, kbps)
-        val sorted = sd.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
+        val sd = cap4k(sd0, prefAllow4k)
+        val autoKey = autoKeyFor(sd, kbps, prefAllow4k)
+        val sorted = sd.videoUrlByQuality.keys.sortedByDescending { com.mohamedadel.mytube.util.qualityHeight(it) ?: 0 }
         return mutableListOf(QUALITY_AUDIO_ONLY, autoKey).also { it.addAll(sorted) }
     }
     // default quality preference (applies to every new video AND to list-context pins)
-    fun pickStartQuality(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
-        val sd = cap4k(sd0)
-        val autoKey = autoKeyFor(sd, kbps)
-        val sorted = sd.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
-        return when (prefQuality) {
-            "auto" -> autoKey
-            "saver" -> sorted.lastOrNull() ?: QUALITY_AUDIO_ONLY
-            "high" -> sorted.firstOrNull() ?: autoKey
-            else -> QUALITY_AUDIO_ONLY
-        }
-    }
+    fun pickStartQuality(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String =
+        pickStartQuality(sd0, kbps, prefQuality, prefAllow4k)
     // Chromecast: guess the receiver content type from the resolved stream URL.
     // Falls back to audio/mp4 + video/mp4 (progressive — what the extractor hands us).
     fun castMimeFor(url: String, audioOnly: Boolean): String {
@@ -2494,7 +2438,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     val left = deadline - android.os.SystemClock.uptimeMillis()
                     if (left <= 0) {
                         fadeOutAndPause()
-                        sleepAtMs = null
+                        playerVm.setSleepAtMs(null)
                         sleepLeft = ""
                         try { prefs.edit().remove("sleep_deadline").apply() } catch (_: Exception) { }
                     } else {
@@ -4667,7 +4611,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 sleepLeft = sleepLeft,
                 setSleepEndOfTrack = { sleepEndOfTrack = it },
                 setSleepTrackKey = { sleepTrackKey = it },
-                setSleepAtMs = { sleepAtMs = it },
+                setSleepAtMs = { playerVm.setSleepAtMs(it) },
                 setSleepLeft = { sleepLeft = it },
                 setShowSleep = { showSleep = it },
                 playing = playing,

@@ -16,6 +16,7 @@ import com.mohamedadel.mytube.data.youtube.VideoItem
 // non-browser agents on the player stack too — same class as the pin-side
 // 403 fixed with PIN_UA in PinManager. One constant for both stacks.
 const val BROWSER_UA = "Mozilla/5.0"
+const val QUALITY_AUDIO_ONLY = "audio-only (default)"
 
 fun Context.estimatedDownstreamKbps(): Int {
     return try {
@@ -197,4 +198,88 @@ fun Context.openInYoutubeCtx(v: VideoItem) {
     } catch (_: Exception) {
         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$id"))) } catch (_: Exception) { }
     }
+}
+
+// Phase 2.3 slice 4 (2026-11-13): pure track/quality selectors moved out of the
+// God-Activity. All inputs explicit (no prefs reads) — same logic, testable.
+
+fun resolveLang(pref: String): String? = when (pref) {
+    "off" -> null
+    "original" -> null
+    "auto" -> try { java.util.Locale.getDefault().language } catch (_: Exception) { "ar" }
+    else -> pref
+}
+
+fun cap4k(sd: StreamData, allow4k: Boolean): StreamData =
+    if (allow4k) sd else try { sd.copy(videoUrlByQuality = sd.videoUrlByQuality.filterKeys { (qualityHeight(it) ?: 0) <= 1080 }) } catch (_: Exception) { sd }
+
+fun autoKeyFor(sd0: StreamData, kbps: Int, allow4k: Boolean): String {
+    val sd = cap4k(sd0, allow4k)
+    return autoUrl(sd, kbps)?.let { u ->
+        val h = sd.videoUrlByQuality.entries.firstOrNull { it.value == u }?.key
+            ?.let { qualityHeight(it) }
+        if (h != null && h != Int.MAX_VALUE) "auto \u2022 ${h}p" else "auto"
+    } ?: "auto"
+}
+
+fun resolvePlaybackUrl(q: String, s: StreamData, audioTrackIdx: Int, allow4k: Boolean, kbps: Int): Triple<String, Boolean, String?>? {
+    val selAudio = s.audioTracks.getOrNull(audioTrackIdx)?.url ?: s.audioLowestUrl
+    val capped = cap4k(s, allow4k)
+    val url = when {
+        q == QUALITY_AUDIO_ONLY -> selAudio
+        q.startsWith("auto") -> autoUrl(capped, kbps)
+        else -> capped.videoUrlByQuality[q]
+    } ?: return null
+    val muxedUrls = s.videoUrlByQuality.filter { s.muxedQualities.contains(it.key) }.values.toSet()
+    return Triple(url, url in muxedUrls, selAudio)
+}
+
+fun pickStartQuality(sd0: StreamData, kbps: Int, qualityPref: String, allow4k: Boolean): String {
+    val sd = cap4k(sd0, allow4k)
+    val autoKey = autoKeyFor(sd, kbps, allow4k)
+    val sorted = sd.videoUrlByQuality.keys.sortedByDescending { qualityHeight(it) ?: 0 }
+    return when (qualityPref) {
+        "auto" -> autoKey
+        "saver" -> sorted.lastOrNull() ?: QUALITY_AUDIO_ONLY
+        "high" -> sorted.firstOrNull() ?: autoKey
+        else -> QUALITY_AUDIO_ONLY
+    }
+}
+
+fun pickAudioIdxFor(sd: StreamData?, preferOriginal: Boolean, lang1: String, lang2: String): Int {
+    val tracks = sd?.audioTracks ?: return 0
+    if (tracks.isEmpty()) return 0
+    if (preferOriginal) {
+        val i = tracks.indexOfFirst { (it.type ?: "").equals("ORIGINAL", ignoreCase = true) }
+        if (i >= 0) return i
+    }
+    val ordered = listOf(resolveLang(lang1), resolveLang(lang2)) +
+        listOf(try { java.util.Locale.getDefault().language } catch (_: Exception) { null }, "en")
+    for (want in ordered) {
+        if (want == null) return 0
+        val i = tracks.indexOfFirst { t ->
+            val tag = t.localeTag ?: t.name ?: ""
+            tag.startsWith(want, ignoreCase = true)
+        }
+        if (i >= 0) return i
+    }
+    return 0
+}
+
+fun matchSubIdxsFor(sd: StreamData?, subLang: String, subLang2: String, subHideAuto: Boolean): Set<Int> {
+    if (subLang == "off") return emptySet()
+    val subs = sd?.subtitles ?: return emptySet()
+    if (subs.isEmpty()) return emptySet()
+    val device = try { java.util.Locale.getDefault().language } catch (_: Exception) { null }
+    val ordered = (listOf(resolveLang(subLang), resolveLang(subLang2)) + listOf(device, "en")).filterNotNull().distinct()
+    val pool = if (subHideAuto) subs.filter { !it.auto } else subs
+    val out = linkedSetOf<Int>()
+    for (want in ordered) {
+        if (want == "original") break
+        var i = pool.indexOfFirst { !it.auto && it.langTag.startsWith(want, ignoreCase = true) }
+        if (i < 0) i = pool.indexOfFirst { it.langTag.startsWith(want, ignoreCase = true) }
+        if (i >= 0) out.add(subs.indexOf(pool[i]))
+        if (out.size >= 2) break
+    }
+    return out
 }

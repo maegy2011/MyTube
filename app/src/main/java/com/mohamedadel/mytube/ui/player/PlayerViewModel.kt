@@ -37,6 +37,9 @@ class PlayerViewModel : ViewModel() {
     val shuffleOn: StateFlow<Boolean> = _shuffleOn.asStateFlow()
 
     private val _shuffleOrder = MutableStateFlow<List<String>>(emptyList())
+    private val _sleepAtMs = MutableStateFlow<Long?>(null)
+    val sleepAtMs: StateFlow<Long?> = _sleepAtMs.asStateFlow()
+    fun setSleepAtMs(v: Long?) { _sleepAtMs.value = v }
 
     fun initModes(mode: String, shuffle: Boolean, radio: Boolean) {
         _playMode.value = mode
