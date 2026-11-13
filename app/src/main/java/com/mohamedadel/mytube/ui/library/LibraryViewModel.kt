@@ -58,6 +58,41 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     val pinsBytes: StateFlow<Long> = _pinsBytes.asStateFlow()
     private val _histCount = MutableStateFlow(0)
     val histCount: StateFlow<Int> = _histCount.asStateFlow()
+
+    private val _plCovers = MutableStateFlow(mapOf<Long, List<String>>())
+    val plCovers: StateFlow<Map<Long, List<String>>> = _plCovers.asStateFlow()
+    private val _plTabSort = MutableStateFlow("custom")
+    val plTabSort: StateFlow<String> = _plTabSort.asStateFlow()
+    private val _plSongSort = MutableStateFlow("added")
+    val plSongSort: StateFlow<String> = _plSongSort.asStateFlow()
+
+    fun refreshPlCovers(playlists: List<com.mohamedadel.mytube.data.local.PlaylistWithCount>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val d = dao ?: return@launch
+                val m = mutableMapOf<Long, List<String>>()
+                for (pl in playlists) {
+                    try { m[pl.id] = d.playlistThumbs(pl.id) } catch (_: Exception) { }
+                }
+                _plCovers.value = m
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun setPlTabSort(v: String, prefs: android.content.SharedPreferences) {
+        _plTabSort.value = v
+        try { prefs.edit().putString("pl_tab_sort", v).apply() } catch (_: Exception) { }
+    }
+
+    fun setPlSongSort(v: String, pid: Long?, prefs: android.content.SharedPreferences) {
+        _plSongSort.value = v
+        try { pid?.let { prefs.edit().putString("pl_sort_" + it, v).apply() } } catch (_: Exception) { }
+    }
+
+    fun loadPlSorts(pid: Long?, prefs: android.content.SharedPreferences) {
+        try { _plTabSort.value = prefs.getString("pl_tab_sort", "custom") ?: "custom" } catch (_: Exception) { }
+        try { _plSongSort.value = if (pid == null) "added" else (prefs.getString("pl_sort_" + pid, "added") ?: "added") } catch (_: Exception) { }
+    }
     private val _cacheSizeLabel = MutableStateFlow("—")
     val cacheSizeLabel: StateFlow<String> = _cacheSizeLabel.asStateFlow()
     private val _groupCounts = MutableStateFlow<Map<Long, Int>>(emptyMap())

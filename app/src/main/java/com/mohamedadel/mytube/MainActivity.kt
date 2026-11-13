@@ -1112,28 +1112,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted -> localVm.onPermissionResult(granted) }
     // playlist artwork covers (first 4 song thumbs per playlist, refreshed on change)
-    var plCovers by remember { mutableStateOf(mapOf<Long, List<String>>()) }
+    val plCovers by libVm.plCovers.collectAsStateWithLifecycle()
     fun refreshPlCovers() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val m = mutableMapOf<Long, List<String>>()
-                for (pl in playlists) {
-                    try { m[pl.id] = dao.playlistThumbs(pl.id) } catch (_: Exception) { }
-                }
-                plCovers = m
-            } catch (_: Exception) { }
-        }
+        libVm.refreshPlCovers(playlists)
     }
     androidx.compose.runtime.LaunchedEffect(playlists) { refreshPlCovers() }
     // One-tap favorite toggle (needs scope, so it lives here).
     // Short user feedback for every silent success/failure in favorites/queue/playlists.
     // playlist tools: tab sort + per-playlist song sort (prefs) + video-mode queue flag
-    var plTabSort by remember { mutableStateOf("custom") }
-    var plSongSort by remember { mutableStateOf("added") }
+    val plTabSort by libVm.plTabSort.collectAsStateWithLifecycle()
+    val plSongSort by libVm.plSongSort.collectAsStateWithLifecycle()
     val videoModeQueue by playerVm.videoModeQueue.collectAsStateWithLifecycle()
     fun loadPlSorts(pid: Long?) {
-        try { plTabSort = prefs.getString("pl_tab_sort", "custom") ?: "custom" } catch (_: Exception) { }
-        try { plSongSort = if (pid == null) "added" else (prefs.getString("pl_sort_" + pid, "added") ?: "added") } catch (_: Exception) { plSongSort = "added" }
+        libVm.loadPlSorts(pid, prefs)
     }
     // S5+S9 (audit P2 2026-11-11): CSV goes through FileProvider + EXTRA_STREAM —
     // a thousand-row list as EXTRA_TEXT would blow the ~1MB Binder budget (TransactionTooLarge).
@@ -2811,12 +2802,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                             // screens-fix Library P1-L4: CSV import entry.
                             onImport = { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } },
                             tabSort = plTabSort,
-                            onTabSort = { v -> plTabSort = v; try { prefs.edit().putString("pl_tab_sort", v).apply() } catch (_: Exception) { } },
+                            onTabSort = { v -> libVm.setPlTabSort(v, prefs) },
                             songSort = plSongSort,
-                            onSongSort = { v ->
-                                plSongSort = v
-                                try { openPlaylistId?.let { prefs.edit().putString("pl_sort_" + it, v).apply() } } catch (_: Exception) { }
-                            }
+                            onSongSort = { v -> libVm.setPlSongSort(v, openPlaylistId, prefs) }
         )
     }
 
