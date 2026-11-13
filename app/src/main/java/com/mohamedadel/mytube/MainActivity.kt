@@ -658,7 +658,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val scSuggestion by searchVm.scSuggestion.collectAsStateWithLifecycle()
     val scCorrected by searchVm.scCorrected.collectAsStateWithLifecycle()
     // screens-fix Music P1-M5: taste TTL (5 min) — refreshTaste skips network while fresh.
-    var tasteFetchedAt by remember { mutableStateOf(0L) }
     // screens-fix Library P2-L12: most-replayed rail data (loaded when the hub opens).
     var topPlayedHome by remember { mutableStateOf(emptyList<com.mohamedadel.mytube.data.local.PlayedStat>()) }
     // home-redesign Phase 2 (2026-11-12): recent history for the continue-watching row.
@@ -669,10 +668,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val scListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val recentMusicSearches by searchVm.recentMusicSearches.collectAsStateWithLifecycle()
     // Local-profile recommendations (no account): quick picks + one YTM mix shelf.
-    var tasteProfile by remember { mutableStateOf<com.mohamedadel.mytube.util.TasteProfile?>(null) }
-    var tasteMix by remember { mutableStateOf(emptyList<VideoItem>()) }
-    var tasteMixTerm by remember { mutableStateOf<String?>(null) }
-    var tasteMixLoading by remember { mutableStateOf(false) }
+    val tasteVm: com.mohamedadel.mytube.ui.search.TasteViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val tasteProfile by tasteVm.tasteProfile.collectAsStateWithLifecycle()
+    val tasteMix by tasteVm.tasteMix.collectAsStateWithLifecycle()
+    val tasteMixTerm by tasteVm.tasteMixTerm.collectAsStateWithLifecycle()
+    val tasteMixLoading by tasteVm.tasteMixLoading.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(Unit) { tasteVm.configure(dao) }
     val trendVm: com.mohamedadel.mytube.ui.trending.TrendingViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val trendTab by trendVm.trendTab.collectAsStateWithLifecycle()
     val trendingItems by trendVm.trendingItems.collectAsStateWithLifecycle()
@@ -2632,32 +2633,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         searchVm.search(q, src, kind, if (prefCountry == "global") null else prefCountry)
     }
     fun refreshTaste() {
-        // screens-fix Music P1-M5: TTL 5 min + only when the music tab is actually open.
-        val now = System.currentTimeMillis()
-        if (tasteProfile != null && now - tasteFetchedAt < 5 * 60 * 1000L) return
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val top = try { dao.topPlayed(20) } catch (_: Exception) { emptyList() }
-                val prof = com.mohamedadel.mytube.util.buildTasteProfile(top, favorites, recentMusicSearches, recentSearches)
-                tasteProfile = prof
-                tasteFetchedAt = System.currentTimeMillis()
-                // one network enrichment: YTM songs for the top term (silent fail, tab-local)
-                val term = prof.terms.firstOrNull()
-                if (!term.isNullOrBlank() && term != tasteMixTerm && !tasteMixLoading) {
-                    tasteMixLoading = true
-                    try {
-                        val page = try {
-                            com.mohamedadel.mytube.data.youtube.YouTubeRepo.search(
-                                term, null, if (prefCountry == "global") null else prefCountry, "music_songs")
-                        } catch (_: Exception) { null }
-                        val seen = prof.picks.mapNotNull { it.url ?: it.id }.toSet()
-                        tasteMix = (page?.items ?: emptyList()).filter { (it.url ?: it.id ?: "") !in seen }.take(6)
-                        tasteMixTerm = term
-                    } catch (_: Exception) { }
-                    tasteMixLoading = false
-                }
-            } catch (_: Exception) { }
-        }
+        tasteVm.refreshTaste(favorites, recentMusicSearches, recentSearches, prefCountry)
     }
     fun loadScMore() {
         searchVm.loadMore(if (prefCountry == "global") null else prefCountry)
