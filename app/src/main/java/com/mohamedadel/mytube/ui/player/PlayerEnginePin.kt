@@ -15,14 +15,14 @@ import kotlinx.coroutines.withContext
  * enforces the age gate. Fns <= 30 lines.
  */
 
-private data class PinStream(val stream: StreamData, val pinLabel: String, val hasSub: Boolean, val age: Int)
+internal data class PinStream(val stream: StreamData, val pinLabel: String, val hasSub: Boolean, val age: Int)
 
 private fun cleanPinMime(raw: String?): String? {
     val m = raw?.trim()?.takeIf { it.contains("/") } ?: return null
     return if (m.startsWith("audio/") || m.startsWith("video/")) m else null
 }
 
-private fun PlayerViewModel.buildPinStream(
+internal fun PlayerViewModel.buildPinStream(
     v: VideoItem, dir: java.io.File, vFile: java.io.File, aFile: java.io.File?,
     sFile: java.io.File?, meta: org.json.JSONObject?
 ): PinStream {
@@ -82,7 +82,7 @@ private fun readPinSubs(
         ) else emptyList()
 }
 
-private suspend fun PlayerViewModel.pinAgeBlocked(
+internal suspend fun PlayerViewModel.pinAgeBlocked(
     pin: PinStream, v: VideoItem, inQueue: Boolean, ageOk: Boolean, prefs: PlayPrefs, host: PlayEngineHost
 ): Boolean {
     if (pin.age < 18 || ageOk) return false

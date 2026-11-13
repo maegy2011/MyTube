@@ -6,7 +6,7 @@ import com.mohamedadel.mytube.data.youtube.StreamData
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.data.youtube.YouTubeRepo
 import com.mohamedadel.mytube.util.QUALITY_AUDIO_ONLY
-import com.mohamedadel.mytube.util.favKey
+import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.util.isLocal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,7 +40,6 @@ interface PlayEngineHost : PlayerHost {
     fun clearPrefetch()
     fun isUnmetered(): Boolean
     fun pickAudio(s: StreamData): Int
-    fun pickSubs(s: StreamData): Set<Int>
     fun startQuality(s: StreamData, kbps: Int): String
     fun qualityEntries(s: StreamData, kbps: Int): List<String>
     fun videoModeNow(): Boolean
@@ -136,7 +135,7 @@ private suspend fun PlayerViewModel.resolveAndStart(
         return
     }
     setStreamData(s)
-    val kbps = host.kbps()
+    val kbps = host.kbpsNow()
     setQualityList(host.qualityEntries(s, kbps))
     val startQ = if (s.videoUrlByQuality.isEmpty()) QUALITY_AUDIO_ONLY else host.startQuality(s, kbps)
     setQuality(if (prefs.videoMode && startQ == QUALITY_AUDIO_ONLY && s.videoUrlByQuality.isNotEmpty()) {
@@ -166,7 +165,7 @@ private suspend fun PlayerViewModel.startPinned(
         if (!vFile.exists()) throw IllegalStateException("pin missing")
         val s = buildPinStream(v, dir, vFile, snap.second.second, snap.second.third, snap.third)
         if (pinAgeBlocked(s, v, inQueue, ageOk, prefs, host)) return
-        setStreamData(s)
+        setStreamData(s.stream)
         applyQuality(s.pinLabel, s.stream, host.exo(), host, autoplay = wasPlayingQueue, forceStart = forcePlay, local = true)
         setPlayingPinned(true)
     } catch (_: Exception) {
