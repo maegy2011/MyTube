@@ -359,7 +359,7 @@ private fun PlayerViewModel.setMergedSource(
                 if (audioGroups.size >= 2) {
                     val ts = p.trackSelector as? DefaultTrackSelector ?: return
                     ts.setParameters(ts.buildUponParameters().setOverrideForType(
-                        androidx.media3.exoplayer.trackselection.TrackSelectionOverride(audioGroups[0].mediaTrackGroup, emptyList())
+                        TrackSelectionOverride(audioGroups[0].mediaTrackGroup, emptyList())
                     ))
                 }
             } catch (_: Exception) { }
