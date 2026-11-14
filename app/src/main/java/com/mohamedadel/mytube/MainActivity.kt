@@ -915,7 +915,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         isFullscreen = full
         // v0.4.6 cinema DND: silence on enter, restore on exit (opt-in pref, needs policy access).
         try {
-            val dndOn = ctx.getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_dnd_cinema", false)
+            val dndOn = ctx.getSharedPreferences("mytube_prefs", android.content.Context.MODE_PRIVATE).getBoolean("pref_dnd_cinema", false)
             com.mohamedadel.mytube.playback.CinemaDnd.onFullscreen(full, ctx, dndOn)
         } catch (_: Exception) { }
         try {
