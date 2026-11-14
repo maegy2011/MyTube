@@ -910,6 +910,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // + edge-to-edge window so the video fills the DEVICE screen, not the app content area.
     fun setFullscreen(full: Boolean) {
         isFullscreen = full
+        // v0.4.6 cinema DND: silence on enter, restore on exit (opt-in pref, needs policy access).
+        try {
+            val dndOn = ctx.getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_dnd_cinema", false)
+            com.mohamedadel.mytube.playback.CinemaDnd.onFullscreen(full, ctx, dndOn)
+        } catch (_: Exception) { }
         try {
             val act = ctx as? android.app.Activity ?: return
             val win = act.window
