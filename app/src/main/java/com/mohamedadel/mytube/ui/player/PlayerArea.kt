@@ -556,12 +556,38 @@ fun PlayerArea(
                         }
                     }
                 }
+                if (player == null && errorMsg == null && !playerLoading) {
+                    androidx.compose.material3.FilledIconButton(
+                        onClick = onTogglePlay,
+                        modifier = Modifier.align(Alignment.Center).size(76.dp)
+                    ) {
+                        Icon(
+                            if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play),
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                }
                 // live badge while playing audio-only
                 if (isPlaying && quality == "audio-only (default)" && errorMsg == null && !playerLoading) {
                     Surface(modifier = Modifier.align(Alignment.TopStart).padding(10.dp), shape = RoundedCornerShape(8.dp), color = Scrim) {
                         Text(stringResource(R.string.now_playing), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
+            // quick-seek row (v0.4.5 #31): big targets beside native buttons
+            if (!isFullscreen && durationMs > 0 && errorMsg == null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.FilterChip(selected = false, onClick = { onSeek((positionMs - 15000).coerceAtLeast(0L)) }, label = { Text("-15s") })
+                    androidx.compose.material3.FilterChip(selected = false, onClick = { onSeek(positionMs + 15000) }, label = { Text("+15s") })
+                    Spacer(Modifier.weight(1f))
+                    androidx.compose.material3.FilterChip(selected = false, onClick = onSpeedCycle, label = { Text((if (playbackSpeed != 1f) playbackSpeed.toString().trimEnd('0').trimEnd('.') else "1") + "x") })
+                    androidx.compose.material3.FilterChip(selected = audioOnlyQuick, onClick = onAudioOnlyQuick, label = { Text(stringResource(R.string.audio_only_quick)) })
+                }
+            }
             // YouTube watch layout (design clone, existing callbacks only):
             // title + meta, channel row (no subscribe: local-only app), action pills,
             // playback settings behind a gear dialog. Hidden in fullscreen (pure video).
@@ -710,8 +736,9 @@ fun PlayerArea(
                 // description (collapsible, like YouTube)
                 if (showInfo && !description.isNullOrBlank()) {
                     Spacer(Modifier.height(6.dp))
+                    var descOpen by remember { mutableStateOf(false) }
                     Surface(
-                        onClick = { descExpanded = !descExpanded },
+                        onClick = { descOpen = !descOpen; descExpanded = descOpen },
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
