@@ -577,30 +577,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             p.setAudioAttributes(attrs, prefAf != "calls")
         } catch (_: Exception) { }
     }
-    // v0.4.5 #30: smart landscape — rotate to landscape enters fullscreen while a
-    // video plays (sensor), back to portrait exits. Best-effort, never fights the user:
-    // only auto-enters, and only when the player is expanded with video content.
-    androidx.compose.runtime.DisposableEffect(playerExpanded) {
-        var listener: android.view.OrientationEventListener? = null
-        if (playerExpanded) try {
-            listener = object : android.view.OrientationEventListener(ctx) {
-                var lastLand = false
-                override fun onOrientationChanged(deg: Int) {
-                    if (deg == ORIENTATION_UNKNOWN) return
-                    try {
-                        val land = (deg in 60..120) || (deg in 240..300)
-                        if (land == lastLand) return
-                        lastLand = land
-                        val videoMode = quality != QUALITY_AUDIO_ONLY
-                        if (land && !isFullscreen && videoMode && playerExpanded) setFullscreen(true)
-                        else if (!land && isFullscreen) setFullscreen(false)
-                    } catch (_: Exception) { }
-                }
-            }
-            if (listener?.canDetectOrientation() == true) listener?.enable()
-        } catch (_: Exception) { }
-        onDispose { try { listener?.disable() } catch (_: Exception) { } }
-    }
     // Download manager: the sd behind the current pinConfirm + live quick-pick selection.
     val pinSelQuality by pinVm.pinSelQuality.collectAsStateWithLifecycle()
     val pinSelAudio by pinVm.pinSelAudio.collectAsStateWithLifecycle()
@@ -942,6 +918,30 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 act.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             }
         } catch (_: Exception) { }
+    }
+    // v0.4.5 #30: smart landscape — rotate to landscape enters fullscreen while a
+    // video plays (sensor), back to portrait exits. Best-effort, never fights the user:
+    // only auto-enters, and only when the player is expanded with video content.
+    androidx.compose.runtime.DisposableEffect(playerExpanded) {
+        var listener: android.view.OrientationEventListener? = null
+        if (playerExpanded) try {
+            listener = object : android.view.OrientationEventListener(ctx) {
+                var lastLand = false
+                override fun onOrientationChanged(deg: Int) {
+                    if (deg == ORIENTATION_UNKNOWN) return
+                    try {
+                        val land = (deg in 60..120) || (deg in 240..300)
+                        if (land == lastLand) return
+                        lastLand = land
+                        val videoMode = quality != QUALITY_AUDIO_ONLY
+                        if (land && !isFullscreen && videoMode && playerExpanded) setFullscreen(true)
+                        else if (!land && isFullscreen) setFullscreen(false)
+                    } catch (_: Exception) { }
+                }
+            }
+            if (listener?.canDetectOrientation() == true) listener?.enable()
+        } catch (_: Exception) { }
+        onDispose { try { listener?.disable() } catch (_: Exception) { } }
     }
     val playMode by playerVm.playMode.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(Unit) { playerVm.initModes(prefs.getString("play_mode", "order") ?: "order", prefs.getBoolean("shuffle", false), false) }
