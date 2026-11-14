@@ -13,7 +13,7 @@ coroutines = "1.8.1"
 work = "2.9.0"
 okhttp = "4.12.0"
 newpipe = "0.27.1"
-castFramework = "21.4.0"
+castFramework = "22.3.1"
 room = "2.6.1"
 ksp = "2.0.20-1.0.25"
 
