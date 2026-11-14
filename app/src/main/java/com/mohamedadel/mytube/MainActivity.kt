@@ -1254,7 +1254,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Queue navigation (suggestion #3): next/previous within the result list.
     val playerHost = remember {
         val showToast: (String) -> Unit = { s -> toast(s) }
-        object : com.mohamedadel.mytube.ui.player.LangHost, com.mohamedadel.mytube.ui.playlists.PlaylistsRouteHost {
+        object : com.mohamedadel.mytube.ui.player.LangHost {
             override fun play(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) {
                 playVideo(v, inQueue, expand, forcePlay = forcePlay)
             }
@@ -1343,28 +1343,6 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         .map { g -> com.mohamedadel.mytube.ui.player.TrackGroupInfo(g.mediaTrackGroup, g.length) }
                 } catch (_: Exception) { emptyList() }
             }
-            override fun playlistsSnap() = playlists
-            override fun openPlaylistIdSnap() = openPlaylistId
-            override fun setOpenPlaylistId(id: Long?) { openPlaylistId = id }
-            override fun openItemsSnap() = openItems
-            override fun pinBadgesSnap() = pinBadges
-            override fun coversSnap() = plCovers
-            override fun tabSortSnap() = plTabSort
-            override fun songSortSnap() = plSongSort
-            override fun playingSnap() = playing
-            override fun routeScope() = scope
-            override fun libVm() = libVm
-            override fun playerVm() = playerVm
-            override fun searchVm() = msearchVm
-            override fun csvVm() = csvVm
-            override fun routePrefs() = prefs
-            override fun playRouteVideo(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) { playVideo(v, inQueue = inQueue, expand = expand, forcePlay = forcePlay) }
-            override fun routeIsQueued(v: VideoItem) = isQueued(v)
-            override fun routeQuickPin(v: VideoItem) { quickPin(v, null) }
-            override fun routeSmartBack() { smartBack() }
-            override fun setRouteOptionsFor(v: VideoItem?) { optionsFor = v }
-            override fun setRouteShowPlaylists(b: Boolean) { showPlaylists = b }
-            override fun routeCsvImport() { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } }
             override fun applyDecision(d: com.mohamedadel.mytube.ui.player.LangDecision) {
                 val p = player ?: return
                 val b = p.trackSelectionParameters.buildUpon()
@@ -2308,7 +2286,33 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // captures stay implicit, no signature churn, no behavior change.
     @Composable
     fun PlaylistsRoute() {
-        (playerHostHolder[0] as? com.mohamedadel.mytube.ui.playlists.PlaylistsRouteHost)?.run { this.PlaylistsRoute() }
+        val host = remember {
+            object : com.mohamedadel.mytube.ui.playlists.PlaylistsRouteHost {
+                override fun playlistsSnap() = playlists
+                override fun openPlaylistIdSnap() = openPlaylistId
+                override fun setOpenPlaylistId(id: Long?) { openPlaylistId = id }
+                override fun openItemsSnap() = openItems
+                override fun pinBadgesSnap() = pinBadges
+                override fun coversSnap() = plCovers
+                override fun tabSortSnap() = plTabSort
+                override fun songSortSnap() = plSongSort
+                override fun playingSnap() = playing
+                override fun routeScope() = scope
+                override fun libVm() = libVm
+                override fun playerVm() = playerVm
+                override fun searchVm() = msearchVm
+                override fun csvVm() = csvVm
+                override fun routePrefs() = prefs
+                override fun playRouteVideo(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) { playVideo(v, inQueue = inQueue, expand = expand, forcePlay = forcePlay) }
+                override fun routeIsQueued(v: VideoItem) = isQueued(v)
+                override fun routeQuickPin(v: VideoItem) { quickPin(v, null) }
+                override fun routeSmartBack() { smartBack() }
+                override fun setRouteOptionsFor(v: VideoItem?) { optionsFor = v }
+                override fun setRouteShowPlaylists(b: Boolean) { showPlaylists = b }
+                override fun routeCsvImport() { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } }
+            }
+        }
+        host.run { this.PlaylistsRoute() }
     }
 
             val mc_onSubscribeChannel: () -> Unit = { toggleSubscription(channelScreenUrl, channelDetail?.name, channelDetail?.avatar) }
