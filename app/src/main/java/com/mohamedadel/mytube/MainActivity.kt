@@ -150,6 +150,7 @@ import com.mohamedadel.mytube.ui.playlists.HistoryScreen
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsRoute
 import com.mohamedadel.mytube.ui.home.ContentHeader
+import com.mohamedadel.mytube.ui.player.PlayerPane
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.library.NotificationsScreen
@@ -2665,134 +2666,110 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // in MyTubeApp.invoke and helped breach the 64KB limit — same local-fun trick as SettingsPane.
     @Composable
     fun PlayerPane(paneMod: Modifier = Modifier, cur: VideoItem) {
-                PlayerArea(
-                    modifier = paneMod,
-                    video = cur,
-                    artworkUrl = streamData?.artworkUrl,
-                    player = player,
-                    quality = quality,
-                    qualities = qualityList,
-                    isPlaying = isPlaying,
-                    playerLoading = playerLoading,
-                    positionMs = playerPositionMs,
-                    durationMs = playerDurationMs,
-                    bufferedPct = playerBufferedPct,
-                    errorMsg = playerError,
-                    onQuality = { q ->
-                        playerVm.setQuality(q)
-                        // user explicitly picked quality: resume only if it was already playing
-                        streamData?.let { applyQuality(q, it, player, autoplay = true, local = playingPinned) }
-                    },
-                    onTogglePlay = {
-                        playerVm.setPlayerError(null)
-                        if (player?.isPlaying == true) player?.pause() else player?.play()
-                    },
-                    onSeek = { pos -> try { player?.seekTo(pos) } catch (_: Exception) { } },
-                    onRetry = {
-                        playerVm.setPlayerError(null)
-                        streamData?.let { applyQuality(quality, it, player, forceStart = true, local = playingPinned) }
-                    },
-                    queueOn = autoAdvance,
-                    playMode = playMode,
-                    playModeLabel = modeLabel(playMode),
-                    shuffleOn = shuffleOn,
-                    onCycleMode = { cycleMode() },
-                    onToggleShuffle = { setShuffle(!shuffleOn) },
-                    onQueue = { showQueue = true },
-                    onClose = { closePlayer() },
-                    onCollapse = { playerExpanded = false },
-                    isFullscreen = isFullscreen,
-                    onToggleFullscreen = { setFullscreen(!isFullscreen) },
-                    onSetMode = { setMode(it) },
-                    onSetShuffle = { setShuffle(it) },
-                    subtitles = if (!prefShowSubs) emptyList() else (streamData?.subtitles ?: emptyList()).let { if (prefSubHideAuto) it.filter { t -> !t.auto } else it },
-                    subIdx = subTrackIdx,
-                    onSubtitleTrack = { i ->
-                        // manual pick becomes the saved subtitle preference (applies to all future videos)
-                        try {
-                            if (i < 0) {
-                                settingsVm.setPrefSubLang("off")
-                                playerVm.setSubTrackIdx(-1)
-                                playerVm.setSubTrackFor(null) // F8: explicit off clears any override owner)
-                                toast(ctx.getString(R.string.toast_sub_off))
-                            } else {
-                                val t = streamData?.subtitles?.getOrNull(i)
-                                val tag = t?.langTag?.substringBefore("-")?.takeIf { it.isNotBlank() }
-                                // keep the raw tag (matching is prefix-based): collapsing rare tags to
-                                // "auto" made the setting disagree with the chip the user just picked.
-                                val code = tag ?: "auto"
-                                settingsVm.setPrefSubLang(code)
-                                playerVm.setSubTrackIdx(i)
-                                playerVm.setSubTrackFor(playing?.favKey()) // F8: explicit pick owns the override)
-                                toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
-                            }
-                        } catch (_: Exception) { toast(ctx.getString(R.string.toast_sub_fail)) }
-                        applyLangPrefs()
-                    },
-                    audioTracks = streamData?.audioTracks ?: emptyList(),
-                    audioIdx = audioTrackIdx,
-                    onAudioTrack = { i ->
-                        // F13 (audit P2 2026-11-11, by design): the picked track may be an external
-                        // (merged) stream, so the source is rebuilt via applyQuality; in-player
-                        // trackSelector overrides are already used where the source is shared
-                        // (muxed-audio disable + F8 subtitle override in applyLangPrefs).
-                        playerVm.setAudioTrackIdx(i)
-                        // manual pick becomes the saved preference (applies to all future videos)
-                        try {
-                            val t = streamData?.audioTracks?.getOrNull(i)
-                            val tag = t?.localeTag?.substringBefore("-") ?: t?.name
-                            if (!tag.isNullOrBlank()) {
-                                settingsVm.setPrefAudioLang(tag)
-                            }
-                        } catch (_: Exception) { }
-                        streamData?.let { sd -> applyQuality(quality, sd, player, autoplay = true) }
-                    },
-                    onNext = { playNextInQueue() },
-                    onPrev = { playPrevInQueue() },
-                    onFallbackYoutube = { ctx.openInYoutubeCtx(cur) },
-                    onEnterPip = onEnterPip,
-                    castAvailable = CastManager.available.value,
-                    isCasting = CastManager.connected.value,
-                    sleepLabel = sleepLeft.ifBlank { null },
-                    onSleepClick = { showSleep = true },
-                    isFav = cur.favKey() in favoriteSet,
-                    onToggleFav = { toggleFavorite(cur) },
-                    onSave = { pickFor = cur },
-                    likeCount = streamData?.likeCount,
-                    description = streamData?.description,
-                    chapters = streamData?.chapters ?: emptyList(),
-                    related = streamData?.related ?: emptyList(),
-                    showRelated = prefShowRelated,
-                    showInfo = prefShowInfo,
-                    showSubs = prefShowSubs,
-                    showCommentsPill = prefShowComments,
-                    isLive = streamData?.isLive == true,
-                    // Fix: chapter tap starts playback too — seeking a never-started player left silence.
-                    onChapterSeek = { pos -> try { player?.seekTo(pos); playerVm.setPlayerError(null); player?.play() } catch (_: Exception) { } },
-                    onRelatedPlay = { rv -> playVideo(rv, forcePlay = true) },
-                    isSubscribed = streamData?.channelUrl != null && subscriptions.any { it.channelUrl == streamData?.channelUrl },
-                    isPinned = pinKeys.contains(cur.favKey()),
-                    isPinning = pinningKeys.contains(cur.favKey()),
-                    pinProgress = pinProgress[cur.favKey()],
-                    onPin = {
-                        if (pinKeys.contains(cur.favKey())) doUnpin(cur.favKey())
-                        else requestPin(cur, streamData, quality, audioTrackIdx, ((if (subTrackIdx >= 0) setOf(subTrackIdx) else emptySet()) + matchSubIdxsFor(streamData)))
-                    },
-                    onSubscribe = { toggleSubscription(streamData?.channelUrl, cur.channel, channelDetail?.avatar) },
-                    onChannelClick = { openChannel(streamData?.channelUrl) },
-                    onCommentsClick = {
-                        showComments = true
-                        cmtVm.loadComments(playing?.url)
-                    },
-                    subStyle = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubScale, prefSubBold, prefSubBgOpacity),
-                    category = streamData?.category,
-                    tags = streamData?.tags ?: emptyList(),
-                    titleOverride = translatedTitle,
-                    onTagClick = { q -> try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) },
-                    onShare = { try { ctx.shareVideoCtx(cur) } catch (_: Exception) { } },
-                    onRelatedOptions = { optionsFor = it },
-                    storyboards = streamData?.storyboards ?: emptyList()
-                )
+        val host = remember {
+            object : com.mohamedadel.mytube.ui.player.PlayerPaneHost {
+                override fun streamData() = streamData
+                override fun exo() = player
+                override fun quality() = quality
+                override fun qualityList() = qualityList
+                override fun isPlayingNow() = isPlaying
+                override fun playerLoading() = playerLoading
+                override fun playerPositionMs() = playerPositionMs
+                override fun playerDurationMs() = playerDurationMs
+                override fun playerBufferedPct() = playerBufferedPct
+                override fun playerError() = playerError
+                override fun autoAdvance() = autoAdvance
+                override fun playMode() = playMode
+                override fun modeLabelOf(m: String) = modeLabel(m)
+                override fun shuffleOn() = shuffleOn
+                override fun isFullscreen() = isFullscreen
+                override fun prefShowSubs() = prefShowSubs
+                override fun prefSubHideAuto() = prefSubHideAuto
+                override fun subTrackIdxNow() = subTrackIdx
+                override fun audioTrackIdxNow() = audioTrackIdx
+                override fun castAvailable() = CastManager.available.value
+                override fun isCasting() = CastManager.connected.value
+                override fun sleepLeft() = sleepLeft
+                override fun favoriteSet() = favoriteSet
+                override fun prefShowRelated() = prefShowRelated
+                override fun prefShowInfo() = prefShowInfo
+                override fun prefShowComments() = prefShowComments
+                override fun subscriptions() = subscriptions
+                override fun pinKeys() = pinKeys
+                override fun pinningKeys() = pinningKeys
+                override fun pinProgressMap() = pinProgress
+                override fun subStyle() = subStyleFromPrefs(prefSubFg, prefSubBg, prefSubEdge, prefSubScale, prefSubBold, prefSubBgOpacity)
+                override fun translatedTitle() = translatedTitle
+                override fun qualityPick(q: String) {
+                    playerVm.setQuality(q)
+                    streamData?.let { applyQuality(q, it, player, autoplay = true, local = playingPinned) }
+                }
+                override fun togglePlayExo() {
+                    playerVm.setPlayerError(null)
+                    if (player?.isPlaying == true) player?.pause() else player?.play()
+                }
+                override fun seekExo(pos: Long) { try { player?.seekTo(pos) } catch (_: Exception) { } }
+                override fun retryQuality() {
+                    playerVm.setPlayerError(null)
+                    streamData?.let { applyQuality(quality, it, player, forceStart = true, local = playingPinned) }
+                }
+                override fun cycleModeX() { cycleMode() }
+                override fun toggleShuffleX() { setShuffle(!shuffleOn) }
+                override fun openQueue() { showQueue = true }
+                override fun closePlayerX() { closePlayer() }
+                override fun collapsePlayerX() { playerExpanded = false }
+                override fun toggleFullscreenX() { setFullscreen(!isFullscreen) }
+                override fun setModeX(m: String) { setMode(m) }
+                override fun setShuffleX(b: Boolean) { setShuffle(b) }
+                override fun subtitlePick(i: Int) {
+                    try {
+                        if (i < 0) {
+                            settingsVm.setPrefSubLang("off")
+                            playerVm.setSubTrackIdx(-1)
+                            playerVm.setSubTrackFor(null)
+                            toast(ctx.getString(R.string.toast_sub_off))
+                        } else {
+                            val t = streamData?.subtitles?.getOrNull(i)
+                            val tag = t?.langTag?.substringBefore("-")?.takeIf { it.isNotBlank() }
+                            val code = tag ?: "auto"
+                            settingsVm.setPrefSubLang(code)
+                            playerVm.setSubTrackIdx(i)
+                            playerVm.setSubTrackFor(playing?.favKey())
+                            toast(ctx.getString(R.string.sub_toast_fmt, t?.label?.takeIf { it.isNotBlank() } ?: code))
+                        }
+                    } catch (_: Exception) { toast(ctx.getString(R.string.toast_sub_fail)) }
+                    applyLangPrefs()
+                }
+                override fun audioPick(i: Int) {
+                    playerVm.setAudioTrackIdx(i)
+                    try {
+                        val t = streamData?.audioTracks?.getOrNull(i)
+                        val tag = t?.localeTag?.substringBefore("-") ?: t?.name
+                        if (!tag.isNullOrBlank()) settingsVm.setPrefAudioLang(tag)
+                    } catch (_: Exception) { }
+                    streamData?.let { sd -> applyQuality(quality, sd, player, autoplay = true) }
+                }
+                override fun playNextX() { playNextInQueue() }
+                override fun playPrevX() { playPrevInQueue() }
+                override fun openInYoutubeX(v: VideoItem) { ctx.openInYoutubeCtx(v) }
+                override fun openSleep() { showSleep = true }
+                override fun toggleFavX(v: VideoItem) { toggleFavorite(v) }
+                override fun savePick(v: VideoItem) { pickFor = v }
+                override fun chapterSeekX(pos: Long) { try { player?.seekTo(pos); playerVm.setPlayerError(null); player?.play() } catch (_: Exception) { } }
+                override fun relatedPlayX(v: VideoItem) { playVideo(v, forcePlay = true) }
+                override fun onPinX(v: VideoItem) {
+                    if (pinKeys.contains(v.favKey())) doUnpin(v.favKey())
+                    else requestPin(v, streamData, quality, audioTrackIdx, ((if (subTrackIdx >= 0) setOf(subTrackIdx) else emptySet()) + matchSubIdxsFor(streamData)))
+                }
+                override fun subscribeX(v: VideoItem) { toggleSubscription(streamData?.channelUrl, v.channel, channelDetail?.avatar) }
+                override fun channelClickX() { openChannel(streamData?.channelUrl) }
+                override fun commentsClickX() { showComments = true; cmtVm.loadComments(playing?.url) }
+                override fun tagClickX(q: String) { try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) }
+                override fun shareX(v: VideoItem) { try { ctx.shareVideoCtx(v) } catch (_: Exception) { } }
+                override fun setRelatedOptions(v: VideoItem?) { optionsFor = v }
+            }
+        }
+        host.PlayerPane(paneMod, cur, onEnterPip)
     }
         if (isInPip) {
             Box(Modifier.padding(pad).fillMaxSize()) {
