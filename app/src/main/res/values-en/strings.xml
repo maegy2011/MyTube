@@ -245,7 +245,9 @@
     <string name="blur_mini_desc">Video art blurred behind the bottom bar</string>
     <string name="dnd_cinema_title">Cinema do-not-disturb</string>
     <string name="dnd_cinema_desc">Silence notifications in fullscreen (needs permission)</string>
-    <string name="dnd_grant_hint">Allow Do Not Disturb for this app on the opened screen</string>
+    <string name="dnd_grant_hint">Allow MyTube to access Do Not Disturb on the opened screen</string>
+    <string name="share_with_time">Share with current timestamp</string>
+    <string name="share_plain">Share plain link</string>
     <string name="audio_prefetch_title">Preload audio</string>
     <string name="audio_prefetch_desc">Fetch next track audio on Wi-Fi for instant play</string>
     <string name="palette_title">Colors from artwork</string>

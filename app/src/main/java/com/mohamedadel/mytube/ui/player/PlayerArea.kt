@@ -112,7 +112,8 @@ import kotlinx.coroutines.delay
 // Pure UI: every behavior arrives via callbacks; the wrapped native controller
 // drives queue/modes through onNext/onPrev/onSetMode/onSetShuffle.
 
-// YouTube action pill: icon + label, tonal when idle, primary when selected.
+// Action pill: icon-only (Phase 1 rebuild — labels removed by request).
+// TalkBack still announces the label via contentDescription.
 @Composable
 private fun ActionPill(
     icon: @Composable () -> Unit,
@@ -124,17 +125,15 @@ private fun ActionPill(
     // (the icon itself stays decorative).
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        shape = androidx.compose.foundation.shape.CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.semantics(mergeDescendants = true) {
             contentDescription = label
             role = androidx.compose.ui.semantics.Role.Button
         }
     ) {
-        Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.padding(10.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             icon()
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -222,6 +221,8 @@ fun PlayerArea(
     onTagClick: (String) -> Unit = {},
     titleOverride: String? = null,
     onShare: () -> Unit = {},
+    // Phase 1 rebuild: share chooser — with timestamp or plain link.
+    onSharePlain: () -> Unit = {},
     onRelatedOptions: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
     storyboards: List<com.mohamedadel.mytube.data.youtube.Storyboard> = emptyList(),
     showRelated: Boolean = true,
@@ -735,6 +736,8 @@ fun PlayerArea(
                 Spacer(Modifier.height(10.dp))
                 // action pills (horizontal scroll): favorite / save / queue / sleep / pip / settings
                 var overflow by remember { mutableStateOf(false) }
+                // Phase 1 rebuild: share offers timestamped or plain link (user choice).
+                var showShareChoice by remember { mutableStateOf(false) }
                 var showDlnaOuter by remember { mutableStateOf(false) }
                 var remote by remember { mutableStateOf<DlnaManager.Renderer?>(null) }
                 // Phase 1 rebuild fix: the fixed 4-pill row overflowed narrow screens,
@@ -745,8 +748,9 @@ fun PlayerArea(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Phase 1 rebuild: red heart when favorited (was theme-tinted, unclear).
                     ActionPill(
-                        icon = { Icon(if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = null, tint = if (isFav) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                        icon = { Icon(if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = null, tint = if (isFav) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp)) },
                         label = stringResource(R.string.cd_fav_add),
                         selected = isFav,
                         onClick = onToggleFav
@@ -757,12 +761,18 @@ fun PlayerArea(
                         selected = false,
                         onClick = onQueue
                     )
-                    ActionPill(
-                        icon = { Icon(Icons.Rounded.Share, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                        label = stringResource(R.string.share),
-                        selected = false,
-                        onClick = onShare
-                    )
+                    Box {
+                        ActionPill(
+                            icon = { Icon(Icons.Rounded.Share, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                            label = stringResource(R.string.share),
+                            selected = false,
+                            onClick = { showShareChoice = true }
+                        )
+                        DropdownMenu(expanded = showShareChoice, onDismissRequest = { showShareChoice = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.share_with_time)) }, onClick = { showShareChoice = false; onShare() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.share_plain)) }, onClick = { showShareChoice = false; onSharePlain() })
+                        }
+                    }
                     Box {
                         ActionPill(
                             icon = { Icon(Icons.Rounded.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },

@@ -77,6 +77,8 @@ interface PlayerPaneHost {
     fun commentsClickX()
     fun tagClickX(q: String)
     fun shareX(v: VideoItem)
+    // Phase 1 rebuild: plain-link share (chooser in PlayerArea).
+    fun sharePlainX(v: VideoItem)
     fun setRelatedOptions(v: VideoItem?)
     fun speedNow(): Float = 1f
     fun cycleSpeedX() {}
@@ -162,6 +164,7 @@ PlayerArea(
     titleOverride = translatedTitle(),
     onTagClick = { q -> tagClickX(q) },
     onShare = { shareX(cur) },
+    onSharePlain = { sharePlainX(cur) },
     onRelatedOptions = { setRelatedOptions(it) },
     storyboards = streamData()?.storyboards ?: emptyList(),
     playbackSpeed = speedNow(),
