@@ -20,8 +20,7 @@ fun rememberArtworkVibrant(artUrl: String?, enabled: Boolean): Color? {
         try {
             val loader = ImageLoader(ctx)
             val req = ImageRequest.Builder(ctx).data(u).allowHardware(false).build()
-            val res = loader.execute(req).drawable as? android.graphics.drawable.BitmapDrawable
-            val bmp = res?.bitmap
+            val bmp = (loader.execute(req) as? coil.request.SuccessResult)?.drawable as? android.graphics.drawable.BitmapDrawable
             if (bmp != null) {
                 val pal = androidx.palette.graphics.Palette.from(bmp).generate()
                 val rgb = pal.getVibrantColor(0)

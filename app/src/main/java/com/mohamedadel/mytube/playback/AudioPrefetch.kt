@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
 
 // v0.4.6 (audio prefetch): CacheWriter downloads the up-next audio stream
@@ -17,11 +18,11 @@ object AudioPrefetch {
         try {
             if (audioUrl.isBlank()) { lastResult = "empty-url"; return }
             val app = ctx.applicationContext
-            val cache = MediaCache.get(app)
-            // Skip if already fully cached (keyed lookup is best-effort).
-            val upstream = DefaultHttpDataSource.Factory().createDataSource()
+            // CacheWriter takes a CacheDataSource (not the raw Cache): reuse the
+            // app's shared factory so flags (IGNORE_CACHE_ON_ERROR) stay identical.
+            val cds = MediaCache.factory(app, DefaultHttpDataSource.Factory()).createDataSource()
             val spec = DataSpec(Uri.parse(audioUrl))
-            CacheWriter(cache, upstream, spec, null).cache()
+            CacheWriter(cds, spec, null, null).cache()
             lastResult = "ok"
         } catch (e: Exception) {
             lastResult = "fail:" + (e.message ?: "?").take(60)

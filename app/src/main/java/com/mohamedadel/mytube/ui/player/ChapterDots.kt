@@ -2,6 +2,7 @@ package com.mohamedadel.mytube.ui.player
 
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.TimeBar
+import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.youtube.ChapterItem
 
 // v0.4.6 (chapter dots): repurpose the native TimeBar ad-group markers as
