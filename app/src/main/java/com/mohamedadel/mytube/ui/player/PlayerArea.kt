@@ -189,6 +189,8 @@ fun PlayerArea(
     onEnterPip: () -> Unit,
     castAvailable: Boolean = false,
     isCasting: Boolean = false,
+    // Phase 1 rebuild: Cast menu item was dead (closed the menu, cast nothing).
+    onCast: () -> Unit = {},
     dlnaAvailable: Boolean = false,
     onDlnaPlay: (DlnaManager.Renderer) -> Unit = {},
     sleepLabel: String? = null,
@@ -774,7 +776,7 @@ fun PlayerArea(
                             DropdownMenuItem(text = { Text(stringResource(R.string.audio_only_quick)) }, onClick = { overflow = false; onAudioOnlyQuick() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.pill_settings)) }, onClick = { overflow = false; showPlayerSettings = true })
                             DropdownMenuItem(text = { Text(stringResource(R.string.open_youtube)) }, onClick = { overflow = false; onFallbackYoutube() })
-                            if (castAvailable) DropdownMenuItem(text = { Text("Cast") }, onClick = { overflow = false })
+                            if (castAvailable) DropdownMenuItem(text = { Text("Cast") }, onClick = { overflow = false; onCast() })
                             if (dlnaAvailable) DropdownMenuItem(text = { Text("DLNA") }, onClick = { overflow = false; showDlnaOuter = true })
                         }
                     }

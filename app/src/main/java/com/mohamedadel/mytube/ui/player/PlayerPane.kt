@@ -33,6 +33,8 @@ interface PlayerPaneHost {
     fun subTrackIdxNow(): Int
     fun audioTrackIdxNow(): Int
     fun castAvailable(): Boolean
+    // Phase 1 rebuild: explicit cast trigger (was missing — menu item was dead).
+    fun castNowX()
     fun dlnaAvailable(): Boolean
     fun dlnaPlayX(r: com.mohamedadel.mytube.playback.DlnaManager.Renderer)
     fun isCasting(): Boolean
@@ -125,6 +127,7 @@ PlayerArea(
     onFallbackYoutube = { openInYoutubeX(cur) },
     onEnterPip = onEnterPip,
     castAvailable = castAvailable(),
+    onCast = { castNowX() },
     dlnaAvailable = dlnaAvailable(),
     onDlnaPlay = { r -> dlnaPlayX(r) },
     isCasting = isCasting(),

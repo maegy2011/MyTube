@@ -245,6 +245,7 @@
     <string name="blur_mini_desc">صورة الفيديو ضبابًا خلف الشريط السفلي</string>
     <string name="dnd_cinema_title">سينما بلا إزعاج</string>
     <string name="dnd_cinema_desc">كتم الإشعارات أثناء ملء الشاشة (يحتاج إذنًا)</string>
+    <string name="dnd_grant_hint">فعّل "عدم الإزعاج" لهذا التطبيق من الشاشة المفتوحة</string>
     <string name="audio_prefetch_title">تخزين الصوت مسبقًا</string>
     <string name="audio_prefetch_desc">حمّل صوت المقطع التالي على Wi-Fi للتشغيل الفوري</string>
     <string name="palette_title">ألوان من الصورة</string>

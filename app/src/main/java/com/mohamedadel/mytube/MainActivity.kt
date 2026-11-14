@@ -2737,6 +2737,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun subTrackIdxNow() = subTrackIdx
                 override fun audioTrackIdxNow() = audioTrackIdx
                 override fun castAvailable() = CastManager.available.value
+                // Phase 1 rebuild: menu Cast now actually casts (was a dead item).
+                override fun castNowX() { castCurrent(autoplay = true) }
                 override fun dlnaAvailable() = com.mohamedadel.mytube.playback.DlnaManager.available.value
                 override fun dlnaPlayX(r: com.mohamedadel.mytube.playback.DlnaManager.Renderer) {
                     try { playerHostHolder[0]?.let { playerVm.dlnaCurrent(it, r) { } } } catch (_: Exception) { }
@@ -2956,7 +2958,17 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun amoledX(v: Boolean) { settingsVm.setPrefAmoled(v); try { amoledLive.value = v } catch (_: Exception) { } }
                 override fun seniorX(v: Boolean) { settingsVm.setPrefSenior(v); try { seniorLive.value = v } catch (_: Exception) { } }
                 override fun blurMiniX(v: Boolean) { settingsVm.setPrefBlurMini(v) }
-                override fun dndCinemaX(v: Boolean) { settingsVm.setPrefDndCinema(v) }
+                override fun dndCinemaX(v: Boolean) {
+                    settingsVm.setPrefDndCinema(v)
+                    // Phase 1 rebuild: enabling without policy access opens the grant screen —
+                    // without this the toggle was a dead switch (silent no-op forever).
+                    if (v) try {
+                        if (!com.mohamedadel.mytube.playback.CinemaDnd.isGranted(ctx)) {
+                            ctx.startActivity(com.mohamedadel.mytube.playback.CinemaDnd.accessIntent().apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                            toast(ctx.getString(R.string.dnd_grant_hint))
+                        }
+                    } catch (_: Exception) { }
+                }
                 override fun audioPrefetchX(v: Boolean) { settingsVm.setPrefAudioPrefetch(v) }
                 override fun paletteX(v: Boolean) { settingsVm.setPrefPalette(v) }
                 override fun volumeX(v: Float) { try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }; if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { } }
