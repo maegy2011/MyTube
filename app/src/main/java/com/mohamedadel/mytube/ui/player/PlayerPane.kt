@@ -33,6 +33,8 @@ interface PlayerPaneHost {
     fun subTrackIdxNow(): Int
     fun audioTrackIdxNow(): Int
     fun castAvailable(): Boolean
+    fun dlnaAvailable(): Boolean
+    fun dlnaPlayX(r: com.mohamedadel.mytube.playback.DlnaManager.Renderer)
     fun isCasting(): Boolean
     fun sleepLeft(): String
     fun favoriteSet(): Set<String>
@@ -119,6 +121,8 @@ PlayerArea(
     onFallbackYoutube = { openInYoutubeX(cur) },
     onEnterPip = onEnterPip,
     castAvailable = castAvailable(),
+    dlnaAvailable = dlnaAvailable(),
+    onDlnaPlay = { r -> dlnaPlayX(r) },
     isCasting = isCasting(),
     sleepLabel = sleepLeft().ifBlank { null },
     onSleepClick = { openSleep() },

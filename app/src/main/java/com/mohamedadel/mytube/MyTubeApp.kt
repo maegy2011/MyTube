@@ -15,6 +15,8 @@ class MyTubeApp : Application(), ImageLoaderFactory {
         super.onCreate()
         // Chromecast sender: no-op on devices without Google Play Services.
         runCatching { com.mohamedadel.mytube.playback.CastManager.init(this) }
+        // DLNA/UPnP discovery: no-op when Wi-Fi/multicast unavailable.
+        runCatching { com.mohamedadel.mytube.playback.DlnaManager.start(this) }
         // F14 (audit P2 2026-11-11): drop staging_* orphans older than 24h (killed downloads).
         try {
             val app = this

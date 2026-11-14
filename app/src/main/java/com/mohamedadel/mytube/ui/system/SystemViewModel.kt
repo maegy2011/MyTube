@@ -93,6 +93,7 @@ class SystemViewModel(app: Application) : AndroidViewModel(app) {
                 appendLine("quality=" + quality)
                 appendLine("offline=" + offline + " country=" + country)
                 appendLine("castAvailable=" + com.mohamedadel.mytube.playback.CastManager.available.value + " castConnected=" + com.mohamedadel.mytube.playback.CastManager.connected.value + " castErr=" + (com.mohamedadel.mytube.playback.CastManager.lastError ?: "none"))
+                appendLine("dlnaAvailable=" + com.mohamedadel.mytube.playback.DlnaManager.available.value + " renderers=" + com.mohamedadel.mytube.playback.DlnaManager.renderers.size + " dlnaErr=" + (com.mohamedadel.mytube.playback.DlnaManager.lastError ?: "none"))
             }
         } catch (_: Exception) { "MyTube diagnostics unavailable" }
     }

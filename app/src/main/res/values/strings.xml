@@ -653,4 +653,5 @@
     <string name="continue_watching">متابعة المشاهدة</string>
     <string name="hero_details">التفاصيل</string>
     <string name="cached_badge">محفوظ</string>
+    <string name="dlna_none">لا توجد أجهزة DLNA — تأكد أن الشاشة والهاتف على نفس الواي فاي</string>
 </resources>

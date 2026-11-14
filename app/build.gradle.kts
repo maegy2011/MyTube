@@ -89,6 +89,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.newpipe.extractor)
     implementation(libs.play.services.cast.framework)
+    implementation(libs.mmupnp)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     // Deferred item 8 (2026-11-11): periodic feed refresh behind a pref (default OFF).

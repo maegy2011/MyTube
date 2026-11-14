@@ -14,6 +14,7 @@ work = "2.9.0"
 okhttp = "4.12.0"
 newpipe = "0.27.1"
 castFramework = "21.4.0"
+mmupnp = "3.1.6"
 room = "2.8.5"
 ksp = "2.2.0-2.0.2"
 
@@ -42,6 +43,7 @@ coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 newpipe-extractor = { group = "com.github.TeamNewPipe", name = "NewPipeExtractor", version.ref = "newpipe" }
 play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "castFramework" }
+mmupnp = { group = "net.mm2d.mmupnp", name = "mmupnp", version.ref = "mmupnp" }
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }

@@ -70,6 +70,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import com.mohamedadel.mytube.playback.DlnaManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -185,6 +189,8 @@ fun PlayerArea(
     onEnterPip: () -> Unit,
     castAvailable: Boolean = false,
     isCasting: Boolean = false,
+    dlnaAvailable: Boolean = false,
+    onDlnaPlay: (DlnaManager.Renderer) -> Unit = {},
     sleepLabel: String? = null,
     onSleepClick: () -> Unit = {},
     isFav: Boolean = false,
@@ -700,6 +706,17 @@ fun PlayerArea(
                             },
                             modifier = Modifier.size(48.dp)
                         )
+                    }
+                    // DLNA pill (2026-11-14): opens the renderer picker; hidden with no renderers.
+                    if (dlnaAvailable) {
+                        var showDlna by remember { mutableStateOf(false) }
+                        ActionPill(
+                            icon = { Icon(Icons.Rounded.Tv, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                            label = "DLNA",
+                            selected = false,
+                            onClick = { showDlna = true }
+                        )
+                        if (showDlna) DlnaPickerDialog(onPick = { r -> showDlna = false; onDlnaPlay(r) }, onDismiss = { showDlna = false })
                     }
                     ActionPill(
                         icon = { Icon(if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = null, tint = if (isFav) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },

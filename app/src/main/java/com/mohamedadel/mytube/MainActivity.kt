@@ -954,6 +954,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     LaunchedEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) { ensurePermissions(); ensureBatteryExemption(); if (!com.mohamedadel.mytube.playback.CastManager.available.value) { try { com.mohamedadel.mytube.playback.CastManager.init(ctx.applicationContext) } catch (_: Exception) { } }
+                try { com.mohamedadel.mytube.playback.DlnaManager.start(ctx.applicationContext) } catch (_: Exception) { }
                 // L4 (audit P1 2026-11-11): ACTION_STOP writes the pref directly — re-read on resume or the toggle lies.
                 try { settingsVm.setPrefKeepalive(prefs.getBoolean("pref_keepalive", false)) } catch (_: Exception) { }
                 // G-A1: a parked SEND/VIEW intent (cold start or share-while-alive) gets consumed below.
@@ -2678,6 +2679,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun subTrackIdxNow() = subTrackIdx
                 override fun audioTrackIdxNow() = audioTrackIdx
                 override fun castAvailable() = CastManager.available.value
+                override fun dlnaAvailable() = com.mohamedadel.mytube.playback.DlnaManager.available.value
+                override fun dlnaPlayX(r: com.mohamedadel.mytube.playback.DlnaManager.Renderer) {
+                    try { playerVm.dlnaCurrent(this, r) { } } catch (_: Exception) { }
+                }
                 override fun isCasting() = CastManager.connected.value
                 override fun sleepLeft() = sleepLeft
                 override fun favoriteSet() = favoriteSet

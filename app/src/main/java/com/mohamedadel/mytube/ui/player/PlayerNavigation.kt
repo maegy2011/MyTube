@@ -258,18 +258,49 @@ fun PlayerViewModel.fadeOutAndPause(host: PlayerHost) {
 fun PlayerViewModel.castCurrent(host: PlayerHost, autoplay: Boolean = true) {
     try {
         val snap = host.castSnapshot() ?: return
+        // 2026-11-14: receivers fetch signed googlevideo URLs as 403 — serve via
+        // the on-phone relay (same-IP origin fetch), direct URL as last resort.
+        val relay = com.mohamedadel.mytube.playback.CastRelayServer
+        val sendUrl = try { relay.urlFor(snap.url, snap.mime) } catch (_: Exception) { null }
+            ?: snap.url
+        val sendMime = if (sendUrl != snap.url) snap.mime.ifBlank { "video/mp4" } else snap.mime
         // ext-cast first (unified Player API + manifest URLs), raw load as fallback.
         val viaPlayer = try {
             com.mohamedadel.mytube.playback.CastPlayerHolder.ensure(host.appCtx()) &&
             com.mohamedadel.mytube.playback.CastPlayerHolder.playUrl(
-                snap.url, snap.mime, snap.title, snap.thumb, snap.positionMs, autoplay
+                sendUrl, sendMime, snap.title, snap.thumb, snap.positionMs, autoplay
             )
         } catch (_: Exception) { false }
         val ok = viaPlayer || com.mohamedadel.mytube.playback.CastManager.load(
-            snap.url, snap.title, snap.thumb, snap.mime, snap.positionMs, autoplay
+            sendUrl, snap.title, snap.thumb, sendMime, snap.positionMs, autoplay
         )
         if (ok) host.onCastStarted()
     } catch (_: Exception) { }
+}
+
+/** DLNA twin of [castCurrent]: plays the snapshot on [renderer] via AVTransport. */
+fun PlayerViewModel.dlnaCurrent(
+    host: PlayerHost,
+    renderer: com.mohamedadel.mytube.playback.DlnaManager.Renderer,
+    onDone: (Boolean) -> Unit
+) {
+    try {
+        val snap = host.castSnapshot() ?: return onDone(false)
+        val relay = com.mohamedadel.mytube.playback.CastRelayServer
+        val sendUrl = try { relay.urlFor(snap.url, snap.mime) } catch (_: Exception) { null }
+            ?: snap.url
+        val sendMime = if (sendUrl != snap.url) snap.mime.ifBlank { "video/mp4" } else snap.mime
+        com.mohamedadel.mytube.playback.DlnaManager.play(
+            renderer, sendUrl, sendMime, snap.title ?: "MyTube"
+        ) { ok ->
+            try {
+                if (ok) host.onCastStarted()
+            } catch (_: Exception) { }
+            try { onDone(ok) } catch (_: Exception) { }
+        }
+    } catch (_: Exception) {
+        try { onDone(false) } catch (_: Exception) { }
+    }
 }
 
 data class QualityPick(val q: String, val url: String, val isMuxed: Boolean, val selAudio: String?)
