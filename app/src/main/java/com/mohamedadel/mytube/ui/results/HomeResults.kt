@@ -177,6 +177,10 @@ fun HomeEmptyState(
         }
         // every tab is a real kiosk list (or labeled region-search for news); empty = honest fallback chips
         if (trendingLoading) {
+            // spinner + skeleton: explicit loading cue while the tab content arrives.
+            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
             VideoListSkeleton(count = 4)
         } else if (trendingError != null && trendingItems.isEmpty()) {
             // screens-fix Home P0-H2: explicit error + retry (was silent chips).
