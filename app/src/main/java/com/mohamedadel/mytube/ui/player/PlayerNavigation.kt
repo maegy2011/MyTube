@@ -258,14 +258,7 @@ fun PlayerViewModel.fadeOutAndPause(host: PlayerHost) {
 fun PlayerViewModel.castCurrent(host: PlayerHost, autoplay: Boolean = true) {
     try {
         val snap = host.castSnapshot() ?: return
-        // ext-cast first (unified Player API + manifest URLs), raw load as fallback.
-        val viaPlayer = try {
-            com.mohamedadel.mytube.playback.CastPlayerHolder.ensure(host.appCtx()) &&
-            com.mohamedadel.mytube.playback.CastPlayerHolder.playUrl(
-                snap.url, snap.mime, snap.title, snap.thumb, snap.positionMs, autoplay
-            )
-        } catch (_: Exception) { false }
-        val ok = viaPlayer || com.mohamedadel.mytube.playback.CastManager.load(
+        val ok = com.mohamedadel.mytube.playback.CastManager.load(
             snap.url, snap.title, snap.thumb, snap.mime, snap.positionMs, autoplay
         )
         if (ok) host.onCastStarted()

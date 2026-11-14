@@ -81,7 +81,6 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
-    implementation(libs.media3.cast)
     implementation(libs.coil.compose)
     implementation(libs.paging.runtime)
     implementation(libs.paging.compose)
