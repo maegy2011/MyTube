@@ -580,10 +580,10 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // v0.4.5 #30: smart landscape — rotate to landscape enters fullscreen while a
     // video plays (sensor), back to portrait exits. Best-effort, never fights the user:
     // only auto-enters, and only when the player is expanded with video content.
-    LaunchedEffect(playerExpanded) {
-        if (!playerExpanded) return@LaunchedEffect
-        try {
-            val listener = object : android.view.OrientationEventListener(ctx) {
+    androidx.compose.runtime.DisposableEffect(playerExpanded) {
+        var listener: android.view.OrientationEventListener? = null
+        if (playerExpanded) try {
+            listener = object : android.view.OrientationEventListener(ctx) {
                 var lastLand = false
                 override fun onOrientationChanged(deg: Int) {
                     if (deg == ORIENTATION_UNKNOWN) return
@@ -597,8 +597,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     } catch (_: Exception) { }
                 }
             }
-            if (listener.canDetectOrientation()) listener.enable()
+            if (listener?.canDetectOrientation() == true) listener?.enable()
         } catch (_: Exception) { }
+        onDispose { try { listener?.disable() } catch (_: Exception) { } }
     }
     // Download manager: the sd behind the current pinConfirm + live quick-pick selection.
     val pinSelQuality by pinVm.pinSelQuality.collectAsStateWithLifecycle()
