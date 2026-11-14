@@ -5,6 +5,8 @@
 # getSharedInstance() died with "Failed to initialize CastContext" (device report v0.4.1).
 -keep class com.google.android.gms.cast.** { *; }
 -keep class androidx.mediarouter.** { *; }
+# media3-cast CastPlayer: session internals via reflection
+-keep class androidx.media3.cast.** { *; }
 -dontwarn org.schabi.newpipe.extractor.**
 # Rhino (NewPipeExtractor dep): desktop-only APIs absent on Android — never called at runtime
 -dontwarn java.beans.**
