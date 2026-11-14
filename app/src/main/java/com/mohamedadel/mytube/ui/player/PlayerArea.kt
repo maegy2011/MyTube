@@ -253,7 +253,7 @@ fun PlayerArea(
                 val id = video.url ?: video.title ?: return@LaunchedEffect
                 if (!(cl.getStringSet("ids", emptySet()) ?: emptySet()).contains(id)) {
                     val next = (cl.getStringSet("ids", emptySet()) ?: emptySet()).toMutableSet().also { it.add(id) }
-                    cl.edit().putStringSet("ids", next.takeLast(50).toSet()).apply()
+                    cl.edit().putStringSet("ids", next.toList().takeLast(50).toSet()).apply()
                 }
             }
         } catch (_: Exception) { }
