@@ -58,7 +58,7 @@ app/src/main/java/com/mohamedadel/mytube/
 └── util/                    # 25+ focused helper slices (NavStack, UnifiedSearch, …)
 ```
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`FEATURES.md`](FEATURES.md) for the full tour.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/FEATURES.md`](docs/FEATURES.md) for the full tour.
 
 ## Contributing
 
