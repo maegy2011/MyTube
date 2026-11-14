@@ -2682,7 +2682,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun castAvailable() = CastManager.available.value
                 override fun dlnaAvailable() = com.mohamedadel.mytube.playback.DlnaManager.available.value
                 override fun dlnaPlayX(r: com.mohamedadel.mytube.playback.DlnaManager.Renderer) {
-                    try { playerVm.dlnaCurrent(this, r) { } } catch (_: Exception) { }
+                    try { playerHostHolder[0]?.let { playerVm.dlnaCurrent(it, r) { } } } catch (_: Exception) { }
                 }
                 override fun isCasting() = CastManager.connected.value
                 override fun sleepLeft() = sleepLeft
