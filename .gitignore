@@ -16,3 +16,4 @@ google-services.json
 
 # heap dumps (OOM diagnostics, never commit)
 *.hprof
+docs/archive/
