@@ -2879,7 +2879,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     try { ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java)) } catch (_: Exception) { }
                     scope.launch {
                         try { kotlinx.coroutines.delay(900) } catch (_: Exception) { }
-                        try { withContext(kotlinx.coroutines.Dispatchers.Main) { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
+                        try { withContext(kotlinx.coroutines.Dispatchers.Main) { (ctx as? android.app.Activity)?.recreate() } } catch (_: Exception) { }
                     }
                 }
                 override fun themeX(v: String) { settingsVm.setPrefTheme(v); try { themeLive.value = v } catch (_: Exception) { } }
