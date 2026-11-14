@@ -61,6 +61,13 @@ class SettingsViewModel : ViewModel() {
     private val _prefShowInfo = MutableStateFlow<Boolean>(true)
     private val _prefShowSubs = MutableStateFlow<Boolean>(true)
     private val _prefAllow4k = MutableStateFlow<Boolean>(true)
+    // v0.4.6 (comfort batch): senior fonts, amoled black, mini blur, cinema DND, audio prefetch, artwork palette.
+    private val _prefSenior = MutableStateFlow<Boolean>(false)
+    private val _prefAmoled = MutableStateFlow<Boolean>(false)
+    private val _prefBlurMini = MutableStateFlow<Boolean>(false)
+    private val _prefDndCinema = MutableStateFlow<Boolean>(false)
+    private val _prefAudioPrefetch = MutableStateFlow<Boolean>(false)
+    private val _prefPalette = MutableStateFlow<Boolean>(false)
     val prefContentFilter: StateFlow<String> = _prefContentFilter.asStateFlow()
     val prefSubLang: StateFlow<String> = _prefSubLang.asStateFlow()
     val prefAudioLang: StateFlow<String> = _prefAudioLang.asStateFlow()
@@ -109,6 +116,12 @@ class SettingsViewModel : ViewModel() {
     val prefShowInfo: StateFlow<Boolean> = _prefShowInfo.asStateFlow()
     val prefShowSubs: StateFlow<Boolean> = _prefShowSubs.asStateFlow()
     val prefAllow4k: StateFlow<Boolean> = _prefAllow4k.asStateFlow()
+    val prefSenior: StateFlow<Boolean> = _prefSenior.asStateFlow()
+    val prefAmoled: StateFlow<Boolean> = _prefAmoled.asStateFlow()
+    val prefBlurMini: StateFlow<Boolean> = _prefBlurMini.asStateFlow()
+    val prefDndCinema: StateFlow<Boolean> = _prefDndCinema.asStateFlow()
+    val prefAudioPrefetch: StateFlow<Boolean> = _prefAudioPrefetch.asStateFlow()
+    val prefPalette: StateFlow<Boolean> = _prefPalette.asStateFlow()
 
     private var prefs: SharedPreferences? = null
 
@@ -223,6 +236,18 @@ class SettingsViewModel : ViewModel() {
         } catch (_: Exception) { }
         try { _prefAllow4k.value = p.getBoolean("pref_allow_4k", true)
         } catch (_: Exception) { }
+        try { _prefSenior.value = p.getBoolean("pref_senior", false)
+        } catch (_: Exception) { }
+        try { _prefAmoled.value = p.getBoolean("pref_amoled", false)
+        } catch (_: Exception) { }
+        try { _prefBlurMini.value = p.getBoolean("pref_blur_mini", false)
+        } catch (_: Exception) { }
+        try { _prefDndCinema.value = p.getBoolean("pref_dnd_cinema", false)
+        } catch (_: Exception) { }
+        try { _prefAudioPrefetch.value = p.getBoolean("pref_audio_prefetch", false)
+        } catch (_: Exception) { }
+        try { _prefPalette.value = p.getBoolean("pref_palette", false)
+        } catch (_: Exception) { }
     }
 
     private fun loadNumbers(p: SharedPreferences) {
@@ -291,4 +316,10 @@ class SettingsViewModel : ViewModel() {
     fun setPrefShowInfo(v: Boolean) = persistBoolean(_prefShowInfo, v, "pref_show_info")
     fun setPrefShowSubs(v: Boolean) = persistBoolean(_prefShowSubs, v, "pref_show_subtitles")
     fun setPrefAllow4k(v: Boolean) = persistBoolean(_prefAllow4k, v, "pref_allow_4k")
+    fun setPrefSenior(v: Boolean) = persistBoolean(_prefSenior, v, "pref_senior")
+    fun setPrefAmoled(v: Boolean) = persistBoolean(_prefAmoled, v, "pref_amoled")
+    fun setPrefBlurMini(v: Boolean) = persistBoolean(_prefBlurMini, v, "pref_blur_mini")
+    fun setPrefDndCinema(v: Boolean) = persistBoolean(_prefDndCinema, v, "pref_dnd_cinema")
+    fun setPrefAudioPrefetch(v: Boolean) = persistBoolean(_prefAudioPrefetch, v, "pref_audio_prefetch")
+    fun setPrefPalette(v: Boolean) = persistBoolean(_prefPalette, v, "pref_palette")
 }

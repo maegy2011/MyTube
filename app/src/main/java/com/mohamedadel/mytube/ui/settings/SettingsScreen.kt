@@ -253,7 +253,20 @@ fun SettingsScreen(
     // Deferred item 7 (backup metadata row) + item 8 (periodic auto-refresh toggle).
     backupInfo: String? = null,
     feedAutoRefresh: Boolean = false,
-    onFeedAutoRefresh: (Boolean) -> Unit = {}
+    onFeedAutoRefresh: (Boolean) -> Unit = {},
+    // v0.4.6 comfort batch.
+    senior: Boolean = false,
+    onSenior: (Boolean) -> Unit = {},
+    amoled: Boolean = false,
+    onAmoled: (Boolean) -> Unit = {},
+    blurMini: Boolean = false,
+    onBlurMini: (Boolean) -> Unit = {},
+    dndCinema: Boolean = false,
+    onDndCinema: (Boolean) -> Unit = {},
+    audioPrefetch: Boolean = false,
+    onAudioPrefetch: (Boolean) -> Unit = {},
+    palette: Boolean = false,
+    onPalette: (Boolean) -> Unit = {}
 ) {
     val deviceTag = deviceLang?.language ?: "ar"
     var confirmFav by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -318,6 +331,7 @@ fun SettingsScreen(
     val sPlayerT = stringResource(R.string.settings_sec_player)
     val sMiniT = stringResource(R.string.settings_sec_miniplayer)
     val sAppearT = stringResource(R.string.settings_sec_appearance)
+    val comfortT = stringResource(R.string.comfort_title)
     val sDlT = stringResource(R.string.settings_sec_downloads)
     val sDataT = stringResource(R.string.settings_sec_data)
     // Deferred-4 visibility must resolve in composable scope: LazyListScope `if` guards
@@ -697,6 +711,47 @@ fun SettingsScreen(
                     }
                 }
                 Text(stringResource(R.string.accent_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (showAppear) item {
+            // v0.4.6 comfort batch: display ease + cinema silence + offline-ish audio.
+            SettingsSection(title = comfortT, forceExpand = sQ.isNotEmpty()) {
+                SwitchRow(
+                    label = stringResource(R.string.senior_title),
+                    desc = stringResource(R.string.senior_desc),
+                    checked = senior,
+                    onToggle = { onSenior(!senior) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.amoled_title),
+                    desc = stringResource(R.string.amoled_desc),
+                    checked = amoled,
+                    onToggle = { onAmoled(!amoled) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.blur_mini_title),
+                    desc = stringResource(R.string.blur_mini_desc),
+                    checked = blurMini,
+                    onToggle = { onBlurMini(!blurMini) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.palette_title),
+                    desc = stringResource(R.string.palette_desc),
+                    checked = palette,
+                    onToggle = { onPalette(!palette) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.dnd_cinema_title),
+                    desc = stringResource(R.string.dnd_cinema_desc),
+                    checked = dndCinema,
+                    onToggle = { onDndCinema(!dndCinema) }
+                )
+                SwitchRow(
+                    label = stringResource(R.string.audio_prefetch_title),
+                    desc = stringResource(R.string.audio_prefetch_desc),
+                    checked = audioPrefetch,
+                    onToggle = { onAudioPrefetch(!audioPrefetch) }
+                )
             }
         }
         if (showDl) item {

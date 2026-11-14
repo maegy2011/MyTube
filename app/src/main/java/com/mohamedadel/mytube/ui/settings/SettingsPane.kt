@@ -54,6 +54,13 @@ interface SettingsPaneHost {
     fun skipSilenceX(v: Boolean)
     fun themeX(v: String)
     fun accentX(v: String)
+    // v0.4.6 comfort batch (live-apply, no restart).
+    fun amoledX(v: Boolean)
+    fun seniorX(v: Boolean)
+    fun blurMiniX(v: Boolean)
+    fun dndCinemaX(v: Boolean)
+    fun audioPrefetchX(v: Boolean)
+    fun paletteX(v: Boolean)
     fun volumeX(v: Float)
     fun mutedX(m: Boolean)
     fun restartNowX()
@@ -112,6 +119,12 @@ fun SettingsPaneHost.SettingsPane() {
     val prefTitleTranslate by settings.prefTitleTranslate.collectAsStateWithLifecycle()
     val prefUiLang by settings.prefUiLang.collectAsStateWithLifecycle()
     val prefUndetermined by settings.prefUndetermined.collectAsStateWithLifecycle()
+    val prefSenior by settings.prefSenior.collectAsStateWithLifecycle()
+    val prefAmoled by settings.prefAmoled.collectAsStateWithLifecycle()
+    val prefBlurMini by settings.prefBlurMini.collectAsStateWithLifecycle()
+    val prefDndCinema by settings.prefDndCinema.collectAsStateWithLifecycle()
+    val prefAudioPrefetch by settings.prefAudioPrefetch.collectAsStateWithLifecycle()
+    val prefPalette by settings.prefPalette.collectAsStateWithLifecycle()
     val lib = libVm()
     val histCount by lib.histCount.collectAsStateWithLifecycle()
     val pinsCount by lib.pinsCount.collectAsStateWithLifecycle()
@@ -157,6 +170,19 @@ SettingsScreen(
     onMiniAutoshow = { v -> settingsVm().setPrefMiniAutoshow(v) },
     miniSwipe = prefMiniSwipe,
     onMiniSwipe = { v -> settingsVm().setPrefMiniSwipe(v) },
+    // v0.4.6 comfort batch (live-apply, no restart).
+    senior = prefSenior,
+    onSenior = { v -> seniorX(v) },
+    amoled = prefAmoled,
+    onAmoled = { v -> amoledX(v) },
+    blurMini = prefBlurMini,
+    onBlurMini = { v -> blurMiniX(v) },
+    dndCinema = prefDndCinema,
+    onDndCinema = { v -> dndCinemaX(v) },
+    audioPrefetch = prefAudioPrefetch,
+    onAudioPrefetch = { v -> audioPrefetchX(v) },
+    palette = prefPalette,
+    onPalette = { v -> paletteX(v) },
     afMode = prefAf,
     onAf = { v -> afX(v) },
     sbEnabled = prefSb,

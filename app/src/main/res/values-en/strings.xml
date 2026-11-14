@@ -235,6 +235,20 @@
     <string name="pill_settings">Settings</string>
     <string name="dlg_player_settings">Playback settings</string>
     <string name="chapters_title">Chapters</string>
+    <!-- v0.4.6 comfort batch -->
+    <string name="comfort_title">Comfort &amp; appearance</string>
+    <string name="senior_title">Senior mode</string>
+    <string name="senior_desc">Bigger text and clearer targets everywhere</string>
+    <string name="amoled_title">True black (AMOLED)</string>
+    <string name="amoled_desc">Pure black background, saves battery</string>
+    <string name="blur_mini_title">Blurred mini-player background</string>
+    <string name="blur_mini_desc">Video art blurred behind the bottom bar</string>
+    <string name="dnd_cinema_title">Cinema do-not-disturb</string>
+    <string name="dnd_cinema_desc">Silence notifications in fullscreen (needs permission)</string>
+    <string name="audio_prefetch_title">Preload audio</string>
+    <string name="audio_prefetch_desc">Fetch next track audio on Wi-Fi for instant play</string>
+    <string name="palette_title">Colors from artwork</string>
+    <string name="palette_desc">Tint the mini-player from the video art</string>
     <string name="related_title">Up next</string>
     <string name="sub_studio_title">Subtitle studio</string>
     <string name="sub_hide_auto">Hide auto-generated</string>

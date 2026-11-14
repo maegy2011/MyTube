@@ -13,6 +13,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.LayoutDirection
@@ -81,6 +82,8 @@ fun MyTubeTheme(
     black: Boolean = false,
     accent: String = "red",
     rtl: Boolean = true,
+    // v0.4.6 senior mode: scale text only (dp layout untouched).
+    senior: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val dark = darkTheme || black
@@ -127,7 +130,13 @@ fun MyTubeTheme(
         }
     }
     // Arabic UI forces RTL; English UI uses LTR. Direction follows the ui-language pref.
-    CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+    // Senior mode bumps font scale without touching dp geometry (safe for all layouts).
+    val density = LocalDensity.current
+    val seniorDensity = if (senior) androidx.compose.ui.unit.Density(density.density, 1.3f) else density
+    CompositionLocalProvider(
+        LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+        LocalDensity provides seniorDensity
+    ) {
         MaterialTheme(colorScheme = colorScheme, typography = MyTubeTypography, shapes = MyTubeShapes, content = content)
     }
 }

@@ -235,6 +235,20 @@
     <string name="pill_settings">الإعدادات</string>
     <string name="dlg_player_settings">إعدادات التشغيل</string>
     <string name="chapters_title">الفصول</string>
+    <!-- v0.4.6 comfort batch -->
+    <string name="comfort_title">الراحة والمظهر</string>
+    <string name="senior_title">وضع كبار السن</string>
+    <string name="senior_desc">خط أكبر وعناصر أوضح في كل الشاشات</string>
+    <string name="amoled_title">أسود حقيقي (AMOLED)</string>
+    <string name="amoled_desc">خلفية سوداء خالصة توفر البطارية</string>
+    <string name="blur_mini_title">خلفية ضبابية للمشغّل المصغّر</string>
+    <string name="blur_mini_desc">صورة الفيديو ضبابًا خلف الشريط السفلي</string>
+    <string name="dnd_cinema_title">سينما بلا إزعاج</string>
+    <string name="dnd_cinema_desc">كتم الإشعارات أثناء ملء الشاشة (يحتاج إذنًا)</string>
+    <string name="audio_prefetch_title">تخزين الصوت مسبقًا</string>
+    <string name="audio_prefetch_desc">حمّل صوت المقطع التالي على Wi-Fi للتشغيل الفوري</string>
+    <string name="palette_title">ألوان من الصورة</string>
+    <string name="palette_desc">لون المشغّل المصغّر من صورة الفيديو</string>
     <string name="related_title">التالي</string>
     <string name="sub_studio_title">استوديو الترجمة</string>
     <string name="sub_hide_auto">إخفاء الترجمة التلقائية</string>

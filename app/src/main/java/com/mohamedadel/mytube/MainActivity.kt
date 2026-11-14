@@ -233,6 +233,9 @@ import org.schabi.newpipe.extractor.Page
 // apply instantly with no recreate — the queue survives a theme switch.
 private val themeLive = androidx.compose.runtime.mutableStateOf("dark")
 private val accentLive = androidx.compose.runtime.mutableStateOf("red")
+// v0.4.6 comfort batch: amoled black + senior fonts, same live mechanism.
+private val amoledLive = androidx.compose.runtime.mutableStateOf(false)
+private val seniorLive = androidx.compose.runtime.mutableStateOf(false)
 
 // Restart-prompt (11 Nov 2026 — بأمر محمد): full process restart after a
 // theme/accent change — relaunch MainActivity with a clean task, then exit.
@@ -272,6 +275,9 @@ class MainActivity : FragmentActivity() {
         val accentPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_accent", "red") ?: "red" } catch (_: Exception) { "red" }
         try { themeLive.value = themePref } catch (_: Exception) { }
         try { accentLive.value = accentPref } catch (_: Exception) { }
+        // v0.4.6 comfort batch: same live mechanism as theme/accent.
+        try { amoledLive.value = getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_amoled", false) } catch (_: Exception) { }
+        try { seniorLive.value = getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_senior", false) } catch (_: Exception) { }
         try { volumeLive.value = getSharedPreferences("mytube_prefs", MODE_PRIVATE).getFloat("pref_volume", 1f).coerceIn(0f, 1f) } catch (_: Exception) { }
         try { mutedLive.value = getSharedPreferences("mytube_prefs", MODE_PRIVATE).getBoolean("pref_muted", false) } catch (_: Exception) { }
         val uiLangPref = try { getSharedPreferences("mytube_prefs", MODE_PRIVATE).getString("pref_ui_lang", "ar") ?: "ar" } catch (_: Exception) { "ar" }
@@ -282,9 +288,10 @@ class MainActivity : FragmentActivity() {
                     "system" -> androidx.compose.foundation.isSystemInDarkTheme()
                     else -> true
                 },
-                black = themeLive.value == "black",
+                black = amoledLive.value || themeLive.value == "black",
                 accent = accentLive.value,
-                rtl = uiLangPref != "en"
+                rtl = uiLangPref != "en",
+                senior = seniorLive.value
             ) { MyTubeApp(onEnterPip = { enterPip() }, onPlayerReady = { player = it }, pipMode = pipMode) }
         }
     }
@@ -2932,6 +2939,12 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 }
                 override fun themeX(v: String) { settingsVm.setPrefTheme(v); try { themeLive.value = v } catch (_: Exception) { } }
                 override fun accentX(v: String) { settingsVm.setPrefAccent(v); try { accentLive.value = v } catch (_: Exception) { } }
+                override fun amoledX(v: Boolean) { settingsVm.setPrefAmoled(v); try { amoledLive.value = v } catch (_: Exception) { } }
+                override fun seniorX(v: Boolean) { settingsVm.setPrefSenior(v); try { seniorLive.value = v } catch (_: Exception) { } }
+                override fun blurMiniX(v: Boolean) { settingsVm.setPrefBlurMini(v) }
+                override fun dndCinemaX(v: Boolean) { settingsVm.setPrefDndCinema(v) }
+                override fun audioPrefetchX(v: Boolean) { settingsVm.setPrefAudioPrefetch(v) }
+                override fun paletteX(v: Boolean) { settingsVm.setPrefPalette(v) }
                 override fun volumeX(v: Float) { try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }; if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { } }
                 override fun mutedX(m: Boolean) { try { mutedLive.value = m } catch (_: Exception) { } }
                 override fun restartNowX() { (ctx as? android.app.Activity)?.let { restartAppNow(it) } }
