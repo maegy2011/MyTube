@@ -151,6 +151,7 @@ import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsRoute
 import com.mohamedadel.mytube.ui.home.ContentHeader
 import com.mohamedadel.mytube.ui.player.PlayerPane
+import com.mohamedadel.mytube.ui.settings.SettingsPane
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.library.NotificationsScreen
@@ -2817,272 +2818,82 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     }
             @Composable
     fun SettingsPane() {
-                SettingsScreen(
-                    subLang = prefSubLang,
-                    audioLang = prefAudioLang,
-                    subLang2 = prefSubLang2,
-                    audioLang2 = prefAudioLang2,
-                    country = prefCountry,
-                    quality = prefQuality,
-                    deviceLang = try { java.util.Locale.getDefault() } catch (_: Exception) { null },
-                    onSubLang = { v ->
-                        settingsVm.setPrefSubLang(v)
-                        applyLangPrefs()
-                    },
-                    onAudioLang = { v ->
-                        settingsVm.setPrefAudioLang(v)
-                        applyLangPrefs()
-                    },
-                    onSubLang2 = { v ->
-                        settingsVm.setPrefSubLang2(v)
-                    },
-                    onAudioLang2 = { v ->
-                        settingsVm.setPrefAudioLang2(v)
-                        playerVm.setAudioTrackIdx(pickAudioIdx())
-                    },
-                    // Geo-switch cache guard (2026-11-12): NEVER apply directly — stage
-                    // the pick and show the mandatory cache-clear dialog instead.
-                    onCountry = { v -> if (v != prefCountry) pendingCountry = v },
-                    onQuality = { v ->
-                        settingsVm.setPrefQuality(v)
-                        toast(ctx.getString(R.string.toast_quality_next))
-                    },
-                    uiLang = prefUiLang,
-                    onUiLang = { v ->
-                        settingsVm.setPrefUiLang(v)
-                        toast(ctx.getString(R.string.toast_lang_restart))
-                        try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
-                    },
-                    playMode = playMode,
-                    onPlayMode = { v ->
-                        setMode(v)
-                        toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v)))
-                    },
-                    // 2026-11-12 (runtime fix): autoplay persisted, default ON (بأمر محمد).
-                    autoplay = prefAutoplay,
-                    onAutoplay = { v ->
-                        settingsVm.setPrefAutoplay(v)
-                    },
-                    // 2026-11-12 (runtime layer): mini-player options, live-apply (no restart).
-                    miniEnabled = prefMiniEnabled,
-                    onMiniEnabled = { v ->
-                        settingsVm.setPrefMiniEnabled(v)
-                        // turning the bar off while collapsed strands playback behind no UI —
-                        // open the full player so it stays reachable (same as autoshow-OFF rule).
-                        if (!v && playing != null && !playerExpanded) playerExpanded = true
-                    },
-                    miniAutoshow = prefMiniAutoshow,
-                    onMiniAutoshow = { v ->
-                        settingsVm.setPrefMiniAutoshow(v)
-                    },
-                    miniSwipe = prefMiniSwipe,
-                    onMiniSwipe = { v ->
-                        settingsVm.setPrefMiniSwipe(v)
-                    },
-                    afMode = prefAf,
-                    onAf = { v ->
-                        settingsVm.setPrefAf(v)
-                        try {
-                            if (v == "calls") {
-                                val granted = ctx.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
-                                if (!granted) afPermLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-                            }
-                            applyAudioFocus()
-                        } catch (_: Exception) { }
-                    },
-                    sbEnabled = prefSb,
-                    onSb = { v ->
-                        settingsVm.setPrefSb(v)
-                    },
-                    pipAuto = prefPip,
-                    onPip = { v ->
-                        settingsVm.setPrefPip(v)
-                    },
-                    favCount = favoriteKeys.size,
-                    histCount = histCount,
-                    plCount = playlists.size,
-                    dbSize = dbSizeLabel(),
-                    onClearFavorites = { clearFavorites() },
-                    onClearHistory = { clearHistory() },
-                    onCopyDiagnostics = { copyDiagnostics() },
-                    onCheckUpdate = { checkUpdate() },
-                    onExportFull = { exportFullBackup() },
-                    onImportFull = { try { backupImportLauncher.launch("application/json") } catch (_: Exception) { } },
-                    cacheSize = cacheSizeLabel,
-                    cacheMaxMb = prefCacheMaxMb,
-                    onCacheMax = { mb ->
-                        settingsVm.setPrefCacheMaxMb(mb)
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            try {
-                                com.mohamedadel.mytube.playback.MediaCache.setMax(mb * 1024 * 1024)
-                                com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext)
-                            } catch (_: Exception) { }
-                            refreshCacheLabel()
+        val host = remember {
+            object : com.mohamedadel.mytube.ui.settings.SettingsPaneHost {
+                override fun settingsVm() = settingsVm
+                override fun libVm() = libVm
+                override fun pinVm() = pinVm
+                override fun eqVm() = eqVm
+                override fun playerVm() = playerVm
+                override fun favoriteKeys() = favoriteKeys
+                override fun playlistsCount() = playlists.size
+                override fun prefetchedMap() = prefetched
+                override fun pickAudioIdxNow() = pickAudioIdx()
+                override fun dbSizeLabel() = dbSizeLabel()
+                override fun backupInfoText() = backupInfoText()
+                override fun extAvailable() = try { com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext) } catch (_: Exception) { false }
+                override fun strOf(id: Int) = try { ctx.getString(id) } catch (_: Exception) { "" }
+                override fun subLangX(v: String) { settingsVm.setPrefSubLang(v); applyLangPrefs() }
+                override fun audioLangX(v: String) { settingsVm.setPrefAudioLang(v); applyLangPrefs() }
+                override fun stageCountry(v: String) { pendingCountry = v }
+                override fun qualityX(v: String) { settingsVm.setPrefQuality(v); toast(ctx.getString(R.string.toast_quality_next)) }
+                override fun uiLangX(v: String) { settingsVm.setPrefUiLang(v); toast(ctx.getString(R.string.toast_lang_restart)); try { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { } }
+                override fun playModeX(v: String) { setMode(v); toast(ctx.getString(R.string.playmode_toast_fmt, modeLabel(v))) }
+                override fun miniEnabledX(v: Boolean) { settingsVm.setPrefMiniEnabled(v); if (!v && playing != null && !playerExpanded) playerExpanded = true }
+                override fun afX(v: String) {
+                    settingsVm.setPrefAf(v)
+                    try {
+                        if (v == "calls") {
+                            val granted = ctx.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+                            if (!granted) afPermLauncher.launch(Manifest.permission.READ_PHONE_STATE)
                         }
-                        toast(ctx.getString(R.string.toast_cache_max))
-                    },
-                    onClearCache = { clearMediaCache() },
-                    offlineMode = prefOffline,
-                    onOfflineMode = { v ->
-                        settingsVm.setPrefOffline(v)
-                    },
-                    keepAlive = prefKeepalive,
-                    onKeepAlive = { v ->
-                        settingsVm.setPrefKeepalive(v)
-                        try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }
-                        if (!v) toast(ctx.getString(R.string.keepalive_off))
-                    },
-                    ageMode = prefAgeMode,
-                    onAgeMode = { m ->
-                        settingsVm.setPrefAgeMode(m)
-                    },
-                    showComments = prefShowComments,
-                    onShowComments = { v ->
-                        settingsVm.setPrefShowComments(v)
-                    },
-                    showRelated = prefShowRelated,
-                    onShowRelated = { v ->
-                        settingsVm.setPrefShowRelated(v)
-                    },
-                    showInfo = prefShowInfo,
-                    onShowInfo = { v ->
-                        settingsVm.setPrefShowInfo(v)
-                    },
-                    showSubs = prefShowSubs,
-                    onShowSubs = { v ->
-                        settingsVm.setPrefShowSubs(v)
-                    },
-                    allow4k = prefAllow4k,
-                    onAllow4k = { v ->
-                        settingsVm.setPrefAllow4k(v)
-                    },
-                    pinsCount = pinsCount,
-                    pinsSize = pinsSizeLabel,
-                    pinsBytes = pinsBytes,
-                    pinsWarnMb = prefPinWarnMb,
-                    pinLoc = pinSelLoc,
-                    extAvailable = try { com.mohamedadel.mytube.data.local.PinFiles.isExternalAvailable(ctx.applicationContext) } catch (_: Exception) { false },
-                    onPinLoc = { loc ->
-                        pinVm.setPinSelLoc(loc)
-                    },
-                    onPinsWarn = { mb ->
-                        settingsVm.setPrefPinWarnMb(mb)
-                    },
-                    onClearPins = { clearAllPins() },
-                    feedParallel = prefFeedParallel,
-                    onFeedParallel = { v ->
-                        settingsVm.setPrefFeedParallel(v)
-                    },
-                    feedCache = prefFeedCache,
-                    onFeedCache = { v ->
-                        settingsVm.setPrefFeedCache(v)
-                    },
-                    // Deferred items 7+8: last-backup metadata row + periodic refresh toggle.
-                    backupInfo = backupInfoText(),
-                    feedAutoRefresh = prefFeedAuto,
-                    onFeedAutoRefresh = { v ->
-                        settingsVm.setPrefFeedAuto(v)
-                        try { syncFeedWorker(ctx.applicationContext, v) } catch (_: Exception) { }
-                    },
-                    preloadNext = prefPreloadNext,
-                    onPreloadNext = { v ->
-                        settingsVm.setPrefPreloadNext(v)
-                        if (!v) try { prefetched.clear() } catch (_: Exception) { }
-                    },
-                    preloadWifiOnly = prefPreloadWifiOnly,
-                    titleTranslate = prefTitleTranslate,
-                    onTitleTranslate = { v ->
-                        settingsVm.setPrefTitleTranslate(v)
-                    },
-                    onPreloadWifiOnly = { v ->
-                        settingsVm.setPrefPreloadWifiOnly(v)
-                    },
-                    subHideAuto = prefSubHideAuto,
-                    onSubHideAuto = { v -> settingsVm.setPrefSubHideAuto(v) },
-                    subFg = prefSubFg,
-                    onSubFg = { v -> settingsVm.setPrefSubFg(v) },
-                    subBg = prefSubBg,
-                    onSubBg = { v -> settingsVm.setPrefSubBg(v) },
-                    subEdge = prefSubEdge,
-                    onSubEdge = { v -> settingsVm.setPrefSubEdge(v) },
-                    subScale = prefSubScale,
-                    onSubScale = { v -> settingsVm.setPrefSubScale(v) },
-                    subBgOpacity = prefSubBgOpacity,
-                    onSubBgOpacity = { v -> settingsVm.setPrefSubBgOpacity(v) },
-                    subBold = prefSubBold,
-                    onSubBold = { v -> settingsVm.setPrefSubBold(v) },
-                    preferOriginal = prefPreferOriginal,
-                    onPreferOriginal = { v -> settingsVm.setPrefPreferOriginal(v); playerVm.setAudioTrackIdx(pickAudioIdx()) },
-                    subRole = prefSubRole,
-                    onSubRole = { v -> settingsVm.setPrefSubRole(v) },
-                    hideForced = prefHideForced,
-                    onHideForced = { v -> settingsVm.setPrefHideForced(v) },
-                    undetermined = prefUndetermined,
-                    onUndetermined = { v -> settingsVm.setPrefUndetermined(v) },
-                    audioRole = prefAudioRole,
-                    onAudioRole = { v -> settingsVm.setPrefAudioRole(v) },
-                    skipSilence = prefSkipSilence,
-                    onSkipSilence = { v ->
-                        settingsVm.setPrefSkipSilence(v)
-                        toast(ctx.getString(R.string.toast_skip_restart))
-                        // processor chain is fixed at player build: stop the service, WAIT for
-                        // death, then recreate — the old fire-and-forget raced a stale player (major #6).
-                        try { ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java)) } catch (_: Exception) { }
-                        scope.launch {
-                            try { kotlinx.coroutines.delay(900) } catch (_: Exception) { }
-                            try { withContext(kotlinx.coroutines.Dispatchers.Main) { (ctx as? android.app.Activity)?.recreate() } } catch (_: Exception) { }
-                        }
-                    },
-                    speed = prefSpeed,
-                    onSpeed = { v -> settingsVm.setPrefSpeed(v) },
-                    pitch = prefPitch,
-                    onPitch = { v -> settingsVm.setPrefPitch(v) },
-                    theme = prefTheme,
-                    onTheme = { v ->
-                        settingsVm.setPrefTheme(v)
-                        try { themeLive.value = v } catch (_: Exception) { }
-                    },
-                    accent = prefAccent,
-                    onAccent = { v ->
-                        settingsVm.setPrefAccent(v)
-                        try { accentLive.value = v } catch (_: Exception) { }
-                    },
-                    // Restart-prompt (11 Nov 2026 — بأمر محمد): dialog choice after theme/accent change.
-                    onRestartNow = { (ctx as? android.app.Activity)?.let { restartAppNow(it) } },
-                    volume = volumeLive.value,
-                    muted = mutedLive.value,
-                    onVolume = { v ->
-                        try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }
-                        if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { }
-                    },
-                    onMuted = { m ->
-                        try { mutedLive.value = m } catch (_: Exception) { }
-                    },
-                    eqSupported = eqSupported,
-                    eqEnabled = eqEnabled,
-                    onEqEnabled = { on -> eqVm.setEnabled(on) },
-                    eqPresetNames = eqPresetNames,
-                    eqPreset = eqPreset,
-                    onEqPreset = { i -> eqVm.setPreset(i) },
-                    eqLabels = eqLabels,
-                    eqBands = eqCustom,
-                    onEqBand = { b, v -> eqVm.setBand(b, v) },
-                )
-                // Geo-switch cache guard dialog (2026-11-12, runtime layer): mandatory
-                // confirmation before a content-country switch. REFUSE (dismiss/cancel)
-                // keeps the OLD country — prefCountry untouched, no partial state.
-                // ACCEPT clears extractor + page caches, then applies + reloads.
-                // Extracted to CountryGuardDialog: this host method is at the 64KB limit.
-                val pending = pendingCountry
-                if (pending != null) {
-                    com.mohamedadel.mytube.ui.settings.CountryGuardDialog(
-                        pending = pending,
-                        pendingName = com.mohamedadel.mytube.ui.settings.COUNTRY_OPTIONS.firstOrNull { it.first == pending }?.second?.let { ctx.getString(it) } ?: pending,
-                        onDismiss = { pendingCountry = null },
-                        onConfirm = { v -> confirmCountrySwitch(v) }
-                    )
+                        applyAudioFocus()
+                    } catch (_: Exception) { }
                 }
+                override fun clearFavoritesX() { clearFavorites() }
+                override fun clearHistoryX() { clearHistory() }
+                override fun copyDiagnosticsX() { copyDiagnostics() }
+                override fun checkUpdateX() { checkUpdate() }
+                override fun exportFullX() { exportFullBackup() }
+                override fun importFullX() { try { backupImportLauncher.launch("application/json") } catch (_: Exception) { } }
+                override fun cacheMaxX(mb: Int) {
+                    settingsVm.setPrefCacheMaxMb(mb)
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            com.mohamedadel.mytube.playback.MediaCache.setMax(mb * 1024 * 1024)
+                            com.mohamedadel.mytube.playback.MediaCache.warmAsync(ctx.applicationContext)
+                        } catch (_: Exception) { }
+                        refreshCacheLabel()
+                    }
+                    toast(ctx.getString(R.string.toast_cache_max))
+                }
+                override fun clearCacheX() { clearMediaCache() }
+                override fun keepAliveX(v: Boolean) { settingsVm.setPrefKeepalive(v); try { com.mohamedadel.mytube.playback.KeepAliveService.sync(ctx.applicationContext) } catch (_: Exception) { }; if (!v) toast(ctx.getString(R.string.keepalive_off)) }
+                override fun clearPinsX() { clearAllPins() }
+                override fun feedAutoX(v: Boolean) { settingsVm.setPrefFeedAuto(v); try { syncFeedWorker(ctx.applicationContext, v) } catch (_: Exception) { } }
+                override fun preloadNextX(v: Boolean) { settingsVm.setPrefPreloadNext(v); if (!v) try { prefetched.clear() } catch (_: Exception) { } }
+                override fun preferOriginalX(v: Boolean) { settingsVm.setPrefPreferOriginal(v); playerVm.setAudioTrackIdx(pickAudioIdx()) }
+                override fun skipSilenceX(v: Boolean) {
+                    settingsVm.setPrefSkipSilence(v)
+                    toast(ctx.getString(R.string.toast_skip_restart))
+                    try { ctx.stopService(android.content.Intent(ctx, com.mohamedadel.mytube.playback.PlaybackService::class.java)) } catch (_: Exception) { }
+                    scope.launch {
+                        try { kotlinx.coroutines.delay(900) } catch (_: Exception) { }
+                        try { withContext(kotlinx.coroutines.Dispatchers.Main) { (ctx as? android.app.Activity)?.recreate() } catch (_: Exception) { }
+                    }
+                }
+                override fun themeX(v: String) { settingsVm.setPrefTheme(v); try { themeLive.value = v } catch (_: Exception) { } }
+                override fun accentX(v: String) { settingsVm.setPrefAccent(v); try { accentLive.value = v } catch (_: Exception) { } }
+                override fun volumeX(v: Float) { try { volumeLive.value = v.coerceIn(0f, 1f) } catch (_: Exception) { }; if (v > 0f) try { mutedLive.value = false } catch (_: Exception) { } }
+                override fun mutedX(m: Boolean) { try { mutedLive.value = m } catch (_: Exception) { } }
+                override fun restartNowX() { (ctx as? android.app.Activity)?.let { restartAppNow(it) } }
+                override fun pendingCountry() = pendingCountry
+                override fun clearPending() { pendingCountry = null }
+                override fun confirmCountryX(v: String) { confirmCountrySwitch(v) }
             }
+        }
+        host.SettingsPane()
+    }
 
                 com.mohamedadel.mytube.ui.home.MainContent(h = mcHost, settingsPane = { SettingsPane() }, playlistsRoute = { PlaylistsRoute() })
             }
