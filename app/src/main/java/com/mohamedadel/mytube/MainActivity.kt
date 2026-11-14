@@ -152,6 +152,7 @@ import com.mohamedadel.mytube.ui.playlists.PlaylistsRoute
 import com.mohamedadel.mytube.ui.home.ContentHeader
 import com.mohamedadel.mytube.ui.player.PlayerPane
 import com.mohamedadel.mytube.ui.settings.SettingsPane
+import com.mohamedadel.mytube.ui.share.handleShared
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.library.NotificationsScreen
@@ -1801,23 +1802,11 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         pinVm.openPinned(key, pinHost, pinResolveHost)
     }
     fun handleSharedIntent(inc: android.content.Intent) {
-        try {
-            val action = inc.action
-            val type = inc.type
-            var text: String? = null
-            if (action == android.content.Intent.ACTION_SEND && type == "text/plain")
-                text = inc.getStringExtra(android.content.Intent.EXTRA_TEXT)
-            else if (action == android.content.Intent.ACTION_VIEW) text = inc.dataString
-            text = text?.trim()
-            if (text.isNullOrBlank()) return
-            val vid = extractYoutubeId(text)
-            if (vid != null) {
-                val url = "https://www.youtube.com/watch?v=" + vid
-                playVideo(VideoItem(id = vid, url = url, title = text.take(120)), inQueue = false, expand = true, forcePlay = true)
-            } else {
-                doSearch(text.take(200))
-            }
-        } catch (_: Exception) { }
+        val host = object : com.mohamedadel.mytube.ui.share.ShareIntentHost {
+            override fun playSharedVideo(v: VideoItem) { playVideo(v, inQueue = false, expand = true, forcePlay = true) }
+            override fun searchSharedText(q: String) { doSearch(q) }
+        }
+        host.handleShared(inc)
     }
     // home-redesign Phase 2 (2026-11-12): load recent history when the home screen shows.
     // No watch-position column exists yet (HistoryEntity has duration but no position),
