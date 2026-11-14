@@ -159,7 +159,9 @@ fun MiniPlayer(
                 if (castAvailable) {
                     androidx.compose.ui.viewinterop.AndroidView(
                         factory = { c ->
-                            androidx.mediarouter.app.MediaRouteButton(c).apply {
+                            // 2026-11-14 (crash fix): MediaRouteButton dies on a translucent-
+                            // background context (IllegalArgumentException #0) — pin the app theme.
+                            androidx.mediarouter.app.MediaRouteButton(android.view.ContextThemeWrapper(c, com.mohamedadel.mytube.R.style.Theme_MyTube)).apply {
                                 try { com.mohamedadel.mytube.playback.CastManager.selector()?.let { routeSelector = it } } catch (_: Exception) { }
                             }
                         },
