@@ -657,4 +657,5 @@
     <string name="dlna_volume">الصوت</string>
     <string name="dlna_mute">كتم</string>
     <string name="dlna_remote">التحكم بالشاشة</string>
+    <string name="dlna_cmd_failed">تعذر تنفيذ الأمر على الشاشة</string>
 </resources>

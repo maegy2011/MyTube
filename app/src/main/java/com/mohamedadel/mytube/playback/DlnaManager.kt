@@ -92,6 +92,7 @@ object DlnaManager {
      * Runs off the main thread. Returns via callback only.
      */
     fun play(renderer: Renderer, url: String, mime: String, title: String, done: (Boolean) -> Unit) {
+        lastMedia = Triple(url, mime, title)
         scope.launch {
             val ok = try {
                 val svc = renderer.device.serviceList
@@ -197,31 +198,57 @@ object DlnaManager {
     /** Snapshot of remote state. Fields -1/unknown when unreadable. */
     data class RemoteState(val volume: Int, val mute: Boolean, val posMs: Long, val durMs: Long, val playing: Boolean)
 
+    /** Last media handed to [play] — backs [replay] when the URI context is lost. */
+    private var lastMedia: Triple<String, String, String>? = null
+
+    /** Re-send the last media (SetURI+Play). Used when resume finds no URI. */
+    fun replay(renderer: Renderer, done: (Boolean) -> Unit) {
+        val m = lastMedia
+        if (m == null) {
+            scope.launch(Dispatchers.Main) { try { done(false) } catch (_: Exception) { } }
+            return
+        }
+        play(renderer, m.first, m.second, m.third, done)
+    }
+
     fun queryState(renderer: Renderer, done: (RemoteState) -> Unit) {
         scope.launch {
-            var vol = -1; var mute = false; var pos = -1L; var dur = -1L; var playing = false
-            try {
-                renderer.device.rc()?.findAction("GetVolume")?.invokeSync(
-                    mapOf("InstanceID" to "0", "Channel" to "Master")
-                )?.let { vol = it["CurrentVolume"]?.toIntOrNull() ?: -1 }
-            } catch (_: Exception) { }
-            try {
-                renderer.device.rc()?.findAction("GetMute")?.invokeSync(
-                    mapOf("InstanceID" to "0", "Channel" to "Master")
-                )?.let { mute = it["CurrentMute"] == "1" }
-            } catch (_: Exception) { }
-            try {
-                renderer.device.avt()?.findAction("GetPositionInfo")?.invokeSync(mapOf("InstanceID" to "0"))?.let {
-                    pos = parseTime(it["RelTime"])
-                    dur = parseTime(it["TrackDuration"])
-                }
-            } catch (_: Exception) { }
-            try {
-                renderer.device.avt()?.findAction("GetTransportInfo")?.invokeSync(mapOf("InstanceID" to "0"))?.let {
-                    playing = it["CurrentTransportState"]?.equals("PLAYING", ignoreCase = true) == true
-                }
-            } catch (_: Exception) { }
-            val st = RemoteState(vol, mute, pos, dur, playing)
+            // Parallel: 4 serial blocking SOAP calls made the dialog feel dead.
+            val volD = kotlinx.coroutines.async {
+                try {
+                    renderer.device.rc()?.findAction("GetVolume")?.invokeSync(
+                        mapOf("InstanceID" to "0", "Channel" to "Master")
+                    )?.get("CurrentVolume")?.toIntOrNull() ?: -1
+                } catch (_: Exception) { -1 }
+            }
+            val muteD = kotlinx.coroutines.async {
+                try {
+                    renderer.device.rc()?.findAction("GetMute")?.invokeSync(
+                        mapOf("InstanceID" to "0", "Channel" to "Master")
+                    )?.get("CurrentMute") == "1"
+                } catch (_: Exception) { false }
+            }
+            val posD = kotlinx.coroutines.async {
+                try {
+                    renderer.device.avt()?.findAction("GetPositionInfo")
+                        ?.invokeSync(mapOf("InstanceID" to "0"))
+                        ?.let { parseTime(it["RelTime"]) to parseTime(it["TrackDuration"]) }
+                } catch (_: Exception) { null }
+            }
+            val playD = kotlinx.coroutines.async {
+                try {
+                    renderer.device.avt()?.findAction("GetTransportInfo")
+                        ?.invokeSync(mapOf("InstanceID" to "0"))
+                        ?.get("CurrentTransportState")?.equals("PLAYING", ignoreCase = true) == true
+                } catch (_: Exception) { false }
+            }
+            val pos = try { posD.await() } catch (_: Exception) { null }
+            val st = RemoteState(
+                try { volD.await() } catch (_: Exception) { -1 },
+                try { muteD.await() } catch (_: Exception) { false },
+                pos?.first ?: -1L, pos?.second ?: -1L,
+                try { playD.await() } catch (_: Exception) { false }
+            )
             launch(Dispatchers.Main) { try { done(st) } catch (_: Exception) { } }
         }
     }
@@ -235,8 +262,9 @@ object DlnaManager {
     } catch (_: Exception) { null }
 
     internal fun fmtTime(ms: Long): String {
+        // Locale.US: %d honors device locale — Arabic digits break renderers.
         val s = (ms.coerceAtLeast(0) / 1000).toInt()
-        return "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
+        return String.format(java.util.Locale.US, "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
     }
 
     internal fun parseTime(t: String?): Long {
@@ -260,7 +288,8 @@ object DlnaManager {
             "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\">" +
             "<item id=\"0\" parentID=\"0\" restricted=\"1\">" +
             "<dc:title>$t</dc:title><upnp:class>$cls</upnp:class>" +
-            "<res protocolInfo=\"http-get:*:$mime:*\">$u</res>" +
+            // DLNA.ORG_OP=01: byte-seek supported (relay honors Range) — strict TVs need the flag.
+            "<res protocolInfo=\"http-get:*:$mime:DLNA.ORG_OP=01;DLNA.ORG_CI=0\">$u</res>" +
             "</item></DIDL-Lite>"
     }
 

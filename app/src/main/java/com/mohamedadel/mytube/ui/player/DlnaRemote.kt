@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
@@ -33,12 +35,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.playback.DlnaManager
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /**
- * DLNA remote control (2026-11-14): transport + volume for the picked renderer.
+ * DLNA remote control (2026-11-14, enhanced).
  *
- * State is queried once on open ([DlnaManager.queryState]); every control is
- * best-effort AVTransport/RenderingControl over the LAN. Closes only by user.
+ * Transport (play/pause/stop/±10s/seek) + volume/mute + live position.
+ * State refreshes on open, every 5s while open, and after every command.
+ * Play falls back: resume → replay (re-send URI) when the renderer lost context.
+ * All commands best-effort; failures surface one short inline line, never crash.
  */
 @Composable
 fun DlnaRemoteDialog(
@@ -48,14 +54,25 @@ fun DlnaRemoteDialog(
     var playing by remember { mutableStateOf(true) }
     var volume by remember { mutableStateOf(-1) }
     var muted by remember { mutableStateOf(false) }
-    var posText by remember { mutableStateOf<String?>(null) }
+    var posMs by remember { mutableStateOf(-1L) }
+    var durMs by remember { mutableStateOf(-1L) }
+    var seekPos by remember { mutableStateOf<Float?>(null) }
+    var err by remember { mutableStateOf(false) }
+
+    fun apply(st: DlnaManager.RemoteState) {
+        if (st.volume in 0..100) volume = st.volume
+        muted = st.mute
+        playing = st.playing
+        if (st.posMs >= 0) posMs = st.posMs
+        if (st.durMs > 0) durMs = st.durMs
+    }
+    fun refresh() = DlnaManager.queryState(renderer, ::apply)
 
     LaunchedEffect(renderer.udn) {
-        DlnaManager.queryState(renderer) { st ->
-            if (st.volume in 0..100) volume = st.volume
-            muted = st.mute
-            playing = st.playing
-            posText = if (st.posMs >= 0 && st.durMs > 0) fmtClock(st.posMs) + " / " + fmtClock(st.durMs) else null
+        refresh()
+        while (isActive) {
+            delay(5000)
+            refresh()
         }
     }
 
@@ -64,14 +81,44 @@ fun DlnaRemoteDialog(
         title = { Text(stringResource(R.string.dlna_remote) + " — " + renderer.name) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                if (err) {
+                    Text(
+                        stringResource(R.string.dlna_cmd_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = {
-                        if (playing) DlnaManager.pause(renderer) { ok -> if (ok) playing = false }
-                        else DlnaManager.resume(renderer) { ok -> if (ok) playing = true }
+                        err = false
+                        DlnaManager.seekTo(renderer, (posMs - 10000).coerceAtLeast(0)) { ok ->
+                            if (ok) refresh() else err = true
+                        }
+                    }) {
+                        Icon(
+                            Icons.Rounded.Replay10, contentDescription = "-10s",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    IconButton(onClick = {
+                        err = false
+                        if (playing) {
+                            DlnaManager.pause(renderer) { ok ->
+                                if (ok) { playing = false; refresh() } else err = true
+                            }
+                        } else {
+                            DlnaManager.resume(renderer) { ok ->
+                                if (ok) { playing = true; refresh() }
+                                else DlnaManager.replay(renderer) { ok2 ->
+                                    if (ok2) { playing = true; refresh() } else err = true
+                                }
+                            }
+                        }
                     }) {
                         Icon(
                             if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -92,8 +139,23 @@ fun DlnaRemoteDialog(
                         )
                     }
                     IconButton(onClick = {
+                        err = false
+                        DlnaManager.seekTo(renderer, posMs + 10000) { ok ->
+                            if (ok) refresh() else err = true
+                        }
+                    }) {
+                        Icon(
+                            Icons.Rounded.Forward10, contentDescription = "+10s",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    IconButton(onClick = {
+                        err = false
                         val next = !muted
-                        DlnaManager.setMute(renderer, next) { ok -> if (ok) muted = next }
+                        DlnaManager.setMute(renderer, next) { ok ->
+                            if (ok) muted = next else err = true
+                        }
                     }) {
                         Icon(
                             if (muted) Icons.Rounded.VolumeOff else Icons.Rounded.VolumeUp,
@@ -103,14 +165,28 @@ fun DlnaRemoteDialog(
                         )
                     }
                 }
-                if (posText != null) {
+                if (durMs > 0 && posMs >= 0) {
                     Text(
-                        posText!!,
+                        fmtClock(posMs) + " / " + fmtClock(durMs),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Slider(
+                        value = (seekPos ?: posMs.toFloat()).coerceIn(0f, durMs.toFloat()),
+                        onValueChange = { seekPos = it },
+                        onValueChangeFinished = {
+                            val target = (seekPos ?: posMs.toFloat()).toLong()
+                            seekPos = null
+                            err = false
+                            DlnaManager.seekTo(renderer, target) { ok ->
+                                if (ok) refresh() else err = true
+                            }
+                        },
+                        valueRange = 0f..durMs.toFloat(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
+                Spacer(Modifier.height(4.dp))
                 if (volume in 0..100) {
                     Text(
                         stringResource(R.string.dlna_volume) + " " + volume,
@@ -121,7 +197,10 @@ fun DlnaRemoteDialog(
                         value = volume.toFloat(),
                         onValueChange = { volume = it.toInt() },
                         onValueChangeFinished = {
-                            DlnaManager.setVolume(renderer, volume) { }
+                            err = false
+                            DlnaManager.setVolume(renderer, volume) { ok ->
+                                if (ok) refresh() else err = true
+                            }
                         },
                         valueRange = 0f..100f,
                         steps = 99,
@@ -134,15 +213,15 @@ fun DlnaRemoteDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { DlnaManager.setVolume(renderer, 0) { volume = 0 } }) { Text("0") }
+                        TextButton(onClick = { DlnaManager.setVolume(renderer, 0) { if (it) volume = 0 } }) { Text("0") }
                         Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = { DlnaManager.setVolume(renderer, 25) { volume = 25 } }) { Text("25") }
+                        TextButton(onClick = { DlnaManager.setVolume(renderer, 25) { if (it) volume = 25 } }) { Text("25") }
                         Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = { DlnaManager.setVolume(renderer, 50) { volume = 50 } }) { Text("50") }
+                        TextButton(onClick = { DlnaManager.setVolume(renderer, 50) { if (it) volume = 50 } }) { Text("50") }
                         Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = { DlnaManager.setVolume(renderer, 75) { volume = 75 } }) { Text("75") }
+                        TextButton(onClick = { DlnaManager.setVolume(renderer, 75) { if (it) volume = 75 } }) { Text("75") }
                         Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = { DlnaManager.setVolume(renderer, 100) { volume = 100 } }) { Text("100") }
+                        TextButton(onClick = { DlnaManager.setVolume(renderer, 100) { if (it) volume = 100 } }) { Text("100") }
                     }
                 }
             }

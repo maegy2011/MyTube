@@ -77,6 +77,9 @@ object CastRelayServer {
             c.use { sock ->
                 val src = source.get() ?: return
                 val req = readHead(sock) ?: return
+                // 2026-11-14: some renderers probe with HEAD — headers only, no body.
+                val headOnly = req.lineSequence().firstOrNull()
+                    ?.startsWith("HEAD", ignoreCase = true) == true
                 val range = req.lines()
                     .firstOrNull { it.startsWith("Range:", ignoreCase = true) }
                     ?.substringAfter(":")?.trim()
@@ -89,6 +92,7 @@ object CastRelayServer {
                 }
                 try {
                     val code = conn.responseCode
+                    if (headOnly) try { conn.disconnect() } catch (_: Exception) { }
                     val out: OutputStream = sock.getOutputStream()
                     val len = conn.getHeaderField("Content-Length")
                     val ctype = conn.getHeaderField("Content-Type") ?: src.second
@@ -100,6 +104,7 @@ object CastRelayServer {
                     if (crange != null) writeLine(out, "Content-Range: $crange")
                     writeLine(out, "Connection: close")
                     writeLine(out, "")
+                    if (headOnly) { out.flush(); return }
                     val stream = try {
                         conn.inputStream
                     } catch (_: Exception) {
