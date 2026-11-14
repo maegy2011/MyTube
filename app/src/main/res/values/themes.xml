@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.MyTube" parent="android:Theme.Material.NoActionBar" />
+    <!-- 2026-11-14 (cast crash root fix): AppCompat parent — mediarouter UI
+         (button + chooser dialog) reads AppCompat colorBackground; the old
+         framework parent left it 0 (translucent) and crashed both. Compose
+         content is unaffected by the activity theme parent. -->
+    <style name="Theme.MyTube" parent="Theme.AppCompat.NoActionBar" />
     <!-- 2026-11-14 (cast crash fix): AppCompat bridge — mediarouter reads AppCompat
          colorBackground at construction; the framework parent above leaves it 0
          (translucent) and MediaRouteButton throws. Used only for the route button. -->
