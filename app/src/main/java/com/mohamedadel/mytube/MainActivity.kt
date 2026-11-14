@@ -1254,7 +1254,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // Queue navigation (suggestion #3): next/previous within the result list.
     val playerHost = remember {
         val showToast: (String) -> Unit = { s -> toast(s) }
-        object : com.mohamedadel.mytube.ui.player.LangHost {
+        object : com.mohamedadel.mytube.ui.player.LangHost, com.mohamedadel.mytube.ui.playlists.PlaylistsRouteHost {
             override fun play(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) {
                 playVideo(v, inQueue, expand, forcePlay = forcePlay)
             }
@@ -1343,6 +1343,28 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                         .map { g -> com.mohamedadel.mytube.ui.player.TrackGroupInfo(g.mediaTrackGroup, g.length) }
                 } catch (_: Exception) { emptyList() }
             }
+            override fun playlistsSnap() = playlists
+            override fun openPlaylistIdSnap() = openPlaylistId
+            override fun setOpenPlaylistId(id: Long?) { openPlaylistId = id }
+            override fun openItemsSnap() = openItems
+            override fun pinBadgesSnap() = pinBadges
+            override fun coversSnap() = plCovers
+            override fun tabSortSnap() = plTabSort
+            override fun songSortSnap() = plSongSort
+            override fun playingSnap() = playing
+            override fun routeScope() = scope
+            override fun libVm() = libVm
+            override fun playerVm() = playerVm
+            override fun searchVm() = msearchVm
+            override fun csvVm() = csvVm
+            override fun routePrefs() = prefs
+            override fun playRouteVideo(v: VideoItem, inQueue: Boolean, expand: Boolean, forcePlay: Boolean) { playVideo(v, inQueue = inQueue, expand = expand, forcePlay = forcePlay) }
+            override fun routeIsQueued(v: VideoItem) = isQueued(v)
+            override fun routeQuickPin(v: VideoItem) { quickPin(v, null) }
+            override fun routeSmartBack() { smartBack() }
+            override fun setRouteOptionsFor(v: VideoItem?) { optionsFor = v }
+            override fun setRouteShowPlaylists(b: Boolean) { showPlaylists = b }
+            override fun routeCsvImport() { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } }
             override fun applyDecision(d: com.mohamedadel.mytube.ui.player.LangDecision) {
                 val p = player ?: return
                 val b = p.trackSelectionParameters.buildUpon()
@@ -2286,73 +2308,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // captures stay implicit, no signature churn, no behavior change.
     @Composable
     fun PlaylistsRoute() {
-        PlaylistsScreen(
-                            playlists = playlists,
-                            openId = openPlaylistId,
-                            items = openItems,
-                            onOpen = { openPlaylistId = it },
-                            onCloseItems = { openPlaylistId = null },
-                            onPlayAll = { pid ->
-                                scope.launch {
-                                    val list = libVm.loadPlaylistItems(pid)
-                                    if (list.isNotEmpty()) {
-                                        showPlaylists = false
-                                        openPlaylistId = null
-                                        msearchVm.showPlaylistResults(list)
-                                        playerVm.replaceQueue(list, 0)
-                                        playerVm.setRadioOn(false)
-                                        playerVm.setVideoModeQueue(playlists.firstOrNull { it.id == pid }?.mode == "video")
-                                        playVideo(list[0], inQueue = true, expand = true, forcePlay = true)
-                                    }
-                                }
-                            },
-                            onPlayFrom = { idx ->
-                                val list = openItems.map { it.toVideoItem() }
-                                if (idx in list.indices) {
-                                    showPlaylists = false
-                                    msearchVm.showPlaylistResults(list)
-                                    playerVm.replaceQueue(list, idx)
-                                    playerVm.setRadioOn(false)
-                                    playerVm.setVideoModeQueue(playlists.firstOrNull { it.id == openPlaylistId }?.mode == "video")
-                                    playVideo(list[idx], inQueue = true, expand = true, forcePlay = true)
-                                }
-                            },
-                            onCreate = { name, emoji ->
-                                scope.launch { libVm.createPlaylist(name, emoji) }
-                            },
-                            onSaveEdits = { pid, name, emoji, mode, orderedIds ->
-                                scope.launch {
-                                    libVm.saveEdits(pid, name, emoji, mode, orderedIds)
-                                }
-                            },
-                            onDelete = { pid -> scope.launch { libVm.deletePlaylist(pid); if (openPlaylistId == pid) openPlaylistId = null } },
-                            onClearItems = { pid -> scope.launch { libVm.clearPlaylist(pid) } },
-                            onMoveToPlaylist = { pid, iid, targetPid ->
-                                scope.launch { libVm.moveItem(pid, iid, targetPid) }
-                            },
-                            // 2026-11-12 (runtime fix): hierarchical pop via smartBack — the old
-                            // inline close dropped fromLibrary and landed on home instead of Library.
-                            onBack = { smartBack() },
-                            pinBadges = pinBadges,
-                            onLongClick = { optionsFor = it },
-                            covers = plCovers,
-                            onQueueItems = { sel ->
-                                val fresh = sel.map { it.toVideoItem() }.filter { !isQueued(it) }
-                                if (fresh.isNotEmpty()) {
-                                    playerVm.appendItems(fresh)
-                                    if (playing == null) playVideo(fresh[0], inQueue = true)
-                                }
-                            },
-                            onPinItems = { vs -> scope.launch { for (v in vs) { try { quickPin(v, null) } catch (_: Exception) { } } } },
-                            onRemoveItems = { pid, ids -> scope.launch { libVm.removeItems(pid, ids) } },
-                            onExport = { pid -> exportPlaylistCsv(pid) },
-                            // screens-fix Library P1-L4: CSV import entry.
-                            onImport = { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } },
-                            tabSort = plTabSort,
-                            onTabSort = { v -> libVm.setPlTabSort(v, prefs) },
-                            songSort = plSongSort,
-                            onSongSort = { v -> libVm.setPlSongSort(v, openPlaylistId, prefs) }
-        )
+        (playerHostHolder[0] as? com.mohamedadel.mytube.ui.playlists.PlaylistsRouteHost)?.run { this.PlaylistsRoute() }
     }
 
             val mc_onSubscribeChannel: () -> Unit = { toggleSubscription(channelScreenUrl, channelDetail?.name, channelDetail?.avatar) }
