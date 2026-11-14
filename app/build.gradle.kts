@@ -24,7 +24,7 @@ val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
     ?.takeIf { it.isNotBlank() } ?: releaseStorePassword
 android {
     namespace = "com.mohamedadel.mytube"
-    compileSdk = 36
+    compileSdk = 37
     signingConfigs {
         create("release") {
             // CI-safe: debug/CI evaluation never needs the family key.
@@ -40,7 +40,7 @@ android {
     defaultConfig {
         applicationId = "com.mohamedadel.mytube"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 42
         versionName = "0.4.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
