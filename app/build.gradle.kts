@@ -84,6 +84,8 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.cast)
     implementation(libs.coil.compose)
+    // v0.4.6: Palette API for artwork-derived mini-player accents.
+    implementation(libs.androidx.palette.ktx)
     implementation(libs.paging.runtime)
     implementation(libs.paging.compose)
     implementation(libs.coroutines.core)

@@ -41,6 +41,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -94,6 +95,9 @@ fun MiniPlayer(
     castAvailable: Boolean = false,
     // 2026-11-12 (runtime fix): queue reachable straight from the mini-player
     // (was only inside the full player) — remove/reorder/clear live in QueuePanel.
+    // v0.4.6: blurred artwork backdrop + palette tint (both opt-in prefs).
+    blurBg: Boolean = false,
+    paletteOn: Boolean = false,
     onQueue: (() -> Unit)? = null
 ) {
     val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState()
@@ -115,9 +119,17 @@ fun MiniPlayer(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(0.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (blurBg && video.thumbnail != null) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f) else MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 3.dp
     ) {
+        // v0.4.6 palette: vibrant tint from artwork (falls back to theme primary).
+        val vibrant = rememberArtworkVibrant(video.thumbnail, paletteOn)
+        val accentNow = vibrant ?: MaterialTheme.colorScheme.primary
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // v0.4.6 blur: artwork fills the bar, heavily blurred + dimmed (text stays legible).
+            if (blurBg && video.thumbnail != null) {
+                AsyncImage(model = video.thumbnail, contentDescription = null, modifier = Modifier.matchParentSize().blur(24.dp), contentScale = ContentScale.Crop, alpha = 0.38f)
+            }
         Column {
             Row(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onTap).padding(horizontal = 12.dp, vertical = 8.dp),
@@ -149,7 +161,7 @@ fun MiniPlayer(
                     }
                 }
                 IconButton(onClick = onToggle) {
-                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play), tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play), tint = accentNow)
                 }
                 if (onNext != null) {
                     IconButton(onClick = onNext, enabled = hasNext) {
@@ -176,9 +188,10 @@ fun MiniPlayer(
                 LinearProgressIndicator(
                     progress = { (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth().height(3.dp),
-                    color = MaterialTheme.colorScheme.primary
+                    color = accentNow
                 )
             }
+        }
         }
     }
     }

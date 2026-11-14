@@ -570,6 +570,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val prefMiniEnabled by settingsVm.prefMiniEnabled.collectAsStateWithLifecycle()
     val prefMiniAutoshow by settingsVm.prefMiniAutoshow.collectAsStateWithLifecycle()
     val prefMiniSwipe by settingsVm.prefMiniSwipe.collectAsStateWithLifecycle()
+    // v0.4.6 comfort batch: blurred mini backdrop + artwork palette tint.
+    val prefBlurMini by settingsVm.prefBlurMini.collectAsStateWithLifecycle()
+    val prefPalette by settingsVm.prefPalette.collectAsStateWithLifecycle()
     // Audio focus: "all" (pause on any interruption, ExoPlayer handles) vs "calls"
     // (ignore other apps, pause only for phone calls via telephony callback).
     val prefAf by settingsVm.prefAf.collectAsStateWithLifecycle()
@@ -2644,6 +2647,9 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     // then channel avatar, so audio-only/SC/YTM never show a blank thumb.
                     video = playing!!.let { v -> if (v.thumbnail == null) v.copy(thumbnail = streamData?.artworkUrl ?: v.channelAvatar) else v },
                     swipeEnabled = prefMiniSwipe,
+                    // v0.4.6: blurred backdrop + palette accents (both opt-in).
+                    blurBg = prefBlurMini,
+                    paletteOn = prefPalette,
                     titleOverride = translatedTitle,
                     isPlaying = isPlaying,
                     positionMs = playerPositionMs,
