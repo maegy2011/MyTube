@@ -128,7 +128,9 @@ fun ContentHeaderHost.ContentHeader() {
         // pops the nav stack via smartBack(), never jumps home. Root = home feed
         // with nothing playing and no results. Mirrors the BackHandler enable set.
         val canGoBack = canNavigateBack()
-        if (canGoBack) {
+        // Search screen carries its own back button (UnifiedSearchOverlay) — skip the
+        // header Up while it is open so the two arrows never stack.
+        if (canGoBack && !showSearch()) {
             IconButton(onClick = { goBack() }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
             }
