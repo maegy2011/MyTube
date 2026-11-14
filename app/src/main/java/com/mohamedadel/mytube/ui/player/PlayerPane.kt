@@ -4,9 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.media3.exoplayer.ExoPlayer
 import com.mohamedadel.mytube.data.youtube.StreamData
-import com.mohamedadel.mytube.data.youtube.Subscription
+import com.mohamedadel.mytube.data.local.SubscriptionEntity
+import com.mohamedadel.mytube.data.local.favKey
 import com.mohamedadel.mytube.data.youtube.VideoItem
-import androidx.compose.ui.text.TextStyle
 
 /**
  * Phase 3 slice 33 (2026-11-14): PlayerPane extracted from MainActivity.
@@ -39,11 +39,11 @@ interface PlayerPaneHost {
     fun prefShowRelated(): Boolean
     fun prefShowInfo(): Boolean
     fun prefShowComments(): Boolean
-    fun subscriptions(): List<Subscription>
+    fun subscriptions(): List<SubscriptionEntity>
     fun pinKeys(): Set<String>
     fun pinningKeys(): Set<String>
     fun pinProgressMap(): Map<String, Float>
-    fun subStyle(): TextStyle
+    fun subStyle(): SubStyle
     fun translatedTitle(): String?
     fun qualityPick(q: String)
     fun togglePlayExo()
