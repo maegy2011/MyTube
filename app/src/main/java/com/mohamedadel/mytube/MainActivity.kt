@@ -1256,8 +1256,19 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
         return mutableListOf(QUALITY_AUDIO_ONLY, autoKey).also { it.addAll(sorted) }
     }
     // default quality preference (applies to every new video AND to list-context pins)
-    fun pickStartQuality(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String =
-        pickStartQuality(sd0, kbps, prefQuality, prefAllow4k)
+    // v0.4.5 #24: on cellular data without Wi-Fi, cap a "high" default to "saver".
+    // Audio-only stays untouched; user can still switch quality manually per video.
+    fun isCellularOnly(): Boolean = try {
+        val cm = ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val net = cm?.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(net) ?: return false
+        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) &&
+            !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+    } catch (_: Exception) { false }
+    fun pickStartQuality(sd0: com.mohamedadel.mytube.data.youtube.StreamData, kbps: Int): String {
+        val pref = if (prefQuality == "high" && isCellularOnly()) "saver" else prefQuality
+        return pickStartQuality(sd0, kbps, pref, prefAllow4k)
+    }
     // Chromecast: guess the receiver content type from the resolved stream URL.
     // Falls back to audio/mp4 + video/mp4 (progressive — what the extractor hands us).
     fun castMimeFor(url: String, audioOnly: Boolean): String =
