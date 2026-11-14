@@ -45,20 +45,31 @@ jobs:
         run: echo "${{ secrets.DEBUG_KEYSTORE_B64 }}" | base64 -d > /tmp/debug.keystore
 
       - name: Build release APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_STORE_FILE: /tmp/debug.keystore
         run: chmod +x gradlew && ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       - name: Zipalign + sign + verify
         run: |
           BT=$ANDROID_HOME/build-tools/36.0.0
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
+          SIGNED=app/build/outputs/apk/release/app-release.apk
           OUT="mytube-${{ env.APK_TAG }}.apk"
-          test -f "$UNSIGNED" || { echo "unsigned APK missing"; exit 1; }
-          $BT/zipalign -f 4 "$UNSIGNED" /tmp/aligned.apk
-          $BT/apksigner sign --ks /tmp/debug.keystore \
-            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
-            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
-            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
-            --out "$OUT" /tmp/aligned.apk
+          if [ -f "$SIGNED" ]; then
+            echo "Gradle signed the APK during build — verifying only."
+            cp "$SIGNED" "$OUT"
+          else
+            test -f "$UNSIGNED" || { echo "no APK produced"; exit 1; }
+            $BT/zipalign -f 4 "$UNSIGNED" /tmp/aligned.apk
+            $BT/apksigner sign --ks /tmp/debug.keystore \
+              --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+              --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+              --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+              --out "$OUT" /tmp/aligned.apk
+          fi
           $BT/apksigner verify --print-certs "$OUT"
           ls -la "$OUT"
           rm -f /tmp/debug.keystore /tmp/aligned.apk

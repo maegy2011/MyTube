@@ -15,6 +15,13 @@ val releaseStorePassword: String? = System.getenv("RELEASE_STORE_PASSWORD")
         File("/home/administrator/.cellclaw/mytube-family.pw").takeIf { it.isFile }?.readText()?.trim()?.ifBlank { null }
     }.getOrNull()
 val hasReleaseKey: Boolean = !releaseStorePassword.isNullOrEmpty()
+// CI overrides (release.yml sets these from repo secrets; local defaults = family key).
+val releaseStoreFile: String = System.getenv("RELEASE_STORE_FILE")
+    ?.takeIf { it.isNotBlank() } ?: "/home/administrator/.cellclaw/mytube-family.keystore"
+val releaseKeyAlias: String = System.getenv("RELEASE_KEY_ALIAS")
+    ?.takeIf { it.isNotBlank() } ?: "family"
+val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
+    ?.takeIf { it.isNotBlank() } ?: releaseStorePassword
 android {
     namespace = "com.mohamedadel.mytube"
     compileSdk = 34
@@ -23,10 +30,10 @@ android {
             // CI-safe: debug/CI evaluation never needs the family key.
             // Fail-fast only when a Release task is actually requested (below).
             if (hasReleaseKey) {
-                storeFile = file("/home/administrator/.cellclaw/mytube-family.keystore")
+                storeFile = file(releaseStoreFile)
                 storePassword = releaseStorePassword
-                keyAlias = "family"
-                keyPassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
