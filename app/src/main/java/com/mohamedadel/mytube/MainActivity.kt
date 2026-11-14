@@ -2856,7 +2856,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun checkUpdateX() { checkUpdate() }
                 override fun exportFullX() { exportFullBackup() }
                 override fun importFullX() { try { backupImportLauncher.launch("application/json") } catch (_: Exception) { } }
-                override fun cacheMaxX(mb: Int) {
+                override fun cacheMaxX(mb: Long) {
                     settingsVm.setPrefCacheMaxMb(mb)
                     scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {

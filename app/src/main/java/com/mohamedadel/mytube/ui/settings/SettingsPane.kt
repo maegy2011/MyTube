@@ -44,7 +44,7 @@ interface SettingsPaneHost {
     fun checkUpdateX()
     fun exportFullX()
     fun importFullX()
-    fun cacheMaxX(mb: Int)
+    fun cacheMaxX(mb: Long)
     fun clearCacheX()
     fun keepAliveX(v: Boolean)
     fun clearPinsX()
