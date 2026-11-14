@@ -1,6 +1,6 @@
 [versions]
 agp = "8.5.2"
-kotlin = "2.0.20"
+kotlin = "2.2.0"
 coreKtx = "1.13.1"
 splashscreen = "1.0.1"
 lifecycle = "2.8.6"
@@ -15,7 +15,7 @@ okhttp = "4.12.0"
 newpipe = "0.27.1"
 castFramework = "21.4.0"
 room = "2.6.1"
-ksp = "2.0.20-1.0.25"
+ksp = "2.2.0-2.0.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
