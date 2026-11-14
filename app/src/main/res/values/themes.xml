@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.MyTube" parent="android:Theme.Material.NoActionBar" />
+    <!-- 2026-11-14 (cast crash fix): AppCompat bridge — mediarouter reads AppCompat
+         colorBackground at construction; the framework parent above leaves it 0
+         (translucent) and MediaRouteButton throws. Used only for the route button. -->
+    <style name="Theme.MyTube.Cast" parent="Theme.AppCompat.NoActionBar" />
     <style name="Theme.MyTube.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>

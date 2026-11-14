@@ -701,7 +701,7 @@ fun PlayerArea(
                         androidx.compose.ui.viewinterop.AndroidView(
                             factory = { c ->
                                 // 2026-11-14 (crash fix): pin app theme — translucent context kills the button (#0).
-                                androidx.mediarouter.app.MediaRouteButton(android.view.ContextThemeWrapper(c, com.mohamedadel.mytube.R.style.Theme_MyTube)).apply {
+                                androidx.mediarouter.app.MediaRouteButton(android.view.ContextThemeWrapper(c, com.mohamedadel.mytube.R.style.Theme_MyTube_Cast)).apply {
                                     try { com.mohamedadel.mytube.playback.CastManager.selector()?.let { routeSelector = it } } catch (_: Exception) { }
                                 }
                             },
