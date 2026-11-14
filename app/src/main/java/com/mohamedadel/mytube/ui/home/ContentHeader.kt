@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.mohamedadel.mytube.R
 import com.mohamedadel.mytube.data.unified.SourceResult
 import com.mohamedadel.mytube.data.youtube.VideoItem
+import com.mohamedadel.mytube.ui.icons.myTubeLogo
 import com.mohamedadel.mytube.ui.search.MainSearchViewModel
 import com.mohamedadel.mytube.ui.search.MusicSearchViewModel
 import com.mohamedadel.mytube.ui.search.SearchViewModel
@@ -136,13 +137,13 @@ fun ContentHeaderHost.ContentHeader() {
         Spacer(Modifier.weight(1f))
         // notif 2026-11-12: bell with unread badge -> Notifications screen.
         androidx.compose.material3.BadgedBox(
-            badge = { if (unreadCount > 0) androidx.compose.material3.Badge { Text(if (unreadCount > 99) "99+" else unreadCount.toString()) } }
+            badge = { if (unreadCount() > 0) androidx.compose.material3.Badge { Text(if (unreadCount() > 99) "99+" else unreadCount().toString()) } }
         ) {
             IconButton(onClick = { openNotifications() }) {
                 Icon(Icons.Rounded.Notifications, contentDescription = stringResource(R.string.notif_bell))
             }
         }
-        if (loading) {
+        if (loading()) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
         }
         IconButton(onClick = { openSearch() }) {
