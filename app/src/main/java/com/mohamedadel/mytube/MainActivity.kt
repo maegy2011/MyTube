@@ -130,6 +130,7 @@ import com.mohamedadel.mytube.ui.player.MiniPlayer
 import com.mohamedadel.mytube.ui.player.PlayerHost
 import com.mohamedadel.mytube.ui.player.enqueueLast
 import com.mohamedadel.mytube.ui.player.castCurrent
+import com.mohamedadel.mytube.ui.player.dlnaCurrent
 import com.mohamedadel.mytube.ui.player.fadeOutAndPause
 import com.mohamedadel.mytube.ui.player.applyQuality
 import com.mohamedadel.mytube.ui.player.playVideo

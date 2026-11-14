@@ -159,7 +159,5 @@ object DlnaManager {
         } catch (_: Exception) { }
     }
 
-    private companion object {
-        const val RENDERER_ST = "urn:schemas-upnp-org:device:MediaRenderer:1"
-    }
+    private const val RENDERER_ST = "urn:schemas-upnp-org:device:MediaRenderer:1"
 }
