@@ -148,6 +148,7 @@ import com.mohamedadel.mytube.ui.player.SleepTimerDialog
 import com.mohamedadel.mytube.ui.playlists.FavoritesScreen
 import com.mohamedadel.mytube.ui.playlists.HistoryScreen
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
+import com.mohamedadel.mytube.ui.playlists.PlaylistsRoute
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.library.NotificationsScreen
