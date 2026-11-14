@@ -2312,7 +2312,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun routeCsvImport() { try { csvImportLauncher.launch("text/*") } catch (_: Exception) { } }
             }
         }
-        host.run { this.PlaylistsRoute() }
+        host.PlaylistsRoute()
     }
 
             val mc_onSubscribeChannel: () -> Unit = { toggleSubscription(channelScreenUrl, channelDetail?.name, channelDetail?.avatar) }
