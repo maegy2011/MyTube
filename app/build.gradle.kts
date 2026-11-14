@@ -24,7 +24,7 @@ val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
     ?.takeIf { it.isNotBlank() } ?: releaseStorePassword
 android {
     namespace = "com.mohamedadel.mytube"
-    compileSdk = 37
+    compileSdk = 36
     signingConfigs {
         create("release") {
             // CI-safe: debug/CI evaluation never needs the family key.
@@ -40,7 +40,7 @@ android {
     defaultConfig {
         applicationId = "com.mohamedadel.mytube"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 42
         versionName = "0.4.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -81,6 +81,7 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
+    implementation(libs.media3.cast)
     implementation(libs.coil.compose)
     implementation(libs.paging.runtime)
     implementation(libs.paging.compose)
