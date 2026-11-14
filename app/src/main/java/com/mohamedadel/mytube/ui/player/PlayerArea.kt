@@ -229,6 +229,46 @@ fun PlayerArea(
     isLive: Boolean = false
 ) {
     val lctx = LocalContext.current
+    // v0.4.5 #15 resume: per-video position in prefs; cleared when >90% watched.
+    val resumeKey = remember(video.url, video.title) { "resume_" + ((video.url ?: video.title ?: "").hashCode().toString()) }
+    var resumeApplied by remember(resumeKey) { mutableStateOf(false) }
+    LaunchedEffect(resumeKey) {
+        resumeApplied = false
+        try {
+            val prefs = lctx.getSharedPreferences("mytube_resume", android.content.Context.MODE_PRIVATE)
+            val at = prefs.getLong(resumeKey, -1L)
+            if (at > 10000L && durationMs > 0 && at < durationMs * 0.9f) { onSeek(at) }
+        } catch (_: Exception) { }
+        resumeApplied = true
+    }
+    LaunchedEffect(positionMs, video.url) {
+        if (!resumeApplied || durationMs <= 0) return@LaunchedEffect
+        try {
+            val prefs = lctx.getSharedPreferences("mytube_resume", android.content.Context.MODE_PRIVATE)
+            if (positionMs > 10000L && positionMs < durationMs * 0.9f) prefs.edit().putLong(resumeKey, positionMs).apply()
+            else if (positionMs >= durationMs * 0.9f) prefs.edit().remove(resumeKey).apply()
+            // v0.4.5 #36: 30s..90% watched → continue-later set (surfaced in Library later).
+            if (positionMs > 30000L && positionMs < durationMs * 0.9f) {
+                val cl = lctx.getSharedPreferences("mytube_continue", android.content.Context.MODE_PRIVATE)
+                val id = video.url ?: video.title ?: return@LaunchedEffect
+                if (!(cl.getStringSet("ids", emptySet()) ?: emptySet()).contains(id)) {
+                    val next = (cl.getStringSet("ids", emptySet()) ?: emptySet()).toMutableSet().also { it.add(id) }
+                    cl.edit().putStringSet("ids", next.takeLast(50).toSet()).apply()
+                }
+            }
+        } catch (_: Exception) { }
+    }
+    // v0.4.5 #23: autoplay-next 5s countdown when the track ends and queue is on.
+    var autoCount by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(positionMs, durationMs, queueOn) {
+        if (queueOn && durationMs > 0 && positionMs >= durationMs - 600L && errorMsg == null) {
+            if (autoCount == null) {
+                for (i in 5 downTo 1) { autoCount = i; delay(1000) }
+                autoCount = null
+                try { onNext() } catch (_: Exception) { }
+            }
+        } else if (autoCount != null && positionMs < durationMs - 2000L) autoCount = null
+    }
     var expanded by remember { mutableStateOf(false) }
     var langExpanded by remember { mutableStateOf(false) }
     var subExpanded by remember { mutableStateOf(false) }
@@ -525,6 +565,19 @@ fun PlayerArea(
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
                     ) { Text(stringResource(R.string.skip_intro)) }
                 }
+                autoCount?.let { n ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Black.copy(alpha = 0.7f),
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("التالي بعد $n", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                            Spacer(Modifier.width(8.dp))
+                            androidx.compose.material3.TextButton(onClick = { autoCount = null }) { Text("إلغاء") }
+                        }
+                    }
+                }
                 // center state: error > loading.
                 // nativeOnly: NO overlay (not even loading) — anything drawn over
                 // PlayerView eats its taps; the native spinner + controller handle this state.
@@ -574,6 +627,7 @@ fun PlayerArea(
                         Text(stringResource(R.string.now_playing), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
+            } // end video Box
             // quick-seek row (v0.4.5 #31): big targets beside native buttons
             if (!isFullscreen && durationMs > 0 && errorMsg == null) {
                 Row(

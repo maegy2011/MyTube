@@ -2764,6 +2764,23 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun tagClickX(q: String) { try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) }
                 override fun shareX(v: VideoItem) { try { ctx.shareVideoCtx(v) } catch (_: Exception) { } }
                 override fun setRelatedOptions(v: VideoItem?) { optionsFor = v }
+                override fun speedNow() = try { prefSpeed } catch (_: Exception) { 1f }
+                override fun cycleSpeedX() {
+                    try {
+                        val steps = listOf(1f, 1.25f, 1.5f, 1.75f, 2f)
+                        val cur = try { prefSpeed } catch (_: Exception) { 1f }
+                        val next = steps.firstOrNull { it > cur + 0.01f } ?: 1f
+                        settingsVm.setPrefSpeed(next)
+                    } catch (_: Exception) { }
+                }
+                private var prevQBeforeAudio = "auto"
+                override fun audioQuickOn() = quality == QUALITY_AUDIO_ONLY
+                override fun audioQuickX() {
+                    try {
+                        if (quality == QUALITY_AUDIO_ONLY) qualityPick(prevQBeforeAudio)
+                        else { prevQBeforeAudio = quality; qualityPick(QUALITY_AUDIO_ONLY) }
+                    } catch (_: Exception) { }
+                }
             }
         }
         host.PlayerPane(paneMod, cur, onEnterPip)

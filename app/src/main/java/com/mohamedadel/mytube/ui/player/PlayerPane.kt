@@ -76,6 +76,10 @@ interface PlayerPaneHost {
     fun tagClickX(q: String)
     fun shareX(v: VideoItem)
     fun setRelatedOptions(v: VideoItem?)
+    fun speedNow(): Float = 1f
+    fun cycleSpeedX() {}
+    fun audioQuickOn(): Boolean = false
+    fun audioQuickX() {}
 }
 
 @Composable
@@ -156,5 +160,9 @@ PlayerArea(
     onTagClick = { q -> tagClickX(q) },
     onShare = { shareX(cur) },
     onRelatedOptions = { setRelatedOptions(it) },
-    storyboards = streamData()?.storyboards ?: emptyList()
+    storyboards = streamData()?.storyboards ?: emptyList(),
+    playbackSpeed = speedNow(),
+    onSpeedCycle = { cycleSpeedX() },
+    audioOnlyQuick = audioQuickOn(),
+    onAudioOnlyQuick = { audioQuickX() }
 )}
