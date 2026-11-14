@@ -737,8 +737,11 @@ fun PlayerArea(
                 var overflow by remember { mutableStateOf(false) }
                 var showDlnaOuter by remember { mutableStateOf(false) }
                 var remote by remember { mutableStateOf<DlnaManager.Renderer?>(null) }
+                // Phase 1 rebuild fix: the fixed 4-pill row overflowed narrow screens,
+                // pushing the ⋮ menu (and Cast/DND with it) off-screen. Scrollable fallback:
+                // fits = identical look, overflows = swipeable. Never clips actions again.
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
