@@ -156,7 +156,7 @@ fun MiniPlayer(
                         Icon(Icons.Rounded.SkipNext, contentDescription = stringResource(R.string.next), tint = if (hasNext) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), modifier = Modifier.size(22.dp))
                     }
                 }
-                if (castAvailable) {
+                if (false && castAvailable) {
                     androidx.compose.ui.viewinterop.AndroidView(
                         factory = { c ->
                             // 2026-11-14 (crash fix): MediaRouteButton dies on a translucent-
@@ -175,7 +175,8 @@ fun MiniPlayer(
             if (durationMs > 0) {
                 LinearProgressIndicator(
                     progress = { (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(2.dp)
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }

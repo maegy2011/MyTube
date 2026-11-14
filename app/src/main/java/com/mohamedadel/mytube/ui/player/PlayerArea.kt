@@ -202,6 +202,10 @@ fun PlayerArea(
     related: List<com.mohamedadel.mytube.data.youtube.VideoItem> = emptyList(),
     onChapterSeek: (Long) -> Unit = {},
     onRelatedPlay: (com.mohamedadel.mytube.data.youtube.VideoItem) -> Unit = {},
+    playbackSpeed: Float = 1f,
+    onSpeedCycle: () -> Unit = {},
+    audioOnlyQuick: Boolean = false,
+    onAudioOnlyQuick: () -> Unit = {},
     subStyle: SubStyle = SubStyle(),
     onChannelClick: () -> Unit = {},
     onCommentsClick: () -> Unit = {},
@@ -272,18 +276,11 @@ fun PlayerArea(
     // To revert: set nativeOnly = false.
     val nativeOnly = true
     // professional controls: visible on tap, auto-hide after 3s while playing
-    var controlsVisible by remember { mutableStateOf(true) }
-    // in-player volume (0..1) + mute; applied to ExoPlayer, shared live with Settings.
+        // in-player volume (0..1) + mute; applied to ExoPlayer, shared live with Settings.
     val volume = volumeLive.value
     val muted = mutedLive.value
     LaunchedEffect(volume, muted, player) {
         try { player?.volume = if (muted) 0f else volume.coerceIn(0f, 1f) } catch (_: Exception) { }
-    }
-    LaunchedEffect(controlsVisible, isPlaying, playerLoading, errorMsg) {
-        if (controlsVisible && isPlaying && !playerLoading && errorMsg == null) {
-            delay(3000)
-            controlsVisible = false
-        }
     }
     ElevatedCard(
         modifier = (if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(16.dp)).then(modifier),
@@ -311,11 +308,12 @@ fun PlayerArea(
                     }
                 }
             }
+            // v0.4.5: gestures overlay (volume/brightness/seek) sits above PlayerView, passes taps through.
+            val gestureSeek: (Long) -> Unit = { d -> onSeek((positionMs + d).coerceAtLeast(0L)) }
             Box(
-                // nativeOnly: NO tap interceptor — every touch must reach PlayerView so its controller shows.
+                // NO tap interceptor — every tap must reach PlayerView so its controller shows.
                 // (the old custom-bar toggle stole taps and the controller never appeared)
                 modifier = (if (isFullscreen) Modifier.fillMaxSize()
-                    else if (!nativeOnly) Modifier.fillMaxWidth().height(220.dp).clickable(enabled = errorMsg == null) { controlsVisible = !controlsVisible }
                     else Modifier.fillMaxWidth().height(220.dp)).onGloballyPositioned { containerWPx = it.size.width }
             ) {
                 val p0 = player
@@ -459,7 +457,9 @@ fun PlayerArea(
                 // until the first frame decodes — show the cover instead of a black box.
                 // Drawn only during loading (transient; taps do nothing useful yet anyway).
                 if (playerLoading && quality != "audio-only (default)" && errorMsg == null && video.thumbnail != null) {
-                    AsyncImage(model = video.thumbnail, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+                        AsyncImage(model = video.thumbnail, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
                 }
                 // storyboard scrub preview (YouTube-style popup above the seek bar, follows the thumb)
                 if (scrubbing && board != null && durationMs > 0) {
@@ -487,7 +487,45 @@ fun PlayerArea(
                         }
                     }
                 }
-                // center state: error > loading > big play/pause button.
+                // gesture layer (v0.4.5): drags only, taps pass to native controller
+                GestureOverlay(modifier = Modifier.matchParentSize(), enabled = !isFullscreen || true, onSeekBy = gestureSeek)
+                // quality + speed badge (v0.4.5 #11/#19): quick info, tap opens settings
+                if (!isFullscreen && errorMsg == null) {
+                    Surface(
+                        onClick = { showPlayerSettings = true },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.Black.copy(alpha = 0.6f),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                    ) {
+                        Text(
+                            (if (quality == "audio-only (default)") "♪" else lctx.shortQuality(quality)) + (if (playbackSpeed != 1f) " • " + playbackSpeed.toString().trimEnd('0').trimEnd('.') + "x" else ""),
+                            style = MaterialTheme.typography.labelSmall, color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                // fullscreen title strip (v0.4.5 cosmetic #3)
+                if (isFullscreen) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.Black.copy(alpha = 0.55f),
+                        modifier = Modifier.align(Alignment.TopStart).padding(10.dp)
+                    ) {
+                        Text(
+                            (titleOverride ?: video.title ?: ""), style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp).sizeIn(maxWidth = 320.dp)
+                        )
+                    }
+                }
+                // skip-intro (v0.4.5 #28): first chapter is usually the intro
+                if (!chapters.isEmpty() && positionMs < (chapters.firstOrNull()?.startSec ?: 0) * 1000L + 15000L && positionMs > 0L && chapters.size > 1) {
+                    androidx.compose.material3.Button(
+                        onClick = { onChapterSeek(chapters[1].startSec * 1000L) },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
+                    ) { Text(stringResource(R.string.skip_intro)) }
+                }
+                // center state: error > loading.
                 // nativeOnly: NO overlay (not even loading) — anything drawn over
                 // PlayerView eats its taps; the native spinner + controller handle this state.
                 val videoNative = nativeOnly && player != null
@@ -517,21 +555,6 @@ fun PlayerArea(
                             )
                         }
                     }
-                    !nativeOnly && (quality == "audio-only (default)" || player == null) -> {
-                        IconButton(
-                            onClick = onTogglePlay,
-                            modifier = Modifier.align(Alignment.Center)
-                                .size(76.dp)
-                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(38.dp))
-                        ) {
-                            Icon(
-                                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play),
-                                tint = Color.White,
-                                modifier = Modifier.size(44.dp)
-                            )
-                        }
-                    }
                 }
                 // live badge while playing audio-only
                 if (isPlaying && quality == "audio-only (default)" && errorMsg == null && !playerLoading) {
@@ -539,88 +562,11 @@ fun PlayerArea(
                         Text(stringResource(R.string.now_playing), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
-                // bottom control bar: play/pause + time + volume/mute — fades in on tap, auto-hides while playing
-                // bottom control bar (plain conditional: avoids AnimatedVisibility scope-overload quirk)
-                // hidden while the nativeOnly experiment runs
-                if (!nativeOnly && controlsVisible && errorMsg == null && !playerLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color.Black.copy(alpha = 0.55f)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = { controlsVisible = true; onTogglePlay() },
-                                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                            ) {
-                                Icon(
-                                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                    contentDescription = if (isPlaying) stringResource(R.string.sleep_pause) else stringResource(R.string.play),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                            if (durationMs > 0) {
-                                Text(
-                                    "${formatMs(positionMs)} / ${formatMs(durationMs)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                )
-                            }
-                            Spacer(Modifier.weight(1f))
-                            // mute toggle
-                            IconButton(
-                                onClick = { controlsVisible = true; mutedLive.value = !mutedLive.value },
-                                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                            ) {
-                                Icon(
-                                    if (muted || volume == 0f) Icons.AutoMirrored.Rounded.VolumeOff
-                                    else if (volume < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown
-                                    else Icons.AutoMirrored.Rounded.VolumeUp,
-                                    contentDescription = if (muted) stringResource(R.string.cd_unmute) else stringResource(R.string.cd_mute),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            // volume slider
-                            Slider(
-                                value = if (muted) 0f else volume,
-                                onValueChange = { volumeLive.value = it; if (it > 0f) mutedLive.value = false; controlsVisible = true },
-                                valueRange = 0f..1f,
-                                modifier = Modifier.width(110.dp)
-                            )
-                        }
-                    }
-                }
-                }
-            }
-            // seek + time row (when duration known) — hidden while the nativeOnly experiment runs
-            if (!nativeOnly && durationMs > 0) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    Slider(
-                        value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
-                        onValueChange = { onSeek(it.toLong()) },
-                        valueRange = 0f..durationMs.toFloat(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text(formatMs(positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.weight(1f))
-                        Text(formatMs(durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
             // YouTube watch layout (design clone, existing callbacks only):
             // title + meta, channel row (no subscribe: local-only app), action pills,
             // playback settings behind a gear dialog. Hidden in fullscreen (pure video).
             if (!isFullscreen) {
+            androidx.compose.material3.HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Column(modifier = Modifier.padding(bottom = 8.dp)) {
                 // title (draggable + expandable, 2026-11-12) + views meta (12sp gray)
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -690,55 +636,19 @@ fun PlayerArea(
                 }
                 Spacer(Modifier.height(10.dp))
                 // action pills (horizontal scroll): favorite / save / queue / sleep / pip / settings
+                var overflow by remember { mutableStateOf(false) }
+                var showDlnaOuter by remember { mutableStateOf(false) }
+                var remote by remember { mutableStateOf<DlnaManager.Renderer?>(null) }
                 Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Chromecast route button (real MediaRouteButton: opens the device chooser;
-                    // after connect it opens the session dialog). Hidden without Play Services.
-                    if (castAvailable) {
-                        androidx.compose.ui.viewinterop.AndroidView(
-                            factory = { c ->
-                                // 2026-11-14 (crash fix): pin app theme — translucent context kills the button (#0).
-                                androidx.mediarouter.app.MediaRouteButton(android.view.ContextThemeWrapper(c, com.mohamedadel.mytube.R.style.Theme_MyTube_Cast)).apply {
-                                    try { com.mohamedadel.mytube.playback.CastManager.selector()?.let { routeSelector = it } } catch (_: Exception) { }
-                                }
-                            },
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-                    // DLNA pill (2026-11-14): opens the renderer picker; hidden with no renderers.
-                    if (dlnaAvailable) {
-                        var showDlna by remember { mutableStateOf(false) }
-                        var remote by remember { mutableStateOf<DlnaManager.Renderer?>(null) }
-                        ActionPill(
-                            icon = { Icon(Icons.Rounded.Tv, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                            label = "DLNA",
-                            selected = false,
-                            onClick = { if (remote == null) showDlna = true }
-                        )
-                        if (showDlna) DlnaPickerDialog(onPick = { r -> showDlna = false; onDlnaPlay(r); remote = r }, onDismiss = { showDlna = false })
-                        val rr = remote
-                        if (rr != null) DlnaRemoteDialog(renderer = rr, onDismiss = { remote = null })
-                    }
                     ActionPill(
                         icon = { Icon(if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = null, tint = if (isFav) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
                         label = stringResource(R.string.cd_fav_add),
                         selected = isFav,
                         onClick = onToggleFav
-                    )
-                    ActionPill(
-                        icon = { Icon(Icons.Rounded.PlaylistAdd, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                        label = stringResource(R.string.pill_save),
-                        selected = false,
-                        onClick = onSave
-                    )
-                    ActionPill(
-                        icon = { Icon(Icons.Rounded.PushPin, contentDescription = null, tint = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                        label = if (isPinning) (pinProgress?.takeIf { it >= 0f }?.let { stringResource(R.string.dl_progress_fmt, (it * 100).toInt()) } ?: stringResource(R.string.pinning)) else stringResource(R.string.pill_pin),
-                        selected = isPinned,
-                        onClick = onPin
                     )
                     ActionPill(
                         icon = { Icon(Icons.Rounded.QueueMusic, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
@@ -752,33 +662,32 @@ fun PlayerArea(
                         selected = false,
                         onClick = onShare
                     )
-                    ActionPill(
-                        icon = {
-                            if (sleepLabel != null) Text(sleepLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                            else Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                        },
-                        label = stringResource(R.string.pill_sleep),
-                        selected = false,
-                        onClick = onSleepClick
-                    )
-                    ActionPill(
-                        icon = { Icon(Icons.Rounded.PictureInPicture, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                        label = stringResource(R.string.pill_pip),
-                        selected = false,
-                        onClick = onEnterPip
-                    )
-                    if (showCommentsPill) ActionPill(
-                        icon = { Icon(Icons.Rounded.Comment, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                        label = stringResource(R.string.pill_comments),
-                        selected = false,
-                        onClick = onCommentsClick
-                    )
-                    ActionPill(
-                        icon = { Icon(Icons.Rounded.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
-                        label = stringResource(R.string.pill_settings),
-                        selected = false,
-                        onClick = { showPlayerSettings = true }
-                    )
+                    Box {
+                        ActionPill(
+                            icon = { Icon(Icons.Rounded.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                            label = stringResource(R.string.more),
+                            selected = false,
+                            onClick = { overflow = true }
+                        )
+                        DropdownMenu(expanded = overflow, onDismissRequest = { overflow = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.pill_save)) }, onClick = { overflow = false; onSave() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.pill_pin)) }, onClick = { overflow = false; onPin() })
+                            DropdownMenuItem(text = { Text(if (sleepLabel != null) stringResource(R.string.sleep_running_fmt, sleepLabel) else stringResource(R.string.pill_sleep)) }, onClick = { overflow = false; onSleepClick() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.pill_pip)) }, onClick = { overflow = false; onEnterPip() })
+                            if (showCommentsPill) DropdownMenuItem(text = { Text(stringResource(R.string.pill_comments)) }, onClick = { overflow = false; onCommentsClick() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.audio_only_quick)) }, onClick = { overflow = false; onAudioOnlyQuick() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.pill_settings)) }, onClick = { overflow = false; showPlayerSettings = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.open_youtube)) }, onClick = { overflow = false; onFallbackYoutube() })
+                            if (castAvailable) DropdownMenuItem(text = { Text("Cast") }, onClick = { overflow = false })
+                            if (dlnaAvailable) DropdownMenuItem(text = { Text("DLNA") }, onClick = { overflow = false; showDlnaOuter = true })
+                        }
+                    }
+                }
+                // DLNA dialogs (kept outside overflow so they survive menu dismiss)
+                if (dlnaAvailable) {
+                    if (showDlnaOuter) DlnaPickerDialog(onPick = { r -> showDlnaOuter = false; onDlnaPlay(r); remote = r }, onDismiss = { showDlnaOuter = false })
+                    val rr = remote
+                    if (rr != null) DlnaRemoteDialog(renderer = rr, onDismiss = { remote = null })
                 }
                 if (queueOn) {
                     Spacer(Modifier.height(8.dp))
@@ -855,7 +764,14 @@ fun PlayerArea(
                                 modifier = Modifier.fillMaxWidth().clickable { onRelatedPlay(rv) }.padding(horizontal = 12.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.Top
                             ) {
-                                AsyncImage(model = rv.thumbnail, contentDescription = rv.title, modifier = Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                                Box(modifier = Modifier.size(140.dp, 80.dp).clip(RoundedCornerShape(8.dp))) {
+                                    AsyncImage(model = rv.thumbnail, contentDescription = rv.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    if ((rv.durationSec ?: 0) > 0) {
+                                        Surface(shape = RoundedCornerShape(6.dp), color = Color.Black.copy(alpha = 0.7f), modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
+                                            Text(formatDuration(rv.durationSec!!.toLong()), style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                        }
+                                    }
+                                }
                                 Spacer(Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     DraggableTitle(text = rv.title ?: "", style = MaterialTheme.typography.bodyMedium)

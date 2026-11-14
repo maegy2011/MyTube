@@ -658,4 +658,7 @@
     <string name="dlna_mute">كتم</string>
     <string name="dlna_remote">التحكم بالشاشة</string>
     <string name="dlna_cmd_failed">تعذر تنفيذ الأمر على الشاشة</string>
+    <string name="more">المزيد</string>
+    <string name="audio_only_quick">صوت فقط</string>
+    <string name="skip_intro">تخطي المقدمة</string>
 </resources>
