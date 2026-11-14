@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- v0.4.6: view-tag keys (no collisions with framework ids). -->
+    <item name="tag_chapter_dots" type="id" />
+</resources>

@@ -437,6 +437,8 @@ fun PlayerArea(
                             v.setFullscreenButtonClickListener { onToggleFullscreen() }
                             v.controllerShowTimeoutMs = 5000
                             applySubStyle(v, subStyle)
+                            // v0.4.6: chapter dots on the native seek bar.
+                            applyChapterDots(v, chapters, durationMs, positionMs)
                             v.showController()
                         },
                         modifier = Modifier.fillMaxSize()
@@ -488,6 +490,8 @@ fun PlayerArea(
                             v.setFullscreenButtonClickListener { onToggleFullscreen() }
                             v.controllerShowTimeoutMs = 5000
                             applySubStyle(v, subStyle)
+                            // v0.4.6: chapter dots on the native seek bar.
+                            applyChapterDots(v, chapters, durationMs, positionMs)
                             v.showController()
                         },
                         modifier = Modifier.fillMaxSize()
