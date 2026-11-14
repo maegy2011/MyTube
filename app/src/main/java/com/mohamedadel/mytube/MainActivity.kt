@@ -16,7 +16,7 @@ import android.net.Uri
 import android.util.Rational
 import android.view.ViewGroup
 import java.io.File
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -254,7 +254,8 @@ private fun restartAppNow(activity: android.app.Activity) {
 // the 64KB codegen limit and the download body had to move out (MethodTooLarge).
 data class PinRetry(val quality: String, val audioIdx: Int, val subIdxs: Set<Int>)
 
-class MainActivity : ComponentActivity() {
+// 2026-11-14 (cast fix): FragmentActivity — MediaRouteButton dialogs require it.
+class MainActivity : FragmentActivity() {
     private var player: ExoPlayer? = null
     val pipMode = androidx.compose.runtime.mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
