@@ -2260,7 +2260,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
             val mc_setRadioOn: (Boolean) -> Unit = { playerVm.setRadioOn(it) }
             val mc_setShowQueue: (Boolean) -> Unit = { showQueue = it }
                         val mc_playlistsRoute: @Composable () -> Unit = { PlaylistsRoute() }
-            val mc_onTrendTab: (Int) -> Unit = { i -> trendVm.cancelSuggestions(); trendVm.setTrendTab(i); refreshTrending() }
+            val mc_onTrendTab: (Int) -> Unit = { i -> trendVm.cancelSuggestions(); trendVm.setTrendTab(i); trendVm.refreshTrending(false, i, prefCountry, prefUiLang, recentSearches) }
             val mc_onRetryTrending: () -> Unit = { refreshTrending(force = true) }
             val mc_onShowMoreTrending: () -> Unit = { loadMoreTrending() }
             val mc_countryName = COUNTRY_OPTIONS.firstOrNull { it.first == prefCountry }?.second?.let { ctx.getString(it) } ?: prefCountry
