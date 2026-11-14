@@ -142,9 +142,13 @@ fun Context.batteryExemptionIntent(): Intent {
 }
 
 // Fix: system share sheet for a video (title + link, works for any app).
-fun Context.shareVideoCtx(v: VideoItem) {
+fun Context.shareVideoCtx(v: VideoItem, posMs: Long = 0L) {
     try {
-        val url = v.url ?: v.id?.let { "https://www.youtube.com/watch?v=$it" } ?: return
+        var url = v.url ?: v.id?.let { "https://www.youtube.com/watch?v=$it" } ?: return
+        if (posMs > 5000L) {
+            val t = (posMs / 1000L).toInt()
+            url = if ("?" in url) "$url&t=${t}s" else "$url?t=${t}s"
+        }
         val text = ((v.title?.takeIf { it.isNotBlank() } ?: "MyTube") + "\n" + url)
         startActivity(android.content.Intent.createChooser(
             android.content.Intent(android.content.Intent.ACTION_SEND).apply {

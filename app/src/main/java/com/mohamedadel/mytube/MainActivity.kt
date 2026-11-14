@@ -2762,7 +2762,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                 override fun channelClickX() { openChannel(streamData?.channelUrl) }
                 override fun commentsClickX() { showComments = true; cmtVm.loadComments(playing?.url) }
                 override fun tagClickX(q: String) { try { playerExpanded = false } catch (_: Exception) { }; query = q; doSearch(q) }
-                override fun shareX(v: VideoItem) { try { ctx.shareVideoCtx(v) } catch (_: Exception) { } }
+                override fun shareX(v: VideoItem) { try { ctx.shareVideoCtx(v, try { playerPositionMs } catch (_: Exception) { 0L }) } catch (_: Exception) { } }
                 override fun setRelatedOptions(v: VideoItem?) { optionsFor = v }
                 override fun speedNow() = try { prefSpeed } catch (_: Exception) { 1f }
                 override fun cycleSpeedX() {

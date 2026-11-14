@@ -322,6 +322,18 @@ fun PlayerArea(
     LaunchedEffect(volume, muted, player) {
         try { player?.volume = if (muted) 0f else volume.coerceIn(0f, 1f) } catch (_: Exception) { }
     }
+    // v0.4.5 #34: fade-in on (re)start — no abrupt jump between loud/quiet videos.
+    var wasPlaying by remember { mutableStateOf(false) }
+    LaunchedEffect(isPlaying) {
+        try {
+            if (isPlaying && !wasPlaying && player != null && !muted) {
+                val target = volume.coerceIn(0f, 1f)
+                player?.volume = 0f
+                for (i in 1..8) { kotlinx.coroutines.delay(100); player?.volume = target * i / 8f }
+            }
+        } catch (_: Exception) { try { player?.volume = volume } catch (_: Exception) { } }
+        wasPlaying = isPlaying
+    }
     ElevatedCard(
         modifier = (if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(16.dp)).then(modifier),
         shape = MaterialTheme.shapes.large,
