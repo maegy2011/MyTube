@@ -112,12 +112,139 @@ object DlnaManager {
     fun stopPlayback(renderer: Renderer) {
         scope.launch {
             try {
-                val svc = renderer.device.serviceList
-                    .firstOrNull { it.serviceType.contains("AVTransport", ignoreCase = true) }
-                    ?: return@launch
+                val svc = renderer.device.avt() ?: return@launch
                 svc.findAction("Stop")?.invokeSync(mapOf("InstanceID" to "0"))
             } catch (_: Exception) { }
         }
+    }
+
+    /** Pause (keeps position). Result to [done] on main. */
+    fun pause(renderer: Renderer, done: (Boolean) -> Unit) {
+        scope.launch {
+            val ok = try {
+                val svc = renderer.device.avt() ?: return@launch postDone(done, false)
+                svc.findAction("Pause")?.invokeSync(mapOf("InstanceID" to "0"))
+                true
+            } catch (_: Exception) {
+                false
+            }
+            postDone(done, ok)
+        }
+    }
+
+    /** Resume without re-setting the URI. Result to [done] on main. */
+    fun resume(renderer: Renderer, done: (Boolean) -> Unit) {
+        scope.launch {
+            val ok = try {
+                val svc = renderer.device.avt() ?: return@launch postDone(done, false)
+                svc.findAction("Play")?.invokeSync(mapOf("InstanceID" to "0", "Speed" to "1"))
+                true
+            } catch (_: Exception) {
+                false
+            }
+            postDone(done, ok)
+        }
+    }
+
+    /** Seek to [ms]. Result to [done] on main. */
+    fun seekTo(renderer: Renderer, ms: Long, done: (Boolean) -> Unit) {
+        scope.launch {
+            val ok = try {
+                val svc = renderer.device.avt() ?: return@launch postDone(done, false)
+                svc.findAction("Seek")?.invokeSync(
+                    mapOf("InstanceID" to "0", "Unit" to "REL_TIME", "Target" to fmtTime(ms))
+                )
+                true
+            } catch (_: Exception) {
+                false
+            }
+            postDone(done, ok)
+        }
+    }
+
+    /** Set volume 0..100. Result to [done] on main. */
+    fun setVolume(renderer: Renderer, vol: Int, done: (Boolean) -> Unit) {
+        scope.launch {
+            val ok = try {
+                val svc = renderer.device.rc() ?: return@launch postDone(done, false)
+                svc.findAction("SetVolume")?.invokeSync(
+                    mapOf("InstanceID" to "0", "Channel" to "Master", "DesiredVolume" to vol.coerceIn(0, 100).toString())
+                )
+                true
+            } catch (_: Exception) {
+                false
+            }
+            postDone(done, ok)
+        }
+    }
+
+    /** Mute on/off. Result to [done] on main. */
+    fun setMute(renderer: Renderer, mute: Boolean, done: (Boolean) -> Unit) {
+        scope.launch {
+            val ok = try {
+                val svc = renderer.device.rc() ?: return@launch postDone(done, false)
+                svc.findAction("SetMute")?.invokeSync(
+                    mapOf("InstanceID" to "0", "Channel" to "Master", "DesiredMute" to if (mute) "1" else "0")
+                )
+                true
+            } catch (_: Exception) {
+                false
+            }
+            postDone(done, ok)
+        }
+    }
+
+    /** Snapshot of remote state. Fields -1/unknown when unreadable. */
+    data class RemoteState(val volume: Int, val mute: Boolean, val posMs: Long, val durMs: Long, val playing: Boolean)
+
+    fun queryState(renderer: Renderer, done: (RemoteState) -> Unit) {
+        scope.launch {
+            var vol = -1; var mute = false; var pos = -1L; var dur = -1L; var playing = false
+            try {
+                renderer.device.rc()?.findAction("GetVolume")?.invokeSync(
+                    mapOf("InstanceID" to "0", "Channel" to "Master")
+                )?.let { vol = it["CurrentVolume"]?.toIntOrNull() ?: -1 }
+            } catch (_: Exception) { }
+            try {
+                renderer.device.rc()?.findAction("GetMute")?.invokeSync(
+                    mapOf("InstanceID" to "0", "Channel" to "Master")
+                )?.let { mute = it["CurrentMute"] == "1" }
+            } catch (_: Exception) { }
+            try {
+                renderer.device.avt()?.findAction("GetPositionInfo")?.invokeSync(mapOf("InstanceID" to "0"))?.let {
+                    pos = parseTime(it["RelTime"])
+                    dur = parseTime(it["TrackDuration"])
+                }
+            } catch (_: Exception) { }
+            try {
+                renderer.device.avt()?.findAction("GetTransportInfo")?.invokeSync(mapOf("InstanceID" to "0"))?.let {
+                    playing = it["CurrentTransportState"]?.equals("PLAYING", ignoreCase = true) == true
+                }
+            } catch (_: Exception) { }
+            val st = RemoteState(vol, mute, pos, dur, playing)
+            launch(Dispatchers.Main) { try { done(st) } catch (_: Exception) { } }
+        }
+    }
+
+    private fun Device.avt() = try {
+        serviceList.firstOrNull { it.serviceType.contains("AVTransport", ignoreCase = true) }
+    } catch (_: Exception) { null }
+
+    private fun Device.rc() = try {
+        serviceList.firstOrNull { it.serviceType.contains("RenderingControl", ignoreCase = true) }
+    } catch (_: Exception) { null }
+
+    internal fun fmtTime(ms: Long): String {
+        val s = (ms.coerceAtLeast(0) / 1000).toInt()
+        return "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
+    }
+
+    internal fun parseTime(t: String?): Long {
+        return try {
+            val p = (t ?: "").split(":")
+            if (p.size != 3) return -1
+            ((p[0].toLong() * 3600 + p[1].toLong() * 60 + p[2].takeWhile { it.isDigit() }.toLong()) * 1000)
+        } catch (_: Exception) { -1 }
     }
 
     private suspend fun postDone(done: (Boolean) -> Unit, ok: Boolean) {

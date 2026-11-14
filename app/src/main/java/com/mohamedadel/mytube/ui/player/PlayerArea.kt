@@ -711,13 +711,16 @@ fun PlayerArea(
                     // DLNA pill (2026-11-14): opens the renderer picker; hidden with no renderers.
                     if (dlnaAvailable) {
                         var showDlna by remember { mutableStateOf(false) }
+                        var remote by remember { mutableStateOf<DlnaManager.Renderer?>(null) }
                         ActionPill(
                             icon = { Icon(Icons.Rounded.Tv, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
                             label = "DLNA",
                             selected = false,
-                            onClick = { showDlna = true }
+                            onClick = { if (remote == null) showDlna = true }
                         )
-                        if (showDlna) DlnaPickerDialog(onPick = { r -> showDlna = false; onDlnaPlay(r) }, onDismiss = { showDlna = false })
+                        if (showDlna) DlnaPickerDialog(onPick = { r -> showDlna = false; onDlnaPlay(r); remote = r }, onDismiss = { showDlna = false })
+                        val rr = remote
+                        if (rr != null) DlnaRemoteDialog(renderer = rr, onDismiss = { remote = null })
                     }
                     ActionPill(
                         icon = { Icon(if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = null, tint = if (isFav) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
