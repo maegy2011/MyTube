@@ -149,6 +149,7 @@ import com.mohamedadel.mytube.ui.playlists.FavoritesScreen
 import com.mohamedadel.mytube.ui.playlists.HistoryScreen
 import com.mohamedadel.mytube.ui.playlists.PlaylistPickerDialog
 import com.mohamedadel.mytube.ui.playlists.PlaylistsRoute
+import com.mohamedadel.mytube.ui.home.ContentHeader
 import com.mohamedadel.mytube.ui.playlists.PlaylistsScreen
 import com.mohamedadel.mytube.ui.library.LibraryScreen
 import com.mohamedadel.mytube.ui.library.NotificationsScreen
@@ -2164,122 +2165,60 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     // PlayerPane/SettingsPane. Pure move, zero behavior change.
     @Composable
     fun ContentHeader() {
-        // Battery-exemption banner: visible only while the exemption is missing (never in fullscreen)
-        if (!isFullscreen && !batteryExempt) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.errorContainer
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        stringResource(R.string.battery_banner),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    androidx.compose.material3.Button(onClick = { ensureBatteryExemption() }) {
-                        Text(stringResource(R.string.allow))
-                    }
-                }
+        val host = remember {
+            object : com.mohamedadel.mytube.ui.home.ContentHeaderHost {
+                override fun isFullscreen() = isFullscreen
+                override fun batteryExempt() = batteryExempt
+                override fun requestBatteryExemption() { ensureBatteryExemption() }
+                override fun canNavigateBack() = showNotifications || playerExpanded || playing != null || showPlaylists || showSettings || showSearch || showLibrary || results.isNotEmpty() || showFeed || showDownloads || showFavorites || showHistory || showSC || channelScreenUrl != null || showQueue || showGroups || openGroup != null || openRemote != null || showLocal || openPlaylistId != null
+                override fun goBack() { smartBack() }
+                override fun openNotifications() { playerExpanded = false; showNotifications = true }
+                override fun openSearch() { playerExpanded = false; showSearch = true; showSuggestions = true }
+                override fun unreadCount() = unreadCount
+                override fun loading() = loading
+                override fun showSearch() = showSearch
+                override fun setShowSearch(b: Boolean) { showSearch = b }
+                override fun query() = query
+                override fun onQueryChange(q: String) { query = q; svm.onQueryChange(q); showSuggestions = true }
+                override fun scLoading() = scLoading
+                override fun unifiedLoading() = unifiedLoading
+                override fun unifiedSource() = unifiedSource
+                override fun setUnifiedSource(s: com.mohamedadel.mytube.data.unified.SearchSource?) { unifiedSource = s }
+                override fun uYT() = uYT
+                override fun uSC() = uSC
+                override fun uYM() = uYM
+                override fun unifiedExpanded() = unifiedExpanded
+                override fun setUnifiedExpanded(s: com.mohamedadel.mytube.data.unified.SearchSource?) { unifiedExpanded = s }
+                override fun suggestions() = suggestions
+                override fun suggestionsShown() = showSuggestions
+                override fun setSuggestionsShown(b: Boolean) { showSuggestions = b }
+                override fun recentSearches() = recentSearches
+                override fun recentMusicSearches() = recentMusicSearches
+                override fun prefs() = prefs
+                override fun playingNow() = playing
+                override fun isPlayingNow() = isPlaying
+                override fun favoriteSet() = favoriteSet
+                override fun pinBadges() = pinBadges
+                override fun pinningKeys() = pinningKeys
+                override fun pinProgress() = pinProgress
+                override fun setShowSC(b: Boolean) { showSC = b }
+                override fun doSearchIn(q: String) { doSearch(q) }
+                override fun doScSearchIn(q: String, src: Int) { doScSearch(q, src) }
+                override fun doUnifiedSearchIn(q: String) { if (q.isBlank()) return; unifiedExpanded = null; uniVm.search(q, if (prefCountry == "global") null else prefCountry) { msearchVm.rememberRecent(it) } }
+                override fun retryUnifiedSourceIn(q: String, s: com.mohamedadel.mytube.data.unified.SearchSource) { uniVm.retrySource(q, s, if (prefCountry == "global") null else prefCountry) }
+                override fun clearUnified() { uniVm.clear(); unifiedExpanded = null }
+                override fun onVoiceSearch() { startVoiceSearch() }
+                override fun playSearchResult(v: VideoItem) { showSearch = false; playVideo(v, expand = true, forcePlay = true) }
+                override fun setOptionsFor(v: VideoItem?) { optionsFor = v }
+                override fun toggleFav(v: VideoItem) { toggleFavorite(v) }
+                override fun uniVm() = uniVm
+                override fun mainSearchVm() = msearchVm
+                override fun musicSearchVm() = searchVm
+                override fun svm() = svm
+                override fun countryOrNull() = if (prefCountry == "global") null else prefCountry
             }
         }
-        // Search + suggestions are hidden in fullscreen: they stole vertical space and
-        // squeezed the video to "app size" instead of true fullscreen.
-        if (!isFullscreen) {
-        // Compact header: nav + logo + search icon only (YouTube-style).
-        // Tapping search opens a standalone search screen; the inline field is gone.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 2026-11-12 (runtime fix): hierarchical Up on EVERY non-root screen —
-            // pops the nav stack via smartBack(), never jumps home. Root = home feed
-            // with nothing playing and no results. Mirrors the BackHandler enable set.
-            val canGoBack = showNotifications || playerExpanded || playing != null || showPlaylists || showSettings || showSearch || showLibrary || results.isNotEmpty() || showFeed || showDownloads || showFavorites || showHistory || showSC || channelScreenUrl != null || showQueue || showGroups || openGroup != null || openRemote != null || showLocal || openPlaylistId != null
-            if (canGoBack) {
-                IconButton(onClick = { smartBack() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                }
-            }
-            Icon(myTubeLogo(), contentDescription = null, tint = androidx.compose.ui.graphics.Color.Unspecified, modifier = Modifier.size(30.dp))
-            Spacer(Modifier.weight(1f))
-            // notif 2026-11-12: bell with unread badge -> Notifications screen.
-            androidx.compose.material3.BadgedBox(
-                badge = { if (unreadCount > 0) androidx.compose.material3.Badge { Text(if (unreadCount > 99) "99+" else unreadCount.toString()) } }
-            ) {
-                IconButton(onClick = { playerExpanded = false; showNotifications = true }) {
-                    Icon(Icons.Rounded.Notifications, contentDescription = stringResource(R.string.notif_bell))
-                }
-            }
-            if (loading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = { playerExpanded = false; showSearch = true; showSuggestions = true }) {
-                Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.search_action))
-            }
-        }
-        // Standalone search screen: full search UI lives here, results stay in the main list.
-        // The suggestions dropdown lives INSIDE it (it used to sit below this fillMaxSize
-        // column, invisible while typing, flashing only after submit).
-        // home-redesign Phase 1 (2026-11-12): unified parallel search (All mode).
-        // One supervisor job, three child launches — each source lands independently,
-        // so a slow/failed source never blocks the others. Same repo calls as doSearch/doScSearch.
-        fun doUnifiedSearch(q: String) {
-            if (q.isBlank()) return
-            unifiedExpanded = null
-            uniVm.search(q, if (prefCountry == "global") null else prefCountry) { msearchVm.rememberRecent(it) }
-        }
-        fun retryUnifiedSource(q: String, s: com.mohamedadel.mytube.data.unified.SearchSource) {
-            uniVm.retrySource(q, s, if (prefCountry == "global") null else prefCountry)
-        }
-        if (showSearch) {
-            // VerifyError fix (2026-11-12): overlay lives in ui.home.UnifiedSearchOverlay.
-            com.mohamedadel.mytube.ui.home.UnifiedSearchOverlay(
-                query = query,
-                loading = loading,
-                scLoading = scLoading,
-                unifiedLoading = unifiedLoading,
-                unifiedSource = unifiedSource,
-                uYT = uYT, uSC = uSC, uYM = uYM,
-                unifiedExpanded = unifiedExpanded,
-                suggestions = suggestions,
-                showSuggestions = showSuggestions,
-                recentSearches = recentSearches,
-                recentMusicSearches = recentMusicSearches,
-                setRecentSearches = { msearchVm.assignRecentSearches(it) },
-                setRecentMusicSearches = { searchVm.assignRecentMusic(it) },
-                prefs = prefs,
-                playing = playing,
-                isPlaying = isPlaying,
-                favoriteSet = favoriteSet,
-                pinBadges = pinBadges,
-                pinningKeys = pinningKeys,
-                pinProgress = pinProgress,
-                onQueryChange = { query = it; svm.onQueryChange(it); showSuggestions = true },
-                onSelectSource = { unifiedSource = it },
-                doSearch = { q -> doSearch(q) },
-                doScSearch = { q, src -> doScSearch(q, src) },
-                doUnifiedSearch = { q -> doUnifiedSearch(q) },
-                setShowSearch = { showSearch = it },
-                setShowSC = { showSC = it },
-                setScQuery = { searchVm.setScQuery(it) },
-                setShowSuggestions = { showSuggestions = it },
-                clearUnifiedResults = { uniVm.clear(); unifiedExpanded = null },
-                retryUnifiedSource = { q, s -> retryUnifiedSource(q, s) },
-                onVoice = { startVoiceSearch() },
-                onPlayItem = { v -> showSearch = false; playVideo(v, expand = true, forcePlay = true) },
-                onShowOptions = { optionsFor = it },
-                onToggleFav = { toggleFavorite(it) },
-                onExpand = { unifiedExpanded = it }
-            )
-        }
-
-        }
+        host.ContentHeader()
     }
 
     // 2026-11-12 (compile fix): the Scaffold content lambda breached the 64KB JVM
