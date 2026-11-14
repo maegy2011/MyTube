@@ -638,6 +638,8 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
     val prefPreloadNext by settingsVm.prefPreloadNext.collectAsStateWithLifecycle()
     // R5: prefetch on WiFi only (default ON, as promised) — mobile data never prefetches.
     val prefPreloadWifiOnly by settingsVm.prefPreloadWifiOnly.collectAsStateWithLifecycle()
+    // v0.4.6: up-next AUDIO bytes prefetch (Wi-Fi-gated, default OFF).
+    val prefAudioPrefetch by settingsVm.prefAudioPrefetch.collectAsStateWithLifecycle()
     // M3: title-translation toggle (default ON); OFF = original titles always, zero Google calls.
     val prefTitleTranslate by settingsVm.prefTitleTranslate.collectAsStateWithLifecycle()
     fun isUnmeteredNet(): Boolean {
@@ -1346,6 +1348,7 @@ fun MyTubeApp(onEnterPip: () -> Unit, onPlayerReady: (ExoPlayer?) -> Unit = {}, 
                     offline = prefOffline, ageMode = prefAgeMode,
                     miniEnabled = prefMiniEnabled, miniAutoshow = prefMiniAutoshow,
                     preloadNext = prefPreloadNext, preloadWifiOnly = prefPreloadWifiOnly,
+                    audioPrefetch = prefAudioPrefetch,
                     videoMode = videoModeQueue
                 )
             override fun exo(): ExoPlayer? = player

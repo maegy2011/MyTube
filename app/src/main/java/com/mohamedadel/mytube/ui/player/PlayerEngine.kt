@@ -25,6 +25,8 @@ data class PlayPrefs(
     val miniAutoshow: Boolean,
     val preloadNext: Boolean,
     val preloadWifiOnly: Boolean,
+    // v0.4.6: CacheWriter-download up-next audio bytes (audio-first instant play).
+    val audioPrefetch: Boolean = false,
     val videoMode: Boolean
 )
 
@@ -224,6 +226,11 @@ private suspend fun PlayerViewModel.prefetchNext(prefs: PlayPrefs, host: PlayEng
                     val s2 = YouTubeRepo.streamRouted(nxt.url ?: return@launch) ?: return@launch
                     if (s2.audioLowestUrl != null || s2.videoUrlByQuality.isNotEmpty()) {
                         if (host.prefetchCount() < 2) host.putPrefetched(nk, s2)
+                        // v0.4.6: fetch up-next AUDIO bytes too (Wi-Fi-gated, best-effort).
+                        val au = s2.audioLowestUrl
+                        if (prefs.audioPrefetch && au != null && (!prefs.preloadWifiOnly || host.isUnmetered())) {
+                            com.mohamedadel.mytube.playback.AudioPrefetch.cacheAudioBytes(host.appCtx(), au)
+                        }
                     }
                 } catch (_: Exception) { }
             }
