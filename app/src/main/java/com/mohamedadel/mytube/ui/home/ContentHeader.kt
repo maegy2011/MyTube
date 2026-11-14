@@ -3,6 +3,29 @@ package com.mohamedadel.mytube.ui.home
 import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
 import com.mohamedadel.mytube.data.unified.SearchSource
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.mohamedadel.mytube.R
+import com.mohamedadel.mytube.data.unified.SourceResult
 import com.mohamedadel.mytube.data.youtube.VideoItem
 import com.mohamedadel.mytube.ui.search.MainSearchViewModel
 import com.mohamedadel.mytube.ui.search.MusicSearchViewModel
@@ -31,9 +54,9 @@ interface ContentHeaderHost {
     fun unifiedLoading(): Boolean
     fun unifiedSource(): SearchSource?
     fun setUnifiedSource(s: SearchSource?)
-    fun uYT(): List<VideoItem>
-    fun uSC(): List<VideoItem>
-    fun uYM(): List<VideoItem>
+    fun uYT(): SourceResult?
+    fun uSC(): SourceResult?
+    fun uYM(): SourceResult?
     fun unifiedExpanded(): SearchSource?
     fun setUnifiedExpanded(s: SearchSource?)
     fun suggestions(): List<String>
