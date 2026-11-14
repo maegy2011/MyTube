@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import net.mm2d.upnp.ControlPoint
@@ -214,28 +215,28 @@ object DlnaManager {
     fun queryState(renderer: Renderer, done: (RemoteState) -> Unit) {
         scope.launch {
             // Parallel: 4 serial blocking SOAP calls made the dialog feel dead.
-            val volD = kotlinx.coroutines.async {
+            val volD = async {
                 try {
                     renderer.device.rc()?.findAction("GetVolume")?.invokeSync(
                         mapOf("InstanceID" to "0", "Channel" to "Master")
                     )?.get("CurrentVolume")?.toIntOrNull() ?: -1
                 } catch (_: Exception) { -1 }
             }
-            val muteD = kotlinx.coroutines.async {
+            val muteD = async {
                 try {
                     renderer.device.rc()?.findAction("GetMute")?.invokeSync(
                         mapOf("InstanceID" to "0", "Channel" to "Master")
                     )?.get("CurrentMute") == "1"
                 } catch (_: Exception) { false }
             }
-            val posD = kotlinx.coroutines.async {
+            val posD = async {
                 try {
                     renderer.device.avt()?.findAction("GetPositionInfo")
                         ?.invokeSync(mapOf("InstanceID" to "0"))
                         ?.let { parseTime(it["RelTime"]) to parseTime(it["TrackDuration"]) }
                 } catch (_: Exception) { null }
             }
-            val playD = kotlinx.coroutines.async {
+            val playD = async {
                 try {
                     renderer.device.avt()?.findAction("GetTransportInfo")
                         ?.invokeSync(mapOf("InstanceID" to "0"))
